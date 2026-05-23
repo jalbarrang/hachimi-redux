@@ -24,7 +24,7 @@ use super::{
     types::{GuiMenuCallback, GuiMenuSectionCallback, GuiUiCallback, HachimiInitFn, InitResult},
 };
 
-const VERSION: i32 = 3;
+const VERSION: i32 = 4;
 
 static PLUGIN_VTABLE: OnceCell<Vtable> = OnceCell::new();
 
@@ -613,6 +613,17 @@ unsafe extern "C" fn gui_register_overlay(
     }
 }
 
+unsafe extern "C" fn gui_ui_set_min_width(ui: *mut c_void, width: f32) -> bool {
+    // SAFETY: FFI / raw pointer operation required by IL2CPP interop
+    unsafe {
+        let Some(ui) = ui_from_ptr(ui) else {
+            return false;
+        };
+        ui.set_min_width(width);
+        true
+    }
+}
+
 #[cfg(target_os = "android")]
 unsafe extern "C" fn android_dex_load(dex_ptr: *const u8, dex_len: usize, class_name: *const c_char) -> u64 {
     crate::android::dex_bridge::dex_load(dex_ptr, dex_len, class_name)
@@ -793,6 +804,9 @@ pub struct Vtable {
         callback: Option<GuiMenuSectionCallback>,
         userdata: *mut c_void,
     ) -> bool,
+
+    // Layout helpers (version >= 4)
+    pub gui_ui_set_min_width: unsafe extern "C" fn(ui: *mut c_void, width: f32) -> bool,
 }
 
 impl Vtable {
@@ -850,6 +864,7 @@ impl Vtable {
         android_dex_call_static_noargs,
         android_dex_call_static_string,
         gui_register_overlay,
+        gui_ui_set_min_width,
     };
 
     pub fn instantiate() -> Self {
@@ -868,10 +883,10 @@ mod tests {
 
     #[test]
     fn vtable_size_is_stable() {
-        // 53 function pointers × pointer size
+        // 54 function pointers × pointer size
         assert_eq!(
             std::mem::size_of::<Vtable>(),
-            53 * std::mem::size_of::<usize>(),
+            54 * std::mem::size_of::<usize>(),
             "Vtable size changed — this breaks plugin ABI!"
         );
     }
