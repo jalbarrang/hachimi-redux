@@ -374,3 +374,192 @@ impl Resolver {
         }
     }
 }
+
+#[cfg(test)]
+#[allow(clippy::disallowed_methods)]
+mod tests {
+    use super::*;
+
+    // ── Ast::parse basic expressions ──
+
+    #[test]
+    fn parse_n() {
+        let ast = Ast::parse("n").unwrap();
+        assert_eq!(ast, Ast::N);
+    }
+
+    #[test]
+    fn parse_integer() {
+        let ast = Ast::parse("42").unwrap();
+        assert_eq!(ast, Ast::Integer(42));
+    }
+
+    #[test]
+    fn parse_invalid() {
+        assert!(Ast::parse("xyz").is_err());
+    }
+
+    // ── Ast::resolve ──
+
+    #[test]
+    fn resolve_n() {
+        let ast = Ast::parse("n").unwrap();
+        assert_eq!(ast.resolve(5), 5);
+    }
+
+    #[test]
+    fn resolve_integer() {
+        let ast = Ast::parse("0").unwrap();
+        assert_eq!(ast.resolve(999), 0);
+    }
+
+    #[test]
+    fn resolve_modulo() {
+        // n % 10
+        let ast = Ast::parse("(n % 10)").unwrap();
+        assert_eq!(ast.resolve(23), 3);
+        assert_eq!(ast.resolve(10), 0);
+    }
+
+    #[test]
+    fn resolve_equality() {
+        let ast = Ast::parse("(n == 1)").unwrap();
+        assert_eq!(ast.resolve(1), 1);
+        assert_eq!(ast.resolve(2), 0);
+    }
+
+    #[test]
+    fn resolve_not_equal() {
+        let ast = Ast::parse("(n != 1)").unwrap();
+        assert_eq!(ast.resolve(1), 0);
+        assert_eq!(ast.resolve(0), 1);
+    }
+
+    #[test]
+    fn resolve_ternary() {
+        // n == 1 ? 0 : 1
+        let ast = Ast::parse("(n == 1) ? 0 : 1").unwrap();
+        assert_eq!(ast.resolve(1), 0);
+        assert_eq!(ast.resolve(2), 1);
+    }
+
+    #[test]
+    fn resolve_not() {
+        let ast = Ast::parse("!n").unwrap();
+        assert_eq!(ast.resolve(0), 1);
+        assert_eq!(ast.resolve(1), 0);
+        assert_eq!(ast.resolve(42), 0);
+    }
+
+    #[test]
+    fn resolve_comparison_ops() {
+        let gt = Ast::parse("(n > 5)").unwrap();
+        assert_eq!(gt.resolve(6), 1);
+        assert_eq!(gt.resolve(5), 0);
+
+        let lt = Ast::parse("(n < 5)").unwrap();
+        assert_eq!(lt.resolve(4), 1);
+        assert_eq!(lt.resolve(5), 0);
+
+        let ge = Ast::parse("(n >= 5)").unwrap();
+        assert_eq!(ge.resolve(5), 1);
+        assert_eq!(ge.resolve(4), 0);
+
+        let le = Ast::parse("(n <= 5)").unwrap();
+        assert_eq!(le.resolve(5), 1);
+        assert_eq!(le.resolve(6), 0);
+    }
+
+    #[test]
+    fn resolve_and_or() {
+        let and = Ast::parse("(n && 1)").unwrap();
+        assert_eq!(and.resolve(0), 0);
+        assert_eq!(and.resolve(1), 1);
+
+        let or = Ast::parse("(n || 0)").unwrap();
+        assert_eq!(or.resolve(0), 0);
+        assert_eq!(or.resolve(1), 1);
+    }
+
+    #[test]
+    fn resolve_arithmetic() {
+        let plus = Ast::parse("(n + 10)").unwrap();
+        assert_eq!(plus.resolve(5), 15);
+
+        let minus = Ast::parse("(n - 3)").unwrap();
+        assert_eq!(minus.resolve(10), 7);
+
+        let mul = Ast::parse("(n * 2)").unwrap();
+        assert_eq!(mul.resolve(7), 14);
+
+        let div = Ast::parse("(n / 3)").unwrap();
+        assert_eq!(div.resolve(9), 3);
+    }
+
+    // ── Real-world gettext plural forms ──
+
+    #[test]
+    fn english_plural() {
+        // nplurals=2; plural=(n != 1)
+        let ast = Ast::parse("(n != 1)").unwrap();
+        assert_eq!(ast.resolve(0), 1); // "0 items"
+        assert_eq!(ast.resolve(1), 0); // "1 item"
+        assert_eq!(ast.resolve(2), 1); // "2 items"
+    }
+
+    #[test]
+    fn nested_ternary() {
+        // Simple nested ternary: n==1 ? 0 : (n==2 ? 1 : 2)
+        let ast = Ast::parse("(n==1) ? 0 : (n==2) ? 1 : 2").unwrap();
+        assert_eq!(ast.resolve(1), 0);
+        assert_eq!(ast.resolve(2), 1);
+        assert_eq!(ast.resolve(3), 2);
+    }
+
+    #[test]
+    fn french_plural() {
+        // nplurals=2; plural=(n > 1)
+        let ast = Ast::parse("(n > 1)").unwrap();
+        assert_eq!(ast.resolve(0), 0);
+        assert_eq!(ast.resolve(1), 0);
+        assert_eq!(ast.resolve(2), 1);
+    }
+
+    // ── Resolver ──
+
+    #[test]
+    fn resolver_default() {
+        let r = Resolver::default();
+        assert_eq!(r.resolve(0), 0);
+        assert_eq!(r.resolve(999), 0);
+    }
+
+    #[test]
+    fn resolver_function() {
+        let r = Resolver::Function(|n| if n == 1 { 0 } else { 1 });
+        assert_eq!(r.resolve(1), 0);
+        assert_eq!(r.resolve(2), 1);
+    }
+
+    #[test]
+    fn resolver_expr() {
+        let ast = Ast::parse("(n != 1)").unwrap();
+        let r = Resolver::Expr(ast);
+        assert_eq!(r.resolve(1), 0);
+        assert_eq!(r.resolve(2), 1);
+    }
+
+    // ── index_of helper ──
+
+    #[test]
+    fn index_of_basic() {
+        assert_eq!(super::index_of("a && b", "&&"), Some(2));
+        assert_eq!(super::index_of("hello", "&&"), None);
+    }
+
+    #[test]
+    fn index_of_respects_parens() {
+        // The && inside parens should be skipped
+        assert_eq!(super::index_of("(a && b) && c", "&&"), Some(9));
+    }
+}

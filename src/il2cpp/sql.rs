@@ -586,3 +586,185 @@ impl<'a> Iterator for BinaryOpIter<'a> {
         }
     }
 }
+
+#[cfg(test)]
+#[allow(clippy::disallowed_methods)]
+mod tests {
+    use super::*;
+    use sqlparser::dialect::GenericDialect;
+    use sqlparser::parser::Parser as SqlParser;
+
+    fn parse_select(sql: &str) -> ast::Select {
+        let dialect = GenericDialect {};
+        let statements = SqlParser::parse_sql(&dialect, sql).unwrap();
+        match &statements[0] {
+            ast::Statement::Query(q) => match q.body.as_ref() {
+                ast::SetExpr::Select(s) => *s.clone(),
+                _ => panic!("expected SELECT"),
+            },
+            _ => panic!("expected Query statement"),
+        }
+    }
+
+    // ── SelectExt::get_first_table_name ──
+
+    #[test]
+    fn get_first_table_name_basic() {
+        let select = parse_select("SELECT id FROM text_data WHERE id = 1");
+        assert_eq!(select.get_first_table_name(), Some(&"text_data".to_string()));
+    }
+
+    #[test]
+    fn get_first_table_name_no_from() {
+        let select = parse_select("SELECT 1");
+        assert_eq!(select.get_first_table_name(), None);
+    }
+
+    // ── SelectItemExt::get_unnamed_expr_ident ──
+
+    #[test]
+    fn unnamed_expr_ident() {
+        let select = parse_select("SELECT text FROM t");
+        let item = &select.projection[0];
+        assert_eq!(item.get_unnamed_expr_ident(), Some(&"text".to_string()));
+    }
+
+    #[test]
+    fn unnamed_expr_ident_aliased_returns_none() {
+        let select = parse_select("SELECT text AS t FROM t");
+        let item = &select.projection[0];
+        assert_eq!(item.get_unnamed_expr_ident(), None);
+    }
+
+    // ── ExprExt ──
+
+    #[test]
+    fn expr_get_ident_value() {
+        let select = parse_select("SELECT x FROM t WHERE x = 1");
+        if let Some(ast::Expr::BinaryOp { left, .. }) = select.selection.as_ref() {
+            assert_eq!(left.get_ident_value(), Some(&"x".to_string()));
+        } else {
+            panic!("expected binary op in WHERE");
+        }
+    }
+
+    #[test]
+    fn expr_is_placeholder_value() {
+        let select = parse_select("SELECT x FROM t WHERE x = ?");
+        if let Some(ast::Expr::BinaryOp { right, .. }) = select.selection.as_ref() {
+            assert!(right.is_placeholder_value());
+        } else {
+            panic!("expected binary op in WHERE");
+        }
+    }
+
+    // ── BinaryOpIter ──
+
+    #[test]
+    fn binary_op_iter_single() {
+        let select = parse_select("SELECT x FROM t WHERE a = 1");
+        let expr = select.selection.as_ref().unwrap();
+        let ops: Vec<_> = expr.binary_op_iter().collect();
+        assert_eq!(ops.len(), 1);
+    }
+
+    #[test]
+    fn binary_op_iter_nested_and() {
+        let select = parse_select("SELECT x FROM t WHERE a = 1 AND b = 2");
+        let expr = select.selection.as_ref().unwrap();
+        let ops: Vec<_> = expr.binary_op_iter().collect();
+        // AND, a=1, b=2 = 3 binary ops
+        assert_eq!(ops.len(), 3);
+    }
+
+    // ── Column ──
+
+    #[test]
+    fn column_is_select_idx() {
+        let c = Column { select_idx: Some(2), ..Default::default() };
+        assert!(c.is_select_idx(2));
+        assert!(!c.is_select_idx(1));
+    }
+
+    #[test]
+    fn column_is_param_idx() {
+        let c = Column { param_idx: Some(1), ..Default::default() };
+        assert!(c.is_param_idx(1));
+        assert!(!c.is_param_idx(0));
+    }
+
+    #[test]
+    fn column_try_bind_int() {
+        let mut c = Column { param_idx: Some(1), ..Default::default() };
+        c.try_bind_int(1, 42);
+        assert_eq!(c.int_value, Some(42));
+        c.try_bind_int(2, 99); // wrong index, should not change
+        assert_eq!(c.int_value, Some(42));
+    }
+
+    // ── TextDataQuery state machine ──
+
+    #[test]
+    fn text_data_query_add_column_and_param() {
+        let mut q = TextDataQuery::default();
+        q.add_column(0, "text");
+        q.add_param(1, "category");
+        q.add_param(2, "index");
+
+        assert!(q.text.is_select_idx(0));
+        assert!(q.category.is_param_idx(1));
+        assert!(q.index.is_param_idx(2));
+    }
+
+    #[test]
+    fn text_data_query_bind_int() {
+        let mut q = TextDataQuery::default();
+        q.add_param(1, "category");
+        q.add_param(2, "index");
+        q.bind_int(1, 47);
+        q.bind_int(2, 100);
+
+        assert_eq!(q.category.int_value, Some(47));
+        assert_eq!(q.index.int_value, Some(100));
+    }
+
+    // ── CharacterSystemTextQuery state machine ──
+
+    #[test]
+    fn character_system_text_query_columns_and_params() {
+        let mut q = CharacterSystemTextQuery::default();
+        q.add_column(0, "text");
+        q.add_column(1, "voice_id");
+        q.add_param(1, "character_id");
+        q.add_param(2, "voice_id");
+
+        assert!(q.text.is_select_idx(0));
+        assert!(q.voice_id.is_select_idx(1));
+        assert!(q.character_id.is_param_idx(1));
+        assert!(q.voice_id.is_param_idx(2));
+    }
+
+    // ── RaceJikkyoCommentQuery state machine ──
+
+    #[test]
+    fn race_jikkyo_comment_query_columns() {
+        let mut q = RaceJikkyoCommentQuery::default();
+        q.add_column(0, "id");
+        q.add_column(1, "message");
+
+        assert!(q.id.is_select_idx(0));
+        assert!(q.message.is_select_idx(1));
+    }
+
+    // ── RaceJikkyoMessageQuery state machine ──
+
+    #[test]
+    fn race_jikkyo_message_query_columns() {
+        let mut q = RaceJikkyoMessageQuery::default();
+        q.add_column(0, "id");
+        q.add_column(1, "message");
+
+        assert!(q.id.is_select_idx(0));
+        assert!(q.message.is_select_idx(1));
+    }
+}

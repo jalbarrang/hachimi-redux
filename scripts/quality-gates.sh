@@ -69,7 +69,11 @@ fi
 run_gate "Clippy (core)" cargo clippy --all-targets -- -D warnings
 run_gate "Clippy (plugin)" bash -c "cd plugins/training-tracker && cargo clippy --all-targets -- -D warnings"
 
-# Gate 6: Type check
+# Gate 6: Tests
+run_gate "Tests (core)" cargo test --lib
+run_gate "Tests (plugin)" bash -c "cd plugins/training-tracker && cargo test --lib"
+
+# Gate 7: Type check
 if [[ "$QUICK" == false ]]; then
     run_gate "Cargo check (core)" cargo check --all-targets
     run_gate "Cargo check (plugin)" bash -c "cd plugins/training-tracker && cargo check --all-targets"

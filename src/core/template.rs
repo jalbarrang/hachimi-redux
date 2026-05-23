@@ -225,3 +225,138 @@ impl Parser {
         self.eval_with_context(input, &mut FilterRemovalContext {})
     }
 }
+
+#[cfg(test)]
+#[allow(clippy::disallowed_methods)]
+mod tests {
+    use super::*;
+
+    fn make_parser() -> Parser {
+        Parser::new(&[
+            ("upper", |args: &[Token]| {
+                if let Some(Token::StringLit(s)) = args.first() {
+                    Some(s.to_uppercase())
+                } else {
+                    None
+                }
+            }),
+            ("add", |args: &[Token]| {
+                if args.len() >= 2 {
+                    if let (Token::NumberLit(a), Token::NumberLit(b)) = (&args[0], &args[1]) {
+                        return Some(format!("{}", (*a as i64) + (*b as i64)));
+                    }
+                }
+                None
+            }),
+        ])
+    }
+
+    // ── Plain text (no expressions) ──
+
+    #[test]
+    fn plain_text_passthrough() {
+        let p = make_parser();
+        assert_eq!(p.eval("hello world"), "hello world");
+    }
+
+    #[test]
+    fn empty_string() {
+        let p = make_parser();
+        assert_eq!(p.eval(""), "");
+    }
+
+    // ── Filter expressions ──
+
+    #[test]
+    fn filter_string_arg() {
+        let p = make_parser();
+        assert_eq!(p.eval("$(upper 'hello')"), "HELLO");
+    }
+
+    #[test]
+    fn filter_number_args() {
+        let p = make_parser();
+        assert_eq!(p.eval("$(add 3 4)"), "7");
+    }
+
+    #[test]
+    fn filter_embedded_in_text() {
+        let p = make_parser();
+        assert_eq!(p.eval("result: $(add 1 2) done"), "result: 3 done");
+    }
+
+    #[test]
+    fn multiple_filters() {
+        let p = make_parser();
+        assert_eq!(
+            p.eval("$(upper 'a') and $(add 10 20)"),
+            "A and 30"
+        );
+    }
+
+    #[test]
+    fn dollar_without_paren_passthrough() {
+        let p = make_parser();
+        assert_eq!(p.eval("cost $5"), "cost $5");
+    }
+
+    // ── Token parsing ──
+
+    #[test]
+    fn parse_token_number() {
+        let tok = Parser::parse_token("42");
+        assert!(matches!(tok, Some(Token::NumberLit(n)) if (n - 42.0).abs() < f64::EPSILON));
+    }
+
+    #[test]
+    fn parse_token_number_with_commas() {
+        let tok = Parser::parse_token("1,000");
+        assert!(matches!(tok, Some(Token::NumberLit(n)) if (n - 1000.0).abs() < f64::EPSILON));
+    }
+
+    #[test]
+    fn parse_token_string_lit() {
+        let tok = Parser::parse_token("'hello'");
+        assert!(matches!(tok, Some(Token::StringLit(ref s)) if s == "hello"));
+    }
+
+    #[test]
+    fn parse_token_string_with_escaped_quote() {
+        let tok = Parser::parse_token("'it\\'s'");
+        assert!(matches!(tok, Some(Token::StringLit(ref s)) if s == "it's"));
+    }
+
+    #[test]
+    fn parse_token_identifier() {
+        let tok = Parser::parse_token("my_filter");
+        assert!(matches!(tok, Some(Token::Identifier(ref s)) if s == "my_filter"));
+    }
+
+    // ── Context-based evaluation ──
+
+    #[test]
+    fn context_overrides_filter() {
+        struct MyCtx;
+        impl Context for MyCtx {
+            fn on_filter_eval(&mut self, name: &str, _args: &[Token]) -> Option<String> {
+                if name == "upper" { Some("CONTEXT_WINS".into()) } else { None }
+            }
+        }
+        let p = make_parser();
+        assert_eq!(p.eval_with_context("$(upper 'x')", &mut MyCtx), "CONTEXT_WINS");
+    }
+
+    // ── remove_filters ──
+
+    #[test]
+    fn remove_filters_strips_expressions() {
+        let p = make_parser();
+        assert_eq!(p.remove_filters("hello $(upper 'world') end"), "hello  end");
+    }
+
+    #[test]
+    fn remove_filters_plain_text_unchanged() {
+        let p = make_parser();
+        assert_eq!(p.remove_filters("no filters here"), "no filters here");
+    }
+}

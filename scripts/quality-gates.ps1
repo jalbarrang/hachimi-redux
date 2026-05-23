@@ -102,7 +102,15 @@ Run-Gate "Clippy (plugin — zero warnings)" {
     Pop-Location
 }
 
-# ── Gate 6: Type check ──────────────────────────────────────────
+# ── Gate 6: Tests ─────────────────────────────────────────────────────
+Run-Gate "Tests (core)" { cargo test --lib }
+Run-Gate "Tests (plugin)" {
+    Push-Location plugins/training-tracker
+    cargo test --lib
+    Pop-Location
+}
+
+# ── Gate 7: Type check ──────────────────────────────────────────
 if (-not $Quick) {
     Run-Gate "Cargo check (core)" { cargo check --all-targets }
     Run-Gate "Cargo check (plugin)" {

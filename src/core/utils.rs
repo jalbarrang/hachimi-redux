@@ -722,3 +722,232 @@ pub fn notify_error(message: impl AsRef<str>) {
 pub fn mul_int(base: i32, mult: f32) -> i32 {
     (base as f32 * mult).round() as i32
 }
+
+#[cfg(test)]
+#[allow(clippy::disallowed_methods)]
+mod tests {
+    use super::*;
+
+    // ── str_visual_len ──
+
+    #[test]
+    fn visual_len_plain_text() {
+        assert_eq!(str_visual_len("hello"), 5);
+    }
+
+    #[test]
+    fn visual_len_empty() {
+        assert_eq!(str_visual_len(""), 0);
+    }
+
+    #[test]
+    fn visual_len_skips_tags() {
+        assert_eq!(str_visual_len("<size=16>hello</size>"), 5);
+    }
+
+    #[test]
+    fn visual_len_nested_tags() {
+        assert_eq!(str_visual_len("<b><i>hi</i></b>"), 2);
+    }
+
+    #[test]
+    fn visual_len_backslash_n_is_zero_width() {
+        assert_eq!(str_visual_len("ab\\ncd"), 4);
+    }
+
+    #[test]
+    fn visual_len_backslash_other_counts() {
+        // \x is not a newline escape, so \ counts as 1 char and x counts as 1 char
+        assert_eq!(str_visual_len("a\\xb"), 4);
+    }
+
+    // ── char_to_utf16_index / utf16_to_char_index ──
+
+    #[test]
+    fn utf16_index_ascii() {
+        assert_eq!(char_to_utf16_index("hello", 3), 3);
+        assert_eq!(utf16_to_char_index("hello", 3), 3);
+    }
+
+    #[test]
+    fn utf16_index_with_surrogate_pairs() {
+        // 🎮 is U+1F3AE, needs 2 UTF-16 code units
+        let s = "a🎮b";
+        // char index 1 = after 'a', UTF-16 index = 1
+        assert_eq!(char_to_utf16_index(s, 1), 1);
+        // char index 2 = after 🎮, UTF-16 index = 3 (1 for 'a' + 2 for 🎮)
+        assert_eq!(char_to_utf16_index(s, 2), 3);
+        // reverse: UTF-16 index 3 = char index 2
+        assert_eq!(utf16_to_char_index(s, 3), 2);
+    }
+
+    #[test]
+    fn utf16_index_roundtrip() {
+        let s = "日本語テスト";
+        for i in 0..=s.chars().count() {
+            let utf16 = char_to_utf16_index(s, i) as usize;
+            assert_eq!(utf16_to_char_index(s, utf16), i);
+        }
+    }
+
+    // ── IsolateTags ──
+
+    #[test]
+    fn isolate_tags_plain_text() {
+        let parts: Vec<_> = IsolateTags::new("hello world").collect();
+        assert_eq!(parts.len(), 1);
+        assert_eq!(parts[0], ("hello world", true));
+    }
+
+    #[test]
+    fn isolate_tags_with_tag() {
+        let parts: Vec<_> = IsolateTags::new("<size=16>hello</size>").collect();
+        // Should separate tags from text
+        assert!(parts.len() >= 2);
+        // At least one part should be non-breakable (tag)
+        assert!(parts.iter().any(|(_, is_text)| !is_text));
+    }
+
+    #[test]
+    fn isolate_tags_empty() {
+        let parts: Vec<_> = IsolateTags::new("").collect();
+        assert!(parts.is_empty());
+    }
+
+    #[test]
+    fn isolate_tags_only_text() {
+        let parts: Vec<_> = IsolateTags::new("no tags here").collect();
+        assert_eq!(parts.len(), 1);
+        assert!(parts[0].1); // is text
+    }
+
+    #[test]
+    fn isolate_tags_template_expr() {
+        let parts: Vec<_> = IsolateTags::new("hello $(expr) world").collect();
+        // Should isolate the $(expr) part
+        assert!(parts.len() >= 2);
+    }
+
+    // ── concat_unix_path ──
+
+    #[test]
+    fn concat_unix_path_basic() {
+        assert_eq!(concat_unix_path("a", "b"), "a/b");
+        assert_eq!(concat_unix_path("/foo", "bar.txt"), "/foo/bar.txt");
+    }
+
+    // ── add_size_tag ──
+
+    #[test]
+    fn add_size_tag_basic() {
+        assert_eq!(add_size_tag("hello", 16), "<size=16>hello</size>");
+    }
+
+    // ── fit_text_internal ──
+
+    #[test]
+    fn fit_text_internal_no_shrink_needed() {
+        // line_width=10, text has 5 chars → no fit needed
+        let result = fit_text_internal("hello", 10, 24, 1.0);
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn fit_text_internal_shrinks() {
+        // line_width=3, text has 5 chars → needs shrink
+        let result = fit_text_internal("hello", 3, 24, 1.0);
+        assert!(result.is_some());
+        let s = result.unwrap();
+        assert!(s.starts_with("<size="));
+        assert!(s.contains("hello"));
+        assert!(s.ends_with("</size>"));
+    }
+
+    #[test]
+    fn fit_text_internal_multiplier() {
+        // With multiplier 2.0, effective width = 6, text has 5 chars → no fit
+        assert!(fit_text_internal("hello", 3, 24, 2.0).is_none());
+        // With multiplier 0.5, effective width = 1.5→2, text has 5 chars → fit
+        assert!(fit_text_internal("hello", 3, 24, 0.5).is_some());
+    }
+
+    // ── truncate_chars_internal ──
+
+    #[test]
+    fn truncate_no_truncation_needed() {
+        let result = truncate_chars_internal("hi".chars(), 10, false, 1.0);
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn truncate_basic() {
+        let result = truncate_chars_internal("hello world".chars(), 5, false, 1.0);
+        assert!(result.is_some());
+        let v: String = result.unwrap().into_iter().collect();
+        assert_eq!(v, "hello");
+    }
+
+    #[test]
+    fn truncate_with_ellipsis() {
+        let result = truncate_chars_internal("hello world".chars(), 6, true, 1.0);
+        assert!(result.is_some());
+        let v: String = result.unwrap().into_iter().collect();
+        assert!(v.ends_with('…'));
+        // 5 chars + ellipsis = 6 width
+    }
+
+    #[test]
+    fn truncate_ellipsis_not_added_when_fits() {
+        // "hi" has 2 chars, width=5 → no truncation
+        let result = truncate_chars_internal("hi".chars(), 5, true, 1.0);
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn truncate_multiplier_expands_width() {
+        // "hello world" = 11 chars, width=6, mult=2.0 → effective=12 → no truncation
+        let result = truncate_chars_internal("hello world".chars(), 6, false, 2.0);
+        assert!(result.is_none());
+    }
+
+    // ── mul_int ──
+
+    #[test]
+    fn mul_int_basic() {
+        assert_eq!(mul_int(10, 1.5), 15);
+        assert_eq!(mul_int(10, 0.5), 5);
+        assert_eq!(mul_int(3, 0.33), 1);
+    }
+
+    // ── scale_to_aspect_ratio ──
+
+    #[test]
+    fn scale_aspect_ratio_already_correct() {
+        let result = scale_to_aspect_ratio((1920, 1080), 1920.0 / 1080.0, false);
+        assert_eq!(result, (1920, 1080));
+    }
+
+    #[test]
+    fn scale_aspect_ratio_inverted() {
+        // 1080x1920 with aspect 1920/1080 should swap
+        let result = scale_to_aspect_ratio((1080, 1920), 1920.0 / 1080.0, false);
+        assert_eq!(result, (1920, 1080));
+    }
+
+    #[test]
+    fn scale_aspect_ratio_rescale() {
+        let (w, h) = scale_to_aspect_ratio((800, 800), 16.0 / 9.0, false);
+        let ratio = w as f32 / h as f32;
+        assert!((ratio - 16.0 / 9.0).abs() < 0.02);
+    }
+
+    // ── SendPtr ──
+
+    #[test]
+    fn send_ptr_is_send_sync() {
+        fn assert_send<T: Send>() {}
+        fn assert_sync<T: Sync>() {}
+        assert_send::<SendPtr>();
+        assert_sync::<SendPtr>();
+    }
+}

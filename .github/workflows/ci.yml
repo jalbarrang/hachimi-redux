@@ -178,12 +178,59 @@ jobs:
           -- -D warnings
 
   # ──────────────────────────────────────────────────────────────
-  # Stage 4: Type check — cross-platform compilation verification
+  # Stage 4: Tests — unit test suite (Windows only, no game runtime)
+  # ──────────────────────────────────────────────────────────────
+
+  test-windows:
+    name: "4 · Test (Windows)"
+    needs: [clippy-windows]
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: swatinem/rust-cache@v2
+
+      - name: Patch dependencies
+        shell: powershell
+        run: |
+          pushd ..
+
+          git clone --revision 44cdd653e2317d300fb8a6c9c36b03f23991e803 https://github.com/emilk/egui.git
+          cd egui
+          $File = "crates/egui/src/containers/combo_box.rs"
+          (Get-Content $File) -replace 'ui.set_min_width\(ui.available_width\(\)\);', '// ui.set_min_width(ui.available_width());' | Set-Content $File
+          cd ..
+
+          git clone --revision 903043939a076dc81e122a1c8451755bfb3979c8 https://github.com/Nekomaru-PKU/egui-directx11.git
+          cd egui-directx11
+          $fxc = Get-ChildItem -Path "C:\Program Files (x86)\Windows Kits" -Recurse -Filter "fxc.exe" | Where-Object { $_.FullName -like "*x64*" } | Select-Object -First 1
+          if (-not $fxc) { Write-Error "fxc.exe not found"; exit 1 }
+          & $fxc.FullName /nologo /O3 /T vs_4_0 /E vs_egui /Fo shaders/vs_egui.bin shaders/egui.hlsl
+          & $fxc.FullName /nologo /O3 /T ps_4_0 /E ps_egui /Fo shaders/ps_egui.bin shaders/egui.hlsl
+          popd
+
+          Add-Content -Path "Cargo.toml" -Value "`n"
+          $patches = @(
+            "egui-directx11 = { path = '../egui-directx11' }",
+            "egui = { path = '../egui/crates/egui' }",
+            "egui_extras = { path = '../egui/crates/egui_extras' }"
+          )
+          Add-Content -Path "Cargo.toml" -Value $patches
+
+      - name: Run tests (core)
+        run: cargo test --lib
+
+      - name: Run tests (plugin)
+        working-directory: plugins/training-tracker
+        run: cargo test --lib
+
+  # ──────────────────────────────────────────────────────────────
+  # Stage 5: Type check — cross-platform compilation verification
   # ──────────────────────────────────────────────────────────────
 
   check-windows:
-    name: "4 · Check (Windows)"
-    needs: [clippy-windows]
+    name: "5 · Check (Windows)"
+    needs: [test-windows]
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v6
