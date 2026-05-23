@@ -5,7 +5,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use crate::core::{plugin_api::Plugin, Hachimi};
+use crate::core::{plugin::Plugin, Hachimi};
 
 pub fn load_libraries() -> Vec<Plugin> {
     let mut plugins = Vec::new();

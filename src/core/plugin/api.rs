@@ -14,27 +14,11 @@ use crate::{
     },
 };
 
+use super::types::{GuiMenuCallback, GuiMenuSectionCallback, GuiUiCallback, HachimiInitFn, InitResult};
+
 const VERSION: i32 = 3;
 
 static PLUGIN_VTABLE: OnceCell<Vtable> = OnceCell::new();
-
-pub type HachimiInitFn = extern "C" fn(vtable: *const Vtable, version: i32) -> InitResult;
-pub type GuiMenuCallback = extern "C" fn(userdata: *mut c_void);
-pub type GuiMenuSectionCallback = extern "C" fn(ui: *mut c_void, userdata: *mut c_void);
-pub type GuiUiCallback = extern "C" fn(ui: *mut c_void, userdata: *mut c_void);
-
-#[repr(i32)]
-#[derive(Debug, Clone, Copy, Eq, PartialEq, Hash)]
-pub enum InitResult {
-    Error,
-    Ok,
-}
-
-impl InitResult {
-    pub fn is_ok(&self) -> bool {
-        matches!(self, Self::Ok)
-    }
-}
 
 unsafe extern "C" fn hachimi_instance() -> *const Hachimi {
     Hachimi::instance().as_ref()
@@ -865,14 +849,28 @@ impl Vtable {
     }
 }
 
-pub struct Plugin {
-    pub name: String,
-    pub init_fn: HachimiInitFn,
+pub(crate) fn init_plugin(init_fn: HachimiInitFn) -> InitResult {
+    let vtable = PLUGIN_VTABLE.get_or_init(Vtable::instantiate);
+    init_fn(vtable as *const Vtable, VERSION)
 }
 
-impl Plugin {
-    pub fn init(&self) -> InitResult {
-        let vtable = PLUGIN_VTABLE.get_or_init(Vtable::instantiate);
-        (self.init_fn)(vtable as *const Vtable, VERSION)
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn vtable_size_is_stable() {
+        // 53 function pointers × pointer size
+        assert_eq!(
+            std::mem::size_of::<Vtable>(),
+            53 * std::mem::size_of::<usize>(),
+            "Vtable size changed — this breaks plugin ABI!"
+        );
+    }
+
+    #[test]
+    fn vtable_is_copy() {
+        fn assert_copy<T: Copy>() {}
+        assert_copy::<Vtable>();
     }
 }

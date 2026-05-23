@@ -10,7 +10,7 @@ use windows::{
 };
 
 use crate::{
-    core::{plugin_api::Plugin, Hachimi},
+    core::{plugin::Plugin, Hachimi},
     windows::utils,
 };
 

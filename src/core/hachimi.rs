@@ -14,7 +14,7 @@ use std::{
 use textwrap::wrap_algorithms::Penalties;
 
 use crate::{
-    core::{plugin_api::Plugin, updater},
+    core::{plugin::Plugin, updater},
     gui_impl, hachimi_impl,
     il2cpp::{
         self,
