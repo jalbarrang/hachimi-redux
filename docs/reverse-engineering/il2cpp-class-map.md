@@ -13,17 +13,20 @@ Confirmed classes, methods, fields, and properties extracted from the game's `gl
 ## Career Mode Controllers
 
 ### `SingleModeMainViewController`
-Primary view controller for career mode.
+Primary view controller for career mode. 95 methods confirmed at runtime (2026-05-23).
 
 **Methods:**
 | Name | Args | Confirmed |
 |------|------|-----------|
-| `OnClickTraining` | 1 | ✅ metadata |
-| `OnClickSelect` | 1 | ✅ metadata |
-| `OnClickStart` | 0 | ✅ metadata |
-| `OnClickRace` | ? | ✅ metadata |
-| `OnSelectCommand` | 2 | Likely |
-| `OnDecide` | ? | ✅ metadata |
+| `OnClickTraining` | 0 | ✅ runtime (opens training view, no command_id) |
+| `OnClickTrainingMenu` | 1 | ✅ runtime + hooked |
+| `SendCommandAsync` | 6 | ✅ runtime + hooked (arg1=command_id) |
+| `CommonSendCommandAsync` | 2 | ✅ runtime + hooked |
+| `OnClickRace` | 1 | ✅ runtime |
+| `OnClickHospital` | 0 | ✅ runtime |
+| `OnClickOuting` | 0 | ✅ runtime |
+| `SetupCommandSelectStart` | 2 | ✅ runtime |
+| `BackFromTraining` | 0 | ✅ runtime |
 
 **Properties:**
 - `get_SelectedTrainingCommandId` / `set_SelectedTrainingCommandId`
@@ -52,49 +55,45 @@ Primary view controller for career mode.
 - `get_SingleModeHeader`
 
 **Fields:**
-- `_commandId`, `_commandType`, `_currentCommandId`
-- `_trainingCommandId`, `selectedCommandId`
-- `_disableCommandIdList`
-- `_singleModeCharaData`, `_singleModeData`
-- `_singleModeCharacterData`, `_singleModeCharaImage`
-- `_trainingView`, `_trainingController`
-- `_trainingButton`, `_homeTrainingButton`
-- `_trainingLevelDic`
-- `_trainingPartnerInfoArray`
-- `_trainingCuttController`
-- `_bestTraining`
-- `_finalTrainingRank`, `_finalTrainingRankArray`
-- `_singleModePrevSelectedButtonType`
-- `_singleModeLogGroupScroll`, `_singleModeLogItemPool`
-- `_singleModeNextButton`
+> **⚠️ Runtime note (2026-05-23):** Field probing found 0/41 expected fields on this class. These names are from metadata analysis and may be auto-properties accessible only via getters, or the names may differ at runtime. Use property getters (`get_*` methods) instead.
+
+- `_commandId`, `_commandType`, `_currentCommandId` — ❌ not found at runtime
+- `_trainingCommandId`, `selectedCommandId` — ❌ not found at runtime
+- `_singleModeCharaData`, `_singleModeData` — ❌ not found at runtime
+- `_trainingView`, `_trainingController` — ❌ not found (but `get_TrainingController` method exists)
+- `_trainingLevelDic` — ❌ not found at runtime
 
 ## Training UI Classes
 
 ### `TrainingView`
+
+> **⚠️ Runtime (2026-05-23):** Class NOT FOUND under `Gallop` in `umamusume.dll`. Present in metadata strings but may be nested or in a different assembly.
+
 | Member | Type | Confirmed |
 |--------|------|-----------|
-| `OnDecide` | method | ✅ |
-| `get_SelectedTrainingCommandId` | property | ✅ |
-| `get_TrainingCommandId` | property | ✅ |
-| `_currentTrainingInfo` | field | ✅ |
-| `_previewTrainingInfo` | field | ✅ |
-| `_trainingButton` | field | ✅ |
-| `_trainingBg` | field | ✅ |
-| `_trainingBgObject` | field | ✅ |
+| `OnDecide` | method | ✅ metadata only |
+| `get_SelectedTrainingCommandId` | property | ✅ metadata only |
+| `get_TrainingCommandId` | property | ✅ metadata only |
 
 ### `TrainingSelectDecide`
+
+> **⚠️ Runtime (2026-05-23):** Class NOT FOUND at runtime.
+
 | Member | Type | Confirmed |
 |--------|------|-----------|
-| `OnDecide` | method | ✅ |
+| `OnDecide` | method | ✅ metadata only |
 
 ### `TrainingController`
+
+> **⚠️ Runtime (2026-05-23):** Class NOT FOUND at runtime.
+
 | Member | Type | Confirmed |
 |--------|------|-----------|
-| `OnDecide` | method | ✅ |
-| `get_TrainingLevel` | property | ✅ |
-| `get_TrainingRank` | property | ✅ |
-| `get_TrainingStatus` | property | ✅ |
-| `get_IsInTraining` | property | ✅ |
+| `OnDecide` | method | ✅ metadata only |
+| `get_TrainingLevel` | property | ✅ metadata only |
+| `get_TrainingRank` | property | ✅ metadata only |
+| `get_TrainingStatus` | property | ✅ metadata only |
+| `get_IsInTraining` | property | ✅ metadata only |
 | `get_TrainingHorse` | property | ✅ |
 | `get_TrainingHorseList` | property | ✅ |
 | `get_TrainingCutStatus` | property | ✅ |
@@ -325,15 +324,66 @@ Same fields as parent minus `_childElements`, `_collisionRadius`, `_needEnvColli
 ## Data Model Classes
 
 ### `WorkSingleModeData`
-Working copy of career state during gameplay.
+Working copy of career state during gameplay. **✅ Found at runtime (2026-05-23).**
+
+Not a singleton (no `_instance` field). Must be accessed through a manager/controller.
+
+**Confirmed field:** `<SelectedTrainingCommandId>k__BackingField` ✅
+
+**Key methods (runtime-verified):**
+| Method | Args | Purpose |
+|--------|------|---------|
+| `get_IsPlaying` | 0 | Whether a career is active |
+| `get_Month` | 0 | Current month |
+| `get_Character` | 0 | Returns `WorkSingleModeCharaData` |
+| `get_HomeInfo` | 0 | Returns `WorkSingleModeHomeInfo` |
+| `get_SelectedTrainingCommandId` | 0 | Currently selected training |
+| `get_State` | 0 | Career state enum |
+| `GetCurrentTurn` | 0 | Current turn number |
+| `GetFinalTurn` | 0 | Final turn number |
+| `GetScenarioId` | 0 | Active scenario |
+| `GetTrainingLevel` | 1 | Training level by command_id |
 
 ### `WorkSingleModeHomeInfo`
-Working copy of home screen data including available commands.
+Working copy of home screen data including available commands. **✅ Found at runtime (2026-05-23).** 13 methods.
+
+**Key methods:**
+| Method | Args | Purpose |
+|--------|------|---------|
+| `get_TurnInfoListDic` | 0 | Turn info dictionary |
+| `get_DisableCommandIdList` | 0 | Disabled commands this turn |
+| `Apply` | 1 | Apply server response data |
 
 ### `WorkSingleModeCharaData`
-Working copy of character data during career.
+Working copy of character data during career. **✅ Found at runtime (2026-05-23).** 131 methods.
 
-**Methods (confirmed via TLG):**
+Not a singleton. Accessed via `WorkSingleModeData.get_Character()`.
+
+**Stat getters (all 0 args, runtime-verified):**
+| Method | Returns |
+|--------|---------|
+| `get_Speed` | Speed stat |
+| `get_Stamina` | Stamina stat |
+| `get_Power` | Power stat |
+| `get_Guts` | Guts stat |
+| `get_Wiz` | Wisdom stat |
+| `get_SkillPoint` | Skill points |
+| `get_Vital` | Current vital |
+| `get_MaxVital` | Max vital |
+| `get_Motivation` | Motivation level |
+| `get_FanCount` | Fan count |
+| `get_Turn` | Current turn |
+
+**Training/career methods:**
+| Method | Args | Purpose |
+|--------|------|---------|
+| `GetTrainingLevel` | 1 | Training level for a command_id |
+| `GetParamFromType` | 1 | Get stat value by type |
+| `get_ScenarioProgress` | 0 | Scenario progress |
+| `get_RunningStyle` | 0 | Running style |
+| `ApplySingleModeChara` | 1 | Apply server chara data |
+
+**Other methods (confirmed via TLG):**
 | Method | Args | Confirmed |
 |--------|------|----------|
 | `GetRaceDressId` | 1 (`isApplyDressChange: bool`) | ✅ TLG (hooked) |

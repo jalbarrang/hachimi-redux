@@ -45,15 +45,19 @@ Single Mode is the core career/training gameplay loop. The player raises a chara
 
 ### `SingleModeMainViewController`
 
-The primary view controller for career mode. Confirmed methods:
+The primary view controller for career mode. Confirmed methods (runtime-verified 2026-05-23):
 
-| Method | Args | Purpose |
-|--------|------|---------|
-| `OnClickTraining` | 1 (command_id) | Player taps a training facility |
-| `OnClickSelect` | 1 | Player selects an option |
-| `OnClickStart` | 0 | Player confirms/starts action |
-| `OnClickRace` | 0 or 1 | Player selects a race |
-| `OnSelectCommand` | 2 (type, id) | Generic command selection |
+| Method | Args | Purpose | Runtime status |
+|--------|------|---------|----------------|
+| `OnClickTraining` | 0 | Opens training view (no command_id) | ✅ verified |
+| `OnClickTrainingMenu` | 1 | Player taps a specific training facility button | ✅ verified, hooked |
+| `SendCommandAsync` | 6 | Submits command (arg1=command_id) | ✅ verified, hooked |
+| `CommonSendCommandAsync` | 2 | Simpler command sender | ✅ verified, hooked |
+| `OnClickRace` | 1 | Player selects a race | ✅ verified |
+| `OnClickHospital` | 0 | Player selects rest | ✅ verified |
+| `OnClickOuting` | 0 | Player selects outing | ✅ verified |
+
+> **Note (2026-05-23):** Earlier docs listed `OnClickTraining` as taking 1 arg (command_id). Runtime shows it takes 0 args — it just opens the training view. The actual command_id flows through `SendCommandAsync(6)` where arg1 is the command_id (e.g., 106 = Wisdom). Field probes found 0/41 expected fields on this class; state is likely accessed via property getters, not direct fields.
 
 ### `TrainingSelectDecide`
 
@@ -62,6 +66,8 @@ Handles the training selection confirmation step:
 | Method | Args | Purpose |
 |--------|------|---------|
 | `OnDecide` | 1 | Confirm training selection |
+
+> **⚠️ Runtime status (2026-05-23):** Class NOT FOUND at runtime under `Gallop` in `umamusume.dll`. Present in metadata strings but may be a nested class or different assembly.
 
 ### `TrainingView`
 
@@ -73,6 +79,8 @@ Renders the training facility UI:
 | `get_SelectedTrainingCommandId` | Returns the currently selected command_id |
 | `get_TrainingCommandId` | Returns the active training command_id |
 
+> **⚠️ Runtime status (2026-05-23):** Class NOT FOUND at runtime. Same as above.
+
 ### `TrainingController`
 
 Manages training logic and state:
@@ -80,6 +88,8 @@ Manages training logic and state:
 | Method | Purpose |
 |--------|---------|
 | `OnDecide` | Training decision processing |
+
+> **⚠️ Runtime status (2026-05-23):** Class NOT FOUND at runtime. Same as above.
 
 ### `TrainingMain`
 
@@ -89,15 +99,20 @@ Top-level training orchestrator:
 |--------|---------|
 | `OnDecide` | Training decision processing |
 
+> **⚠️ Runtime status (2026-05-23):** Class NOT FOUND at runtime. Same as above.
+
 ### Other Confirmed Classes
 
-| Class | Purpose |
-|-------|---------|
-| `TrainingMenu` | Training facility menu UI |
-| `TrainingButton` | Individual training button widget |
-| `TrainingTop` | Training screen top-level layout |
-| `WorkSingleModeData` | Working copy of career state |
-| `WorkSingleModeHomeInfo` | Working copy of home screen data |
+| Class | Purpose | Runtime (2026-05-23) |
+|-------|---------|---------------------|
+| `TrainingMenu` | Training facility menu UI | ⚠️ NOT FOUND |
+| `TrainingButton` | Individual training button widget | ⚠️ NOT FOUND |
+| `TrainingTop` | Training screen top-level layout | ⚠️ NOT FOUND |
+| `WorkSingleModeData` | Working copy of career state | ✅ FOUND, has `<SelectedTrainingCommandId>k__BackingField` |
+| `WorkSingleModeCharaData` | Working copy of character data | ✅ FOUND, 131 methods (stats, training level, etc.) |
+| `WorkSingleModeHomeInfo` | Working copy of home screen data | ✅ FOUND, 13 methods |
+
+> **Note (2026-05-23):** Many training UI classes (`TrainingView`, `TrainingController`, `TrainingMenu`, `TrainingButton`, etc.) appear in metadata strings but are NOT FOUND as `Gallop::ClassName` in `umamusume.dll` at runtime. They may be nested classes, in a different namespace, or in a different assembly. The `Work*` data classes are the reliable runtime targets.
 
 ## Confirmed Fields & Properties
 

@@ -161,10 +161,12 @@ From metadata analysis, these classes handle training UI:
 
 ## Hook Points for Training Tracking
 
-In order of recommended priority:
+In order of recommended priority (updated 2026-05-23 with runtime verification):
 
-1. **`SingleModeMainViewController.OnClickTraining(commandId)`** — Fires when player taps training. Gives command_id directly.
-2. **`TrainingSelectDecide.OnDecide(commandId)`** — Fires on confirmation. May give command_id.
-3. **`TrainingView.OnDecide(commandId)`** — Same flow, view layer.
-4. **Read `get_SelectedTrainingCommandId`** — Poll the selected command ID from the view.
-5. **Intercept `SingleModeExecCommandRequest`** — Catch the outgoing network request containing `command_type` and `command_id`.
+1. **`SingleModeMainViewController.SendCommandAsync(6)`** — arg1 is `command_id` (e.g., 106 = Wisdom). **Confirmed working** — this is where command_id reliably appears. ✅
+2. **`SingleModeMainViewController.OnClickTrainingMenu(1)`** — Fires when player taps a specific training facility. Arg is an IL2CPP object (not the command_id directly). ✅
+3. **`SingleModeMainViewController.OnClickTraining(0)`** — Opens training view, no args. Useful for detecting training view entry but carries no command_id. ✅
+4. **Read `WorkSingleModeData.get_SelectedTrainingCommandId`** — Poll the selected command ID from the working data. Field `<SelectedTrainingCommandId>k__BackingField` confirmed at runtime. ✅
+5. **Read `WorkSingleModeCharaData.GetTrainingLevel(1)`** — Get training level by command_id. 131 methods confirmed at runtime including all stat getters. ✅
+
+> **Deprecated hook points:** `TrainingSelectDecide.OnDecide`, `TrainingView.OnDecide`, `TrainingController.OnDecide` — these classes were NOT FOUND at runtime under `Gallop` in `umamusume.dll` despite being present in metadata strings. Do not rely on them.
