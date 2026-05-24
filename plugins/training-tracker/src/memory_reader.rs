@@ -621,6 +621,8 @@ unsafe fn read_acquired_skills_inner() -> Vec<AcquiredSkillInfo> {
 pub struct EvaluationInfo {
     pub target_id: i32, // support card chara ID
     pub value: i32,     // friendship/bond value (0-100+)
+    pub is_appear: bool, // whether the character is present in this career
+    pub name: String,    // resolved character name
 }
 
 /// Read the evaluation (friendship) list from the chara object.
@@ -670,6 +672,8 @@ unsafe fn read_evaluations_inner() -> Vec<EvaluationInfo> {
     let mut evals = Vec::with_capacity(count as usize);
     let mut m_target_id: *const c_void = std::ptr::null();
     let mut m_value: *const c_void = std::ptr::null();
+    let mut m_is_appear: *const c_void = std::ptr::null();
+    let mut m_get_chara_name: *const c_void = std::ptr::null();
     let mut methods_resolved = false;
 
     for i in 0..count {
@@ -682,21 +686,55 @@ unsafe fn read_evaluations_inner() -> Vec<EvaluationInfo> {
 
             m_target_id = unsafe { (vt.il2cpp_get_method)(klass, b"get_TargetId\0".as_ptr().cast(), 0) } as _;
             m_value = unsafe { (vt.il2cpp_get_method)(klass, b"get_Value\0".as_ptr().cast(), 0) } as _;
+            m_is_appear = unsafe { (vt.il2cpp_get_method)(klass, b"get_IsAppear\0".as_ptr().cast(), 0) } as _;
 
             if m_target_id.is_null() || m_value.is_null() {
                 hlog_warn!("Evaluation methods not found (get_TargetId/get_Value)");
                 return Vec::new();
             }
 
+            // Resolve MasterDataUtil.GetCharaNameByCharaId for name lookup
+            // SAFETY: IL2CPP FFI calls for class/method resolution
+            unsafe {
+                let image = (vt.il2cpp_get_assembly_image)(b"umamusume.dll\0".as_ptr().cast());
+                if !image.is_null() {
+                    let mdu = (vt.il2cpp_get_class)(image, b"Gallop\0".as_ptr().cast(), b"MasterDataUtil\0".as_ptr().cast());
+                    if !mdu.is_null() {
+                        m_get_chara_name = (vt.il2cpp_get_method)(mdu, b"GetCharaNameByCharaId\0".as_ptr().cast(), 1) as _;
+                    }
+                }
+            }
+
             static LOGGED: AtomicBool = AtomicBool::new(false);
             if !LOGGED.swap(true, Ordering::Relaxed) {
-                hlog_info!("Evaluation: resolved get_TargetId + get_Value");
+                hlog_info!("Evaluation: resolved get_TargetId + get_Value + get_IsAppear={} + GetCharaName={}",
+                    !m_is_appear.is_null(), !m_get_chara_name.is_null());
             }
         }
 
         let target_id = unsafe { call_i32(item, m_target_id) };
         let value = unsafe { call_i32(item, m_value) };
-        evals.push(EvaluationInfo { target_id, value });
+
+        let is_appear = if !m_is_appear.is_null() {
+            unsafe { call_bool(item, m_is_appear) }
+        } else {
+            true // assume present if we can't check
+        };
+
+        // Resolve name via MasterDataUtil.GetCharaNameByCharaId (static)
+        let name = if !m_get_chara_name.is_null() {
+            // SAFETY: IL2CPP static method call
+            let str_obj = unsafe {
+                let fp: extern "C" fn(i32, *const c_void) -> *mut c_void =
+                    std::mem::transmute(method_ptr(m_get_chara_name));
+                fp(target_id, m_get_chara_name)
+            };
+            unsafe { read_il2cpp_string(str_obj) }.unwrap_or_default()
+        } else {
+            String::new()
+        };
+
+        evals.push(EvaluationInfo { target_id, value, is_appear, name });
     }
 
     evals

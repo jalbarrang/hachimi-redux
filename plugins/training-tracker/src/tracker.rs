@@ -110,3 +110,74 @@ impl TrackerState {
 }
 
 pub static TRACKER: Mutex<TrackerState> = Mutex::new(TrackerState::new());
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ---- Facility::from_command_id ----
+
+    #[test]
+    fn ura_command_ids() {
+        assert_eq!(Facility::from_command_id(101), Some(Facility::Speed));
+        assert_eq!(Facility::from_command_id(105), Some(Facility::Stamina));
+        assert_eq!(Facility::from_command_id(102), Some(Facility::Power));
+        assert_eq!(Facility::from_command_id(103), Some(Facility::Guts));
+        assert_eq!(Facility::from_command_id(106), Some(Facility::Wisdom));
+    }
+
+    #[test]
+    fn aoharu_command_ids() {
+        assert_eq!(Facility::from_command_id(601), Some(Facility::Speed));
+        assert_eq!(Facility::from_command_id(605), Some(Facility::Wisdom));
+    }
+
+    #[test]
+    fn arc_command_ids() {
+        assert_eq!(Facility::from_command_id(1101), Some(Facility::Speed));
+        assert_eq!(Facility::from_command_id(1105), Some(Facility::Wisdom));
+    }
+
+    #[test]
+    fn uaf_command_ids() {
+        // Type A
+        assert_eq!(Facility::from_command_id(2101), Some(Facility::Speed));
+        assert_eq!(Facility::from_command_id(2105), Some(Facility::Wisdom));
+        // Type B
+        assert_eq!(Facility::from_command_id(2201), Some(Facility::Speed));
+        assert_eq!(Facility::from_command_id(2204), Some(Facility::Guts));
+        // Type C
+        assert_eq!(Facility::from_command_id(2303), Some(Facility::Power));
+    }
+
+    #[test]
+    fn unknown_command_id() {
+        assert_eq!(Facility::from_command_id(0), None);
+        assert_eq!(Facility::from_command_id(999), None);
+        assert_eq!(Facility::from_command_id(-1), None);
+    }
+
+    // ---- TrackerState ----
+
+    #[test]
+    fn tracker_record_and_total() {
+        let mut t = TrackerState::new();
+        assert_eq!(t.total(), 0);
+
+        t.record_training(Facility::Speed);
+        t.record_training(Facility::Speed);
+        t.record_training(Facility::Guts);
+        assert_eq!(t.total(), 3);
+        assert_eq!(t.counts[Facility::Speed as usize], 2);
+        assert_eq!(t.counts[Facility::Guts as usize], 1);
+    }
+
+    #[test]
+    fn tracker_reset() {
+        let mut t = TrackerState::new();
+        t.record_training(Facility::Wisdom);
+        t.reset();
+        assert_eq!(t.total(), 0);
+        assert!(!t.active);
+    }
+}

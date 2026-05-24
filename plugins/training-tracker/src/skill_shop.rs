@@ -77,6 +77,8 @@ struct Resolved {
     // MasterSkillData.SkillData fields/methods
     f_sd_id: *mut c_void,
     f_sd_rarity: *mut c_void,
+    f_sd_group_rate: *mut c_void,
+    #[allow(dead_code)]
     f_sd_grade_value: *mut c_void,
     m_sd_get_name: *const c_void,
 
@@ -140,9 +142,8 @@ unsafe fn read_field_i32(obj: *mut c_void, field: *mut c_void) -> i32 {
 unsafe fn decrypt_obscured_int(obj: *mut c_void, field: *mut c_void) -> i32 {
     let mut buf = [0u8; 16];
     unsafe { (vt().il2cpp_get_field_value)(obj.cast(), field.cast(), buf.as_mut_ptr() as *mut c_void) };
-    let key = i32::from_le_bytes([buf[0], buf[1], buf[2], buf[3]]);
-    let val = i32::from_le_bytes([buf[4], buf[5], buf[6], buf[7]]);
-    val ^ key
+    let raw: [u8; 8] = [buf[0], buf[1], buf[2], buf[3], buf[4], buf[5], buf[6], buf[7]];
+    decrypt_obscured_int_raw(&raw)
 }
 
 // ---------------------------------------------------------------------------
@@ -200,6 +201,7 @@ fn try_resolve() -> Result<Resolved, &'static str> {
     let sd_klass = resolve!(nested msd_klass, "SkillData");
     let f_sd_id = resolve!(field sd_klass, "Id");
     let f_sd_rarity = resolve!(field sd_klass, "Rarity");
+    let f_sd_grate = resolve!(field sd_klass, "GroupRate");
     let f_sd_grade = resolve!(field sd_klass, "GradeValue");
     let m_sd_name = resolve!(method sd_klass, "get_Name", 0);
 
@@ -226,7 +228,7 @@ fn try_resolve() -> Result<Resolved, &'static str> {
         m_get_skill_need_point: m_get_snp,
         m_msd_get_list_by_group: m_msd_get_list,
         m_snp_get,
-        f_sd_id, f_sd_rarity, f_sd_grade_value: f_sd_grade, m_sd_get_name: m_sd_name,
+        f_sd_id, f_sd_rarity, f_sd_group_rate: f_sd_grate, f_sd_grade_value: f_sd_grade, m_sd_get_name: m_sd_name,
         f_snp_need_skill_point: f_snp_cost,
         f_tips_group_id: f_gid, f_tips_rarity: f_rar, f_tips_level: f_lvl,
         f_skill_point: f_sp,
@@ -296,6 +298,11 @@ fn read_skill_shop() -> Vec<SkillShopEntry> {
 
         let sk_count = unsafe { call_i32(skill_list, m_cnt as _) };
 
+        // Find the lowest group_rate skill matching this tip's rarity
+        // that hasn't been learned yet. The game requires buying skills
+        // in order (○ before ◎), so show the next one to buy.
+        // Collect all matching skills first, sorted by group_rate ascending.
+        let mut candidates: Vec<(*mut c_void, i32, i32)> = Vec::new(); // (sd_ptr, group_rate, skill_id)
         for j in 0..sk_count.min(20) {
             let sd = unsafe { call_obj_i32(skill_list, m_itm as _, j) };
             if sd.is_null() { continue; }
@@ -303,25 +310,35 @@ fn read_skill_shop() -> Vec<SkillShopEntry> {
             let rarity = unsafe { read_field_i32(sd, r.f_sd_rarity) };
             if rarity != tip_rarity { continue; }
 
-            let skill_id = unsafe { read_field_i32(sd, r.f_sd_id) };
-            let name = unsafe { read_string(call_obj(sd, r.m_sd_get_name)) }.unwrap_or_default();
-            let _grade = unsafe { read_field_i32(sd, r.f_sd_grade_value) };
+            let group_rate = unsafe { read_field_i32(sd, r.f_sd_group_rate) };
+            if group_rate <= 0 { continue; } // skip × debuff variants
 
-            // Look up cost
-            let base_cost = if !snp.is_null() {
-                let row = unsafe { call_obj_i32(snp, r.m_snp_get, skill_id) };
-                if !row.is_null() {
-                    unsafe { read_field_i32(row, r.f_snp_need_skill_point) }
-                } else { 0 }
-            } else { 0 };
-
-            let is_learned = learned_ids.contains(&skill_id);
-
-            entries.push(SkillShopEntry {
-                skill_id, group_id, rarity, hint_level: level,
-                name, base_cost, is_learned,
-            });
+            let sid = unsafe { read_field_i32(sd, r.f_sd_id) };
+            candidates.push((sd, group_rate, sid));
         }
+        candidates.sort_by_key(|c| c.1);
+
+        // Pick the lowest group_rate that isn't learned yet
+        let pick = candidates.iter()
+            .find(|(_, _, sid)| !learned_ids.contains(sid))
+            .or(candidates.last()); // all learned → show the top one as "learned"
+
+        let Some(&(sd, _, _)) = pick else { continue };
+
+        let skill_id = unsafe { read_field_i32(sd, r.f_sd_id) };
+        let name = unsafe { read_string(call_obj(sd, r.m_sd_get_name)) }.unwrap_or_default();
+
+        let base_cost = if !snp.is_null() {
+            let row = unsafe { call_obj_i32(snp, r.m_snp_get, skill_id) };
+            if !row.is_null() { unsafe { read_field_i32(row, r.f_snp_need_skill_point) } } else { 0 }
+        } else { 0 };
+
+        let is_learned = learned_ids.contains(&skill_id);
+
+        entries.push(SkillShopEntry {
+            skill_id, group_id, rarity: tip_rarity, hint_level: level,
+            name, base_cost, is_learned,
+        });
     }
 
     // Sort: gold first, then by name
@@ -340,10 +357,240 @@ pub fn discount_pct(hint_level: i32, has_kiremono: bool) -> i32 {
     base + if has_kiremono { 10 } else { 0 }
 }
 
+/// Apply a discount percentage to a base cost, returning the discounted cost.
+/// Uses integer division: `base_cost * (100 - discount) / 100`.
+pub fn discounted_cost(base_cost: i32, hint_level: i32, has_kiremono: bool) -> i32 {
+    let pct = discount_pct(hint_level, has_kiremono);
+    base_cost * (100 - pct) / 100
+}
+
 pub fn rarity_label(rarity: i32) -> &'static str {
     match rarity {
         1 => "\u{26aa}",  // ⚪
         2 => "\u{1f31f}", // 🌟
         _ => "?",
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Pure logic extracted for testability
+// ---------------------------------------------------------------------------
+
+/// A skill candidate from MasterSkillData expansion (group_rate > 0, matching rarity).
+/// This is the pure-data subset of what `read_skill_shop` collects per-group.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SkillCandidate {
+    pub skill_id: i32,
+    pub group_rate: i32,
+}
+
+/// Pick the best skill variant from a list of candidates for a single tip.
+///
+/// Logic: sort by `group_rate` ascending, pick the first one whose `skill_id`
+/// is NOT in `learned_ids`. If all are learned, return the last (highest rate)
+/// and mark it learned.
+///
+/// Returns `(skill_id, is_learned)` or `None` if candidates is empty.
+pub fn pick_best_variant(
+    candidates: &[SkillCandidate],
+    learned_ids: &[i32],
+) -> Option<(i32, bool)> {
+    if candidates.is_empty() { return None; }
+
+    let mut sorted: Vec<&SkillCandidate> = candidates.iter().collect();
+    sorted.sort_by_key(|c| c.group_rate);
+
+    // Pick lowest group_rate not yet learned
+    if let Some(pick) = sorted.iter().find(|c| !learned_ids.contains(&c.skill_id)) {
+        return Some((pick.skill_id, false));
+    }
+
+    // All learned → show the top one
+    sorted.last().map(|c| (c.skill_id, true))
+}
+
+/// Sort shop entries: gold (rarity 2) first, then alphabetical by name.
+pub fn sort_shop_entries(entries: &mut [SkillShopEntry]) {
+    entries.sort_by(|a, b| b.rarity.cmp(&a.rarity).then(a.name.cmp(&b.name)));
+}
+
+/// Decrypt an ObscuredInt from its raw 8-byte representation.
+/// Layout: bytes [0..4] = cryptoKey (i32 LE), bytes [4..8] = hiddenValue (i32 LE).
+/// Result: hiddenValue ^ cryptoKey.
+pub fn decrypt_obscured_int_raw(buf: &[u8; 8]) -> i32 {
+    let key = i32::from_le_bytes([buf[0], buf[1], buf[2], buf[3]]);
+    let val = i32::from_le_bytes([buf[4], buf[5], buf[6], buf[7]]);
+    val ^ key
+}
+
+// ===========================================================================
+// Tests
+// ===========================================================================
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ---- discount_pct ----
+
+    #[test]
+    fn discount_pct_levels() {
+        assert_eq!(discount_pct(0, false), 0);
+        assert_eq!(discount_pct(1, false), 10);
+        assert_eq!(discount_pct(2, false), 20);
+        assert_eq!(discount_pct(3, false), 30);
+        assert_eq!(discount_pct(4, false), 35);
+        assert_eq!(discount_pct(5, false), 40);
+        assert_eq!(discount_pct(99, false), 40); // clamps at 40
+    }
+
+    #[test]
+    fn discount_pct_kiremono_adds_10() {
+        assert_eq!(discount_pct(0, true), 10);
+        assert_eq!(discount_pct(3, true), 40);
+        assert_eq!(discount_pct(5, true), 50);
+    }
+
+    // ---- discounted_cost ----
+
+    #[test]
+    fn discounted_cost_basic() {
+        assert_eq!(discounted_cost(100, 0, false), 100);
+        assert_eq!(discounted_cost(100, 1, false), 90);
+        assert_eq!(discounted_cost(100, 3, true), 60);  // 30+10=40% off
+        assert_eq!(discounted_cost(170, 2, false), 136); // 170 * 80 / 100
+    }
+
+    #[test]
+    fn discounted_cost_truncates() {
+        // Integer division truncation: 150 * 65 / 100 = 97 (not 97.5)
+        assert_eq!(discounted_cost(150, 4, false), 97); // 35% off
+    }
+
+    // ---- rarity_label ----
+
+    #[test]
+    fn rarity_labels() {
+        assert_eq!(rarity_label(1), "\u{26aa}");
+        assert_eq!(rarity_label(2), "\u{1f31f}");
+        assert_eq!(rarity_label(0), "?");
+        assert_eq!(rarity_label(3), "?");
+    }
+
+    // ---- pick_best_variant ----
+
+    #[test]
+    fn pick_empty_candidates() {
+        assert_eq!(pick_best_variant(&[], &[]), None);
+    }
+
+    #[test]
+    fn pick_single_unlearned() {
+        let cs = [SkillCandidate { skill_id: 100, group_rate: 1 }];
+        assert_eq!(pick_best_variant(&cs, &[]), Some((100, false)));
+    }
+
+    #[test]
+    fn pick_lowest_group_rate_first() {
+        let cs = [
+            SkillCandidate { skill_id: 200, group_rate: 2 },
+            SkillCandidate { skill_id: 100, group_rate: 1 },
+            SkillCandidate { skill_id: 300, group_rate: 3 },
+        ];
+        // Should pick skill_id=100 (lowest group_rate)
+        assert_eq!(pick_best_variant(&cs, &[]), Some((100, false)));
+    }
+
+    #[test]
+    fn pick_skips_learned() {
+        let cs = [
+            SkillCandidate { skill_id: 100, group_rate: 1 },
+            SkillCandidate { skill_id: 200, group_rate: 2 },
+        ];
+        // 100 is learned, should pick 200
+        assert_eq!(pick_best_variant(&cs, &[100]), Some((200, false)));
+    }
+
+    #[test]
+    fn pick_all_learned_returns_highest() {
+        let cs = [
+            SkillCandidate { skill_id: 100, group_rate: 1 },
+            SkillCandidate { skill_id: 200, group_rate: 2 },
+        ];
+        assert_eq!(pick_best_variant(&cs, &[100, 200]), Some((200, true)));
+    }
+
+    // ---- sort_shop_entries ----
+
+    fn entry(name: &str, rarity: i32) -> SkillShopEntry {
+        SkillShopEntry {
+            skill_id: 0, group_id: 0, rarity, hint_level: 0,
+            name: name.to_string(), base_cost: 0, is_learned: false,
+        }
+    }
+
+    #[test]
+    fn sort_gold_first_then_alpha() {
+        let mut entries = vec![
+            entry("Zetsu", 1),
+            entry("Alpha", 2),
+            entry("Beta", 1),
+            entry("Gamma", 2),
+        ];
+        sort_shop_entries(&mut entries);
+        let names: Vec<&str> = entries.iter().map(|e| e.name.as_str()).collect();
+        assert_eq!(names, ["Alpha", "Gamma", "Beta", "Zetsu"]);
+    }
+
+    #[test]
+    fn sort_stable_same_rarity() {
+        let mut entries = vec![entry("C", 1), entry("A", 1), entry("B", 1)];
+        sort_shop_entries(&mut entries);
+        let names: Vec<&str> = entries.iter().map(|e| e.name.as_str()).collect();
+        assert_eq!(names, ["A", "B", "C"]);
+    }
+
+    // ---- ObscuredInt decryption ----
+
+    #[test]
+    fn decrypt_obscured_int_basic() {
+        // key=42, hiddenValue=42^100=78 → decrypted=78^42=100
+        let key: i32 = 42;
+        let plaintext: i32 = 100;
+        let hidden = plaintext ^ key;
+        let mut buf = [0u8; 8];
+        buf[0..4].copy_from_slice(&key.to_le_bytes());
+        buf[4..8].copy_from_slice(&hidden.to_le_bytes());
+        assert_eq!(decrypt_obscured_int_raw(&buf), 100);
+    }
+
+    #[test]
+    fn decrypt_obscured_int_zero_key() {
+        let mut buf = [0u8; 8];
+        buf[4..8].copy_from_slice(&999i32.to_le_bytes());
+        assert_eq!(decrypt_obscured_int_raw(&buf), 999);
+    }
+
+    #[test]
+    fn decrypt_obscured_int_negative() {
+        let key: i32 = 0x1234_5678;
+        let plaintext: i32 = -50;
+        let hidden = plaintext ^ key;
+        let mut buf = [0u8; 8];
+        buf[0..4].copy_from_slice(&key.to_le_bytes());
+        buf[4..8].copy_from_slice(&hidden.to_le_bytes());
+        assert_eq!(decrypt_obscured_int_raw(&buf), -50);
+    }
+
+    #[test]
+    fn decrypt_obscured_int_roundtrip_all_bits() {
+        // Verify XOR is its own inverse
+        for &(key, plain) in &[(0xFF_FF_FF_FFu32 as i32, 0), (1, i32::MAX), (i32::MIN, i32::MIN)] {
+            let hidden = plain ^ key;
+            let mut buf = [0u8; 8];
+            buf[0..4].copy_from_slice(&key.to_le_bytes());
+            buf[4..8].copy_from_slice(&hidden.to_le_bytes());
+            assert_eq!(decrypt_obscured_int_raw(&buf), plain);
+        }
     }
 }

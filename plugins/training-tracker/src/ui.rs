@@ -378,13 +378,16 @@ fn draw_bonds_panel_inner(ui: *mut c_void) {
     }
 
     for eval in &evals {
+        // Filter out NPCs that aren't present in this career
+        if !eval.is_appear { continue; }
+
         let (r, g, b) = bond_color(eval.value);
-        let bar_len = (eval.value.min(100).max(0) as f32 / 100.0 * 10.0) as usize;
-        let bar: String = "\u{2588}".repeat(bar_len) + &"\u{2591}".repeat(10 - bar_len);
-        let label = CString::new(format!(
-            "#{:<4} {} {:>3}",
-            eval.target_id, bar, eval.value
-        )).unwrap_or_default();
+        let name = if eval.name.is_empty() {
+            format!("#{}", eval.target_id)
+        } else {
+            eval.name.clone()
+        };
+        let label = CString::new(format!("{} - {}/100", name, eval.value)).unwrap_or_default();
         unsafe { (vt.gui_ui_colored_label)(ui, r, g, b, 255, label.as_ptr()) };
     }
 }
@@ -451,14 +454,14 @@ fn draw_skill_shop_panel_inner(ui: *mut c_void) {
     }
 }
 
-/// Color for bond/friendship value.
-fn bond_color(value: i32) -> (u8, u8, u8) {
-    if value >= 80 {
-        (255, 200, 50)  // Gold - friendship event threshold
-    } else if value >= 60 {
-        (100, 220, 100) // Green
-    } else if value >= 30 {
-        (200, 200, 200) // Gray
+/// Color for bond/friendship value: blue → green → orange → gold (max).
+pub fn bond_color(value: i32) -> (u8, u8, u8) {
+    if value >= 100 {
+        (255, 200, 50)  // Gold - maxed
+    } else if value >= 80 {
+        (255, 160, 40)  // Orange - high
+    } else if value >= 40 {
+        (100, 220, 100) // Green - medium
     } else {
         (100, 150, 255) // Blue - low
     }
@@ -502,7 +505,7 @@ fn draw_overlay_hooks(ui: *mut c_void) {
 // ===========================================================================
 
 /// Color per facility (matching common game UI colors).
-fn facility_color(facility: Facility) -> (u8, u8, u8) {
+pub(crate) fn facility_color(facility: Facility) -> (u8, u8, u8) {
     match facility {
         Facility::Speed => (70, 130, 255),   // Blue
         Facility::Stamina => (255, 70, 70),  // Red
@@ -513,7 +516,7 @@ fn facility_color(facility: Facility) -> (u8, u8, u8) {
 }
 
 /// Format a number with comma separators.
-fn format_number(n: i32) -> String {
+pub(crate) fn format_number(n: i32) -> String {
     if n < 0 {
         return format!("-{}", format_number(-n));
     }
@@ -526,4 +529,77 @@ fn format_number(n: i32) -> String {
         result.push(c);
     }
     result.chars().rev().collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ---- bond_color ----
+
+    #[test]
+    fn bond_color_thresholds() {
+        // Maxed (gold)
+        assert_eq!(bond_color(100), (255, 200, 50));
+        assert_eq!(bond_color(150), (255, 200, 50));
+        // High (orange)
+        assert_eq!(bond_color(80), (255, 160, 40));
+        assert_eq!(bond_color(99), (255, 160, 40));
+        // Medium (green)
+        assert_eq!(bond_color(40), (100, 220, 100));
+        assert_eq!(bond_color(79), (100, 220, 100));
+        // Low (blue)
+        assert_eq!(bond_color(0), (100, 150, 255));
+        assert_eq!(bond_color(39), (100, 150, 255));
+    }
+
+    // ---- format_number ----
+
+    #[test]
+    fn format_number_basic() {
+        assert_eq!(format_number(0), "0");
+        assert_eq!(format_number(999), "999");
+        assert_eq!(format_number(1000), "1,000");
+        assert_eq!(format_number(1234567), "1,234,567");
+    }
+
+    #[test]
+    fn format_number_negative() {
+        assert_eq!(format_number(-1000), "-1,000");
+        assert_eq!(format_number(-42), "-42");
+    }
+
+    // ---- facility_color ----
+
+    #[test]
+    fn facility_colors_distinct() {
+        let colors: Vec<_> = Facility::ALL.iter().map(|f| facility_color(*f)).collect();
+        // All 5 should be different
+        for i in 0..colors.len() {
+            for j in (i+1)..colors.len() {
+                assert_ne!(colors[i], colors[j], "Facilities {:?} and {:?} share color",
+                    Facility::ALL[i], Facility::ALL[j]);
+            }
+        }
+    }
+
+    // ---- motivation helpers (from memory_reader, tested here for convenience) ----
+
+    #[test]
+    fn mood_labels() {
+        assert!(memory_reader::mood_label(5).contains("Great"));
+        assert!(memory_reader::mood_label(3).contains("Normal"));
+        assert!(memory_reader::mood_label(1).contains("Terrible"));
+        assert_eq!(memory_reader::mood_label(0), "???");
+    }
+
+    #[test]
+    fn motivation_colors_distinct() {
+        let colors: Vec<_> = (1..=5).map(memory_reader::motivation_color).collect();
+        for i in 0..colors.len() {
+            for j in (i+1)..colors.len() {
+                assert_ne!(colors[i], colors[j]);
+            }
+        }
+    }
 }
