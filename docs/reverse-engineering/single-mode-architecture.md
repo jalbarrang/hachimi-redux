@@ -108,9 +108,10 @@ Top-level training orchestrator:
 | `TrainingMenu` | Training facility menu UI | ⚠️ NOT FOUND |
 | `TrainingButton` | Individual training button widget | ⚠️ NOT FOUND |
 | `TrainingTop` | Training screen top-level layout | ⚠️ NOT FOUND |
-| `WorkSingleModeData` | Working copy of career state | ✅ FOUND, has `<SelectedTrainingCommandId>k__BackingField` |
-| `WorkSingleModeCharaData` | Working copy of character data | ✅ FOUND, 131 methods (stats, training level, etc.) |
-| `WorkSingleModeHomeInfo` | Working copy of home screen data | ✅ FOUND, 13 methods |
+| `WorkDataManager` | **Central singleton** for all game data | ✅ FOUND, LIVE singleton, 48 fields, 49 methods |
+| `WorkSingleModeData` | Working copy of career state | ✅ FOUND via `WorkDataManager.get_SingleMode()`, 32 fields, 179 methods |
+| `WorkSingleModeCharaData` | Working copy of character data | ✅ FOUND via `WorkSingleModeData.get_Character()`, 73 fields, 131 methods |
+| `WorkSingleModeHomeInfo` | Working copy of home screen data | ✅ FOUND via `WorkSingleModeData.get_HomeInfo()`, 12 fields, 13 methods |
 
 > **Note (2026-05-23):** Many training UI classes (`TrainingView`, `TrainingController`, `TrainingMenu`, `TrainingButton`, etc.) appear in metadata strings but are NOT FOUND as `Gallop::ClassName` in `umamusume.dll` at runtime. They may be nested classes, in a different namespace, or in a different assembly. The `Work*` data classes are the reliable runtime targets.
 
@@ -152,7 +153,52 @@ Each career scenario (URA, Grand Masters, UAF, Cook, etc.) extends the base flow
 
 > **Note:** Command IDs are sparse, not contiguous ranges. For example, URA uses 101 (Speed), 105 (Stamina), 102 (Power), 103 (Guts), 106 (Wisdom). See [training-system.md](training-system.md) for the complete mapping.
 
-## Data Flow
+## Memory-Read Access Chain (Confirmed 2026-05-24)
+
+The preferred approach for reading career state is direct memory access via the IL2CPP singleton chain. This avoids hook-counting and gives a snapshot of the current state on demand.
+
+```
+WorkDataManager (LIVE singleton, confirmed at 0x217cea33a80)
+  │
+  ├── get_SingleMode() → WorkSingleModeData (32 fields, 179 methods)
+  │     │
+  │     ├── get_IsPlaying() → bool  (check before reading anything)
+  │     ├── GetCurrentTurn() → int
+  │     ├── GetFinalTurn() → int
+  │     ├── GetRemainTurnNum() → int
+  │     ├── get_Month() → int
+  │     ├── get_State() → SingleModeDefine.State
+  │     ├── get_SelectedTrainingCommandId() → ObscuredInt
+  │     ├── get_TotalRaceCount() → int
+  │     ├── get_WinCount() → int
+  │     │
+  │     ├── get_Character() → WorkSingleModeCharaData (73 fields, 131 methods)
+  │     │     ├── get_Speed() → int       ┐
+  │     │     ├── get_Stamina() → int      │ Core stats
+  │     │     ├── get_Power() → int        │ (decrypted from ObscuredInt)
+  │     │     ├── get_Guts() → int         │
+  │     │     ├── get_Wiz() → int          ┘
+  │     │     ├── get_Hp() → int           (current vital)
+  │     │     ├── get_MaxHp() → int        (max vital)
+  │     │     ├── get_SkillPoint() → ObscuredInt
+  │     │     ├── get_Motivation() → RaceDefine.Motivation (enum)
+  │     │     ├── get_FanCount() → int
+  │     │     ├── GetAllTotalParameterValue() → int (sum of 5 stats)
+  │     │     ├── GetTrainingLevel(commandId) → int
+  │     │     └── get_CharaGrade() → CharaGradeType
+  │     │
+  │     └── get_HomeInfo() → WorkSingleModeHomeInfo (12 fields, 13 methods)
+  │           ├── get_TurnInfoListDic() → Dictionary<CommandType, List<TurnInfo>>
+  │           └── get_DisableCommandIdList() → List<ObscuredInt>
+  │
+  └── (48 other Work*Data getters for non-career game state)
+```
+
+> **Key insight (2026-05-24):** Backing fields use `ObscuredInt` (CodeStage anti-cheat encryption), but the C# property getters decrypt and return plain `System.Int32`. Always call getters via `il2cpp_get_method` + method invoke — never read encrypted fields directly.
+
+> **Classes that DON'T exist:** `SingleModeManager`, `SingleModeWorkDataManager`, `SingleModeContext`, `SingleModeDataManager` — all NOT FOUND at runtime.
+
+## Data Flow (Server Responses)
 
 ```
 Server Response (MessagePack)

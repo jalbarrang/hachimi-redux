@@ -205,20 +205,129 @@ Per-horse identification data.
 
 ## Skill System Classes
 
-> Source: Trainers-Legend-G cross-reference.
+> Source: Trainers-Legend-G cross-reference + runtime diagnostics (2026-05-24).
 
 ### `SkillManager`
-| Member | Args | Confirmed |
-|--------|------|----------|
-| `GetSkill` | ? | ✅ TLG |
-| `AddUsedSkillId` | 1 | ✅ TLG (hooked) |
+
+Race-time skill manager. Not a singleton. Holds the active skill list for a horse during races.
+
+**Fields (runtime-verified 2026-05-24):**
+| Field | Type | Purpose |
+|-------|------|---------|
+| `_ownerInfo` | `IHorseRaceInfo` | Owner horse reference |
+| `_skills` | `List<SkillBase>` | All skills on this horse |
+| `_skillArray` | `SkillBase[]` | Array copy of skills |
+| `_usedSkillIdList` | `List<Int32>` | Skill IDs that have been used |
+| `_prevActivateSkills` | `List<SkillBase>` | Previously activated skills |
+| `_skillView` | `ISkillView` | Skill UI view reference |
+
+**Methods (runtime-verified 2026-05-24):**
+| Method | Args | Return | Confirmed |
+|--------|------|--------|-----------|
+| `AddSkill` | 1 | void | ✅ runtime |
+| `GetSkill` | 1 | `SkillBase` | ✅ TLG + runtime |
+| `GetSkills` | 0 | `SkillBase[]` | ✅ runtime |
+| `CreateSkillArray` | 0 | void | ✅ runtime |
+| `ClearSkills` | 0 | void | ✅ runtime |
+| `AddUsedSkillId` | 1 | void | ✅ TLG (hooked) + runtime |
+| `GetUsedSkillIdList` | 0 | `List<Int32>` | ✅ runtime |
+| `AddCurrentActiveSkill` | 1 | void | ✅ runtime |
+| `RemoveCurrentActiveSkill` | 1 | void | ✅ runtime |
+| `GetCurrentActiveSkill` | 0 | `List<ISkillDetail>` | ✅ runtime |
+| `AddPrevActivateSkill` | 1 | void | ✅ runtime |
+| `RemovePrevActivateSkill` | 1 | void | ✅ runtime |
+| `GetPrevActivateSkillList` | 0 | `IReadOnlyList<SkillBase>` | ✅ runtime |
+| `Update` | 1 | void | ✅ runtime |
+| `LotActivateSkill` | 0 | void | ✅ runtime |
+| `CheckSkillTriggerAndActivate` | 0 | void | ✅ runtime |
+| `InitSkillEffect` | 1 | void | ✅ runtime |
+| `InitSkillSE` | 0 | void | ✅ runtime |
+| `PlaySkillEffect` | 3 | void | ✅ runtime |
+| `PlaySkillEffect` | 4 | void | ✅ runtime (overload) |
+| `StopEffect` | 0 | void | ✅ runtime |
+| `PauseEffect` | 0 | void | ✅ runtime |
+| `ResumeEffect` | 0 | void | ✅ runtime |
+| `SetEffectSpeed` | 1 | void | ✅ runtime |
+| `PlaySkillSE` | 2 | void | ✅ runtime |
+| `StopSE` | 0 | void | ✅ runtime |
 
 ### `SkillBase`
-| Member | Type | Confirmed |
-|--------|------|----------|
-| `get_Level` | property | ✅ TLG |
-| `get_Details` | property | ✅ TLG |
-| `get_SkillMaster` | property | ✅ TLG |
+
+Base class for individual skills attached to a horse. Contains the master data reference and level.
+
+**Fields (runtime-verified 2026-05-24):**
+| Field | Type | Purpose |
+|-------|------|---------|
+| `SKILL_DETAIL_CAPACITY` | `Int32` | Static constant |
+| `SKILL_ACTIVATE_LOT_TRUE` | `Int32` | Static constant |
+| `_ownerInfo` | `IHorseRaceInfo` | Owner horse |
+| `_triggerCreator` | `ISkillTriggerCreator` | Trigger factory |
+| `_randomGenerator` | `IRaceRandomGenerator` | RNG for activation |
+| `_skillParam` | `RaceParamDefine.SkillParam` | Skill parameters |
+| `<IsActivateEnable>k__BackingField` | `Boolean` | Whether skill can activate |
+| `<Details>k__BackingField` | `List<ISkillDetail>` | Skill detail instances |
+| `<SkillMaster>k__BackingField` | `MasterSkillData.SkillData` | Master data reference |
+| `<Level>k__BackingField` | `Int32` | Skill level |
+| `_coolDownTime` | `Single` | Cooldown timer |
+
+**Methods (runtime-verified 2026-05-24):**
+| Method | Args | Return | Confirmed |
+|--------|------|--------|-----------|
+| `get_IsActivateEnable` | 0 | `Boolean` | ✅ runtime |
+| `get_Details` | 0 | `List<ISkillDetail>` | ✅ TLG + runtime |
+| `get_SkillMaster` | 0 | `MasterSkillData.SkillData` | ✅ TLG + runtime |
+| `get_SkillMasterId` | 0 | `Int32` | ✅ runtime |
+| `get_Level` | 0 | `Int32` | ✅ TLG + runtime |
+| `get_CoolDownTime` | 0 | `Single` | ✅ runtime |
+| `.ctor` | 2 | void | ✅ runtime |
+| `CreateSkillDetail` | 8 | `ISkillDetail` | ✅ runtime |
+| `SetupDetail` | 8 | void | ✅ runtime |
+| `CreateAbility` | 11 | `ISkillAbility` | ✅ runtime |
+| `Stop` | 0 | void | ✅ runtime |
+| `IsActivatedAny` | 0 | `Boolean` | ✅ runtime |
+| `Update` | 1 | void | ✅ runtime |
+| `CheckCoolDown` | 1 | `Boolean` | ✅ runtime |
+| `CheckTriggerAndActivate` | 0 | void | ✅ runtime |
+| `LotActivate` | 0 | void | ✅ runtime |
+| `CheckActivateEnable` | 0 | `Boolean` | ✅ runtime |
+
+### `MasterSkillData`
+
+Master database table for skill definitions (from `master.mdb`). Contains a nested `SkillData` class.
+
+**Fields (runtime-verified 2026-05-24):**
+| Field | Type | Purpose |
+|-------|------|---------|
+| `TABLE_NAME` | `String` | SQLite table name (static) |
+| `_db` | `MasterCardDatabase` | Database reference |
+| `_preloaded` | `Boolean` | Whether all entries are preloaded |
+| `_notFounds` | `HashSet<Int32>` | Cache of missing skill IDs |
+| `_lazyPrimaryKeyDictionary` | `Dictionary<Int32, SkillData>` | Cached skill ID → SkillData map |
+| `_dictionaryWithGroupId` | `Dictionary<Int32, List<SkillData>>` | Group ID → SkillData list |
+
+**Methods (runtime-verified 2026-05-24):**
+| Method | Args | Return | Purpose |
+|--------|------|--------|--------|
+| `Get` | 1 | `SkillData` | Look up skill by ID |
+| `get_dictionary` | 0 | `Dictionary<Int32, SkillData>` | Get full cached dictionary |
+| `GetWithGroupIdOrderByIdAsc` | 1 | `SkillData` | Look up by group ID |
+| `GetListWithGroupIdOrderByIdAsc` | 1 | `List<SkillData>` | List by group ID |
+| `Unload` | 0 | void | Release cached data |
+| `_ForcePreloadAllEntries` | 0 | void | Force-load all entries |
+
+> **Note on `MasterSkillData.SkillData`**: This is a **nested class** — use `il2cpp_find_nested_class(MasterSkillData_klass, "SkillData")` to resolve it. It likely has fields like `id`, `group_id`, `rarity`, `skill_category`, `disp_order`, etc. matching the `master.mdb` schema. Needs further introspection.
+
+### Class resolution failures (2026-05-24)
+
+The following class names were **not found** in the `Gallop` namespace:
+- `AcquiredSkill` — likely a nested class (e.g. inside `WorkSingleModeCharaData` or `SingleModeChara`) or may use a different name. The field `_acquiredSkillList` on `WorkSingleModeCharaData` is typed as `List<AcquiredSkill>` in metadata.
+- `SkillTips` — similar situation, may be nested
+- `SkillData` — exists as `MasterSkillData.SkillData` (nested class), not top-level
+- `SingleModeAcquiredSkill` — not found
+- `WorkSingleModeSkillData` — not found
+- `SkillDataManager` — not found
+
+> **Next step**: Use `il2cpp_find_nested_class` on `WorkSingleModeCharaData` and `SingleModeChara` to find `AcquiredSkill` and `SkillTips`. Also introspect `MasterSkillData.SkillData` nested class for skill name/ID fields.
 
 ### `StandaloneSimulator.SkillDetail`
 
@@ -321,62 +430,171 @@ Same fields as parent minus `_childElements`, `_collisionRadius`, `_needEnvColli
 |--------|------|----------|
 | `get_ApplicationServerUrl` | 0 | ✅ TLG (hooked) |
 
+## Manager / Singleton Classes
+
+### `WorkDataManager`
+Central singleton hub for all working game data. **✅ LIVE singleton confirmed at runtime (2026-05-24).** 48 fields, 49 methods.
+
+This is THE entry point for reading game state from memory. Every `Work*Data` class is accessible through a property getter on this singleton.
+
+**Access pattern:**
+```
+WorkDataManager (singleton)
+  → get_SingleMode() → WorkSingleModeData
+    → get_Character() → WorkSingleModeCharaData
+      → get_Speed(), get_Stamina(), get_Power(), get_Guts(), get_Wiz()
+      → get_Hp(), get_MaxHp(), get_SkillPoint(), get_Motivation(), get_FanCount()
+    → get_IsPlaying() → bool
+    → GetCurrentTurn() → int
+    → get_HomeInfo() → WorkSingleModeHomeInfo
+```
+
+**Key methods (all 0 args, runtime-verified 2026-05-24):**
+| Method | Returns |
+|--------|---------|
+| `get_SingleMode` | `WorkSingleModeData` — **the career data accessor** |
+| `get_UserData` | `WorkUserData` |
+| `get_CardData` | `WorkCardData` |
+| `get_CharaData` | `WorkCharaData` |
+| `get_SupportCardData` | `WorkSupportCardData` |
+| `get_TrainedCharaData` | `WorkTrainedCharaData` |
+| `get_ItemData` | `WorkItemData` |
+| `get_TeamStadiumData` | `WorkTeamStadiumData` |
+| `get_TrainingChallengeData` | `WorkTrainingChallengeData` |
+
+**All 48 fields** are `<Name>k__BackingField` properties backed by their respective `Work*Data` types. Full list includes: UserData, FriendData, CardData, SupportCardData, CharaData, DressData, MusicData, ItemData, TrainedCharaData, **SingleMode**, PaymentItemData, MainStoryData, CharacterStoryData, ExtraStoryData, PieceData, MissionData, CircleChatData, CircleData, Trophy, Exchange, HomeFavorite, LoginBonusData, AnnounceData, TeamStadiumData, DirectoryData, ScenarioRecordData, SupportDeckData, RaceStateData, DailyLegendRaceData, HonorData, LimitedSalesData, AlreadyReadData, LastCheckTime, ChampionsData, StoryEventData, StoryEventMissionData, RouletteDerbyData, ChallengeMatchData, GalleryData, TalkGalleryData, RoomMatchData, TransferEventData, PracticeRaceData, JukeboxData, ValentineData, TrainingChallengeData, FanRaidData, TeamBuildingData.
+
+### Classes NOT FOUND at runtime (2026-05-24)
+These were probed but do not exist as `Gallop::ClassName` in `umamusume.dll`:
+- `SingleModeManager` ❌
+- `SingleModeWorkDataManager` ❌
+- `SingleModeContext` ❌
+- `SingleModeDataManager` ❌
+
 ## Data Model Classes
 
 ### `WorkSingleModeData`
-Working copy of career state during gameplay. **✅ Found at runtime (2026-05-23).**
+Working copy of career state during gameplay. **✅ Found at runtime (2026-05-23, deep-dived 2026-05-24).** 32 fields, 179 methods.
 
-Not a singleton (no `_instance` field). Must be accessed through a manager/controller.
+Not a singleton. Accessed via `WorkDataManager.get_SingleMode()`.
 
-**Confirmed field:** `<SelectedTrainingCommandId>k__BackingField` ✅
+**Key fields (runtime-verified 2026-05-24):**
+| Field | Type |
+|-------|------|
+| `<Character>k__BackingField` | `WorkSingleModeCharaData` |
+| `_homeInfo` | `WorkSingleModeHomeInfo` |
+| `_isPlaying` | `System.Boolean` |
+| `_isExistPlayingData` | `System.Boolean` |
+| `_totalTurnNum` | `ObscuredInt` |
+| `_state` | `ObscuredInt` |
+| `_playingState` | `ObscuredInt` |
+| `<SelectedTrainingCommandId>k__BackingField` | `ObscuredInt` |
+| `_raceConditions` | `List<RaceCondition>` |
+| `_changeParameterInfo` | `WorkSingleModeChangeParameterInfo` |
+| `_raceHistoryInfoList` | `List<RaceHistoryInfo>` |
+| `_storyInfoListDic` | `Dictionary<EventPlayTiming, List<EventInfo>>` |
+| `_scenarioIdList` | `List<ObscuredInt>` |
+| `_difficultyInfoList` | `List<DifficultyInfo>` |
 
-**Key methods (runtime-verified):**
-| Method | Args | Purpose |
-|--------|------|---------|
-| `get_IsPlaying` | 0 | Whether a career is active |
-| `get_Month` | 0 | Current month |
-| `get_Character` | 0 | Returns `WorkSingleModeCharaData` |
-| `get_HomeInfo` | 0 | Returns `WorkSingleModeHomeInfo` |
-| `get_SelectedTrainingCommandId` | 0 | Currently selected training |
-| `get_State` | 0 | Career state enum |
-| `GetCurrentTurn` | 0 | Current turn number |
-| `GetFinalTurn` | 0 | Final turn number |
-| `GetScenarioId` | 0 | Active scenario |
-| `GetTrainingLevel` | 1 | Training level by command_id |
+**Key methods (runtime-verified 2026-05-24):**
+| Method | Args | Returns | Purpose |
+| `get_IsPlaying` | 0 | `System.Boolean` | Whether a career is active |
+| `get_IsExistPlayingData` | 0 | `System.Boolean` | Whether playing data exists |
+| `get_Month` | 0 | `System.Int32` | Current month |
+| `get_Character` | 0 | `WorkSingleModeCharaData` | Character data accessor |
+| `get_HomeInfo` | 0 | `WorkSingleModeHomeInfo` | Home screen data |
+| `get_SelectedTrainingCommandId` | 0 | `ObscuredInt` | Currently selected training |
+| `get_State` | 0 | `SingleModeDefine.State` | Career state enum |
+| `get_PlayingState` | 0 | `SingleModeDefine.PlayingState` | Playing state enum |
+| `GetCurrentTurn` | 0 | `System.Int32` | Current turn number |
+| `GetFinalTurn` | 0 | `System.Int32` | Final turn number |
+| `GetRemainTurnNum` | 0 | `System.Int32` | Remaining turns |
+| `GetScenarioId` | 0 | `SingleModeDefine.ScenarioId` | Active scenario |
+| `get_ChangeParameterInfo` | 0 | `WorkSingleModeChangeParameterInfo` | Stat change info |
+| `get_RaceConditions` | 0 | `List<RaceCondition>` | Race conditions |
+| `get_RaceHistoryInfoList` | 0 | `List<RaceHistoryInfo>` | Race history |
+| `get_TotalRaceCount` | 0 | `System.Int32` | Total races run |
+| `get_WinCount` | 0 | `System.Int32` | Total wins |
+| `get_TeamRace` | 0 | `WorkSingleModeScenarioTeamRace` | Team race data |
+| `get_IsStepTurn` | 0 | `System.Boolean` | Step turn flag |
+| `get_StoryEventTotalBonus` | 0 | `System.Int32` | Story event bonus |
 
 ### `WorkSingleModeHomeInfo`
-Working copy of home screen data including available commands. **✅ Found at runtime (2026-05-23).** 13 methods.
+Working copy of home screen data including available commands. **✅ Found at runtime (2026-05-23), deep-dived (2026-05-24).** 12 fields, 13 methods.
+
+Not a singleton. Accessed via `WorkSingleModeData.get_HomeInfo()`.
+
+**Fields (runtime-verified 2026-05-24):**
+| Field | Type |
+|-------|------|
+| `_turnInfoListDic` | `Dictionary<CommandType, List<TurnInfo>>` |
+| `_disableCommandIdList` | `List<ObscuredInt>` |
+| `_availableContinueNum` | `ObscuredInt` |
+| `_availableFreeContinueNum` | `ObscuredInt` |
+| `_freeContinueNum` | `ObscuredInt` |
+| `_prevFreeContinueTime` | `ObscuredLong` |
+| `_shortenedRaceState` | `ObscuredInt` |
+| `SHORTENED_STATE_NONE/DEBUT/DEBUT_PREOP/DEBUT_OP/DEBUT_PREOP_OP` | `System.Int32` (constants) |
 
 **Key methods:**
 | Method | Args | Purpose |
-|--------|------|---------|
 | `get_TurnInfoListDic` | 0 | Turn info dictionary |
 | `get_DisableCommandIdList` | 0 | Disabled commands this turn |
 | `Apply` | 1 | Apply server response data |
 
 ### `WorkSingleModeCharaData`
-Working copy of character data during career. **✅ Found at runtime (2026-05-23).** 131 methods.
+Working copy of character data during career. **✅ Found at runtime (2026-05-23), deep-dived (2026-05-24).** 73 fields, 131 methods.
 
 Not a singleton. Accessed via `WorkSingleModeData.get_Character()`.
 
-**Stat getters (all 0 args, runtime-verified):**
+> **IMPORTANT: ObscuredInt fields.** All numeric backing fields use `CodeStage.AntiCheat.ObscuredTypes.ObscuredInt` (encrypted in memory). However, the C# property getters **decrypt and return plain `System.Int32`**. Always use property getters (`get_Speed`, etc.) via IL2CPP method invoke — never read the `_speed` field directly.
+
+**Fields (runtime-verified 2026-05-24):**
+| Field | Type | Purpose |
+|-------|------|---------||
+| `_speed` | `ObscuredInt` | Encrypted speed stat |
+| `_stamina` | `ObscuredInt` | Encrypted stamina stat |
+| `_power` | `ObscuredInt` | Encrypted power stat |
+| `_guts` | `ObscuredInt` | Encrypted guts stat |
+| `_wiz` | `ObscuredInt` | Encrypted wisdom stat |
+| `_hp` | `ObscuredInt` | Encrypted current HP/vital |
+| `_maxHp` | `ObscuredInt` | Encrypted max HP/vital |
+| `<SkillPoint>k__BackingField` | `ObscuredInt` | Encrypted skill points |
+| `_motivation` | `ObscuredInt` | Encrypted motivation |
+| `_fanCount` | `ObscuredInt` | Encrypted fan count |
+| `_trainingLevelDic` | `Dictionary<TrainingCommandId, Int32>` | Training levels per facility |
+| `_acquiredSkillList` | `List<AcquiredSkill>` | Acquired skills |
+| `_skillTipsList` | `List<SkillTips>` | Skill tips/hints |
+| `<MaxSpeed/Stamina/Power/Guts/Wiz>k__BackingField` | `ObscuredInt` | Stat caps |
+| `<DefaultMaxSpeed/Stamina/Power/Guts/Wiz>k__BackingField` | `ObscuredInt` | Default stat caps |
+| `_properDistance*` | `ObscuredInt` | Distance aptitudes (Short/Mile/Middle/Long) |
+| `_properRunningStyle*` | `ObscuredInt` | Style aptitudes (Nige/Senko/Sashi/Oikomi) |
+| `_properGround*` | `ObscuredInt` | Ground aptitudes (Turf/Dirt) |
+| `_cardId` | `ObscuredInt` | Card ID |
+| `_scenarioId` | `ObscuredInt` | Scenario ID |
+| `_routeId` | `ObscuredInt` | Route ID |
+| `_charaGrade` | `ObscuredInt` | Character grade |
+| `<Race>k__BackingField` | `WorkSingleModeRaceData` | Race data |
+| `<TeamRace>k__BackingField` | `WorkSingleModeScenarioTeamRace` | Team race data |
+
+**Stat getters (all 0 args, return `System.Int32`, runtime-verified 2026-05-24):**
 | Method | Returns |
 |--------|---------|
-| `get_Speed` | Speed stat |
-| `get_Stamina` | Stamina stat |
-| `get_Power` | Power stat |
-| `get_Guts` | Guts stat |
-| `get_Wiz` | Wisdom stat |
-| `get_SkillPoint` | Skill points |
-| `get_Vital` | Current vital |
-| `get_MaxVital` | Max vital |
-| `get_Motivation` | Motivation level |
-| `get_FanCount` | Fan count |
-| `get_Turn` | Current turn |
+| `get_Speed` | Speed stat (decrypted) |
+| `get_Stamina` | Stamina stat (decrypted) |
+| `get_Power` | Power stat (decrypted) |
+| `get_Guts` | Guts stat (decrypted) |
+| `get_Wiz` | Wisdom stat (decrypted) |
+| `get_Hp` | Current HP/vital (decrypted) |
+| `get_MaxHp` | Max HP/vital (decrypted) |
+| `get_SkillPoint` | Skill points (`ObscuredInt` return) |
+| `get_Motivation` | Motivation (`RaceDefine.Motivation` enum) |
+| `get_FanCount` | Fan count (decrypted) |
+| `GetAllTotalParameterValue` | Sum of all 5 stats |
+| `get_MaxSpeed/Stamina/Power/Guts/Wiz` | Stat caps (`ObscuredInt` return) |
 
 **Training/career methods:**
 | Method | Args | Purpose |
-|--------|------|---------|
 | `GetTrainingLevel` | 1 | Training level for a command_id |
 | `GetParamFromType` | 1 | Get stat value by type |
 | `get_ScenarioProgress` | 0 | Scenario progress |

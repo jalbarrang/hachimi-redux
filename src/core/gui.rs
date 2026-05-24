@@ -684,8 +684,12 @@ impl Gui {
             self.last_focused = focused;
         }
 
-        // Store this as an atomic value so the input thread can check it without locking the gui
-        self.set_consuming_input(self.is_consuming_input());
+        // Store this as an atomic value so the input thread can check it without locking the gui.
+        // Also capture input when the pointer hovers over plugin overlays so they're interactive
+        // (draggable, close button) without permanently blocking game input.
+        let consuming = self.is_consuming_input()
+            || self.context.is_pointer_over_area();
+        IS_CONSUMING_INPUT.store(consuming, atomic::Ordering::Relaxed);
 
         self.context.end_pass()
     }
@@ -1297,25 +1301,51 @@ impl Gui {
         let ctx = &self.context;
         let scale = get_scale(ctx);
 
-        for overlay in overlays.iter() {
-            let id = egui::Id::new("plugin_overlay").with(&overlay.id);
-            egui::Area::new(id)
-                .anchor(egui::Align2::RIGHT_TOP, egui::vec2(-8.0 * scale, 8.0 * scale))
-                .interactable(false)
+        for ov in overlays.iter() {
+            let mut visible = overlay::is_overlay_visible(&ov.id);
+            if !visible {
+                continue;
+            }
+
+            // Pretty-print the overlay ID as a window title:
+            // "training_tracker_overlay" → "Training Tracker Overlay"
+            let title: String = ov
+                .id
+                .split('_')
+                .map(|w| {
+                    let mut c = w.chars();
+                    match c.next() {
+                        Some(first) => {
+                            first.to_uppercase().collect::<String>() + c.as_str()
+                        }
+                        None => String::new(),
+                    }
+                })
+                .collect::<Vec<_>>()
+                .join(" ");
+
+            egui::Window::new(egui::RichText::new(&title).size(12.0 * scale))
+                .id(egui::Id::new("plugin_overlay").with(&ov.id))
+                .open(&mut visible)
+                .default_pos(egui::pos2(
+                    ctx.input(|i| i.viewport_rect().right()) - 300.0 * scale,
+                    8.0 * scale,
+                ))
+                .resizable(false)
+                .collapsible(true)
                 .show(ctx, |ui| {
-                    egui::Frame::NONE
-                        .fill(self.config.ui_panel_fill)
-                        .corner_radius(egui::CornerRadius::same((6.0 * scale) as u8))
-                        .inner_margin(egui::Margin::same((8.0 * scale) as i8))
-                        .show(ui, |ui| {
-                            let _ = panic::catch_unwind(AssertUnwindSafe(|| {
-                                (overlay.callback)(ui as *mut egui::Ui as *mut c_void, overlay.userdata as *mut c_void);
-                            }))
-                            .inspect_err(|_| {
-                                error!("plugin overlay callback panicked: {}", overlay.id);
-                            });
-                        });
+                    let _ = panic::catch_unwind(AssertUnwindSafe(|| {
+                        (ov.callback)(ui as *mut egui::Ui as *mut c_void, ov.userdata as *mut c_void);
+                    }))
+                    .inspect_err(|_| {
+                        error!("plugin overlay callback panicked: {}", ov.id);
+                    });
                 });
+
+            // Write back visibility if the close button was clicked
+            if !visible {
+                overlay::set_overlay_visible(&ov.id, false);
+            }
         }
     }
 

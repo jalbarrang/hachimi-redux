@@ -24,7 +24,7 @@ use super::{
     types::{GuiMenuCallback, GuiMenuSectionCallback, GuiUiCallback, HachimiInitFn, InitResult},
 };
 
-const VERSION: i32 = 4;
+const VERSION: i32 = 7;
 
 static PLUGIN_VTABLE: OnceCell<Vtable> = OnceCell::new();
 
@@ -624,6 +624,55 @@ unsafe extern "C" fn gui_ui_set_min_width(ui: *mut c_void, width: f32) -> bool {
     }
 }
 
+unsafe extern "C" fn gui_ui_set_font_size(ui: *mut c_void, size: f32) -> bool {
+    // SAFETY: FFI / raw pointer operation required by IL2CPP interop
+    unsafe {
+        let Some(ui) = ui_from_ptr(ui) else {
+            return false;
+        };
+        ui.style_mut().override_font_id = Some(egui::FontId::proportional(size));
+        true
+    }
+}
+
+unsafe extern "C" fn gui_ui_collapsing(
+    ui: *mut c_void,
+    heading: *const c_char,
+    default_open: bool,
+    callback: Option<GuiUiCallback>,
+    userdata: *mut c_void,
+) -> bool {
+    // SAFETY: FFI / raw pointer operation required by IL2CPP interop
+    unsafe {
+        let Some(ui) = ui_from_ptr(ui) else {
+            return false;
+        };
+        let Some(callback) = callback else {
+            return false;
+        };
+        egui::CollapsingHeader::new(cstr_or_empty(heading))
+            .default_open(default_open)
+            .show(ui, |ui| {
+                callback(ui as *mut _ as *mut c_void, userdata);
+            });
+        true
+    }
+}
+
+unsafe extern "C" fn gui_overlay_set_visible(id: *const c_char, visible: bool) -> bool {
+    // SAFETY: FFI / raw pointer operation required by IL2CPP interop
+    unsafe {
+        if id.is_null() {
+            return false;
+        }
+        let Ok(id) = CStr::from_ptr(id).to_str() else {
+            return false;
+        };
+        super::overlay::set_overlay_visible(id, visible);
+        true
+    }
+}
+
 #[cfg(target_os = "android")]
 unsafe extern "C" fn android_dex_load(dex_ptr: *const u8, dex_len: usize, class_name: *const c_char) -> u64 {
     crate::android::dex_bridge::dex_load(dex_ptr, dex_len, class_name)
@@ -807,6 +856,21 @@ pub struct Vtable {
 
     // Layout helpers (version >= 4)
     pub gui_ui_set_min_width: unsafe extern "C" fn(ui: *mut c_void, width: f32) -> bool,
+
+    // Overlay visibility control (version >= 5)
+    pub gui_overlay_set_visible: unsafe extern "C" fn(id: *const c_char, visible: bool) -> bool,
+
+    // Font size override (version >= 7)
+    pub gui_ui_set_font_size: unsafe extern "C" fn(ui: *mut c_void, size: f32) -> bool,
+
+    // Collapsing header (version >= 6)
+    pub gui_ui_collapsing: unsafe extern "C" fn(
+        ui: *mut c_void,
+        heading: *const c_char,
+        default_open: bool,
+        callback: Option<GuiUiCallback>,
+        userdata: *mut c_void,
+    ) -> bool,
 }
 
 impl Vtable {
@@ -865,6 +929,9 @@ impl Vtable {
         android_dex_call_static_string,
         gui_register_overlay,
         gui_ui_set_min_width,
+        gui_overlay_set_visible,
+        gui_ui_set_font_size,
+        gui_ui_collapsing,
     };
 
     pub fn instantiate() -> Self {
@@ -883,10 +950,10 @@ mod tests {
 
     #[test]
     fn vtable_size_is_stable() {
-        // 54 function pointers × pointer size
+        // 57 function pointers × pointer size
         assert_eq!(
             std::mem::size_of::<Vtable>(),
-            54 * std::mem::size_of::<usize>(),
+            57 * std::mem::size_of::<usize>(),
             "Vtable size changed — this breaks plugin ABI!"
         );
     }

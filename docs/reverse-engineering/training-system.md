@@ -159,9 +159,38 @@ From metadata analysis, these classes handle training UI:
 | `_previewTrainingInfo` | Preview on hover |
 | `_aoharuTrainingCountLabel` | Aoharu-specific count label |
 
-## Hook Points for Training Tracking
+## Approaches for Training Tracking
 
-In order of recommended priority (updated 2026-05-23 with runtime verification):
+### Recommended: Direct Memory Read via Singleton Chain (2026-05-24)
+
+The preferred approach reads game state directly from memory on demand, using the confirmed singleton chain:
+
+```
+WorkDataManager (singleton)
+  → get_SingleMode() → WorkSingleModeData
+    → get_IsPlaying() → bool (guard: only read when true)
+    → get_Character() → WorkSingleModeCharaData
+      → get_Speed/Stamina/Power/Guts/Wiz() → int (decrypted from ObscuredInt)
+      → get_Hp/MaxHp() → int
+      → get_SkillPoint() → ObscuredInt
+      → get_Motivation() → enum
+      → get_FanCount() → int
+      → GetTrainingLevel(commandId) → int
+    → GetCurrentTurn/GetFinalTurn/GetRemainTurnNum() → int
+    → get_TotalRaceCount/get_WinCount() → int
+```
+
+Advantages:
+- No hook-counting drift (always reads current snapshot)
+- Works regardless of which hooks fired
+- Can read at any time (overlay frame, button click, etc.)
+- Returns decrypted values via property getters (bypasses ObscuredInt)
+
+Implementation: Resolve methods via `il2cpp_get_method`, get singleton via `il2cpp_get_singleton_like_instance`, call getters via method pointer cast. User clicks "Start Tracking" to begin.
+
+### Alternative: Hook-Based Event Counting
+
+Hook points for event-driven tracking (still useful for detecting state changes):
 
 1. **`SingleModeMainViewController.SendCommandAsync(6)`** — arg1 is `command_id` (e.g., 106 = Wisdom). **Confirmed working** — this is where command_id reliably appears. ✅
 2. **`SingleModeMainViewController.OnClickTrainingMenu(1)`** — Fires when player taps a specific training facility. Arg is an IL2CPP object (not the command_id directly). ✅
