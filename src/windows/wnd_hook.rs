@@ -13,11 +13,14 @@ use windows::{
         Foundation::{HWND, LPARAM, LRESULT, WPARAM},
         System::Threading::GetCurrentThreadId,
         UI::{
-            Input::Ime::ISC_SHOWUICOMPOSITIONWINDOW,
+            Input::{
+                Ime::ISC_SHOWUICOMPOSITIONWINDOW,
+                KeyboardAndMouse::{GetAsyncKeyState, VK_MENU},
+            },
             WindowsAndMessaging::{
                 CallNextHookEx, DefWindowProcW, FindWindowW, GetWindowLongPtrW, SetWindowsHookExW, UnhookWindowsHookEx,
                 GWLP_WNDPROC, HCBT_MINMAX, HHOOK, SW_RESTORE, WA_INACTIVE, WH_CBT, WM_ACTIVATE, WM_CLOSE,
-                WM_IME_NOTIFY, WM_IME_SETCONTEXT, WM_KEYDOWN, WM_MOUSEMOVE, WM_SYSKEYDOWN, WNDPROC,
+                WM_IME_NOTIFY, WM_IME_SETCONTEXT, WM_KEYDOWN, WM_SYSKEYDOWN, WNDPROC,
             },
         },
     },
@@ -134,24 +137,22 @@ extern "system" fn wnd_proc(hwnd: HWND, umsg: c_uint, wparam: WPARAM, lparam: LP
         _ => (),
     }
 
-    // Always forward mouse-move to egui so it can track pointer position over overlays,
-    // but also pass it through to the game so camera/gameplay isn't affected.
-    if umsg == WM_MOUSEMOVE && !Gui::is_consuming_input_atomic() {
-        let wp = wparam;
-        let lp = lparam;
-        std::thread::spawn(move || {
-            let Some(mut gui) = Gui::instance().map(|m| m.lock().expect("lock poisoned")) else {
-                return;
-            };
-            let zoom_factor = gui.context.zoom_factor();
-            input::process(&mut gui.input, zoom_factor, WM_MOUSEMOVE, wp.0, lp.0);
-        });
-        // SAFETY: FFI / raw pointer operation required by IL2CPP interop
-        return unsafe { orig_fn(hwnd, umsg, wparam, lparam) };
-    }
-
-    // Only capture other input if gui needs it
+    // Hold ALT to interact with plugin overlays (drag, close, collapse).
+    // When ALT is held, mouse input goes to egui instead of the game.
     if !Gui::is_consuming_input_atomic() {
+        let alt_held = unsafe { GetAsyncKeyState(VK_MENU.0 as i32) } & (1i16 << 15) != 0;
+        if alt_held && input::is_handled_msg(umsg) {
+            let wp = wparam;
+            let lp = lparam;
+            std::thread::spawn(move || {
+                let Some(mut gui) = Gui::instance().map(|m| m.lock().expect("lock poisoned")) else {
+                    return;
+                };
+                let zoom_factor = gui.context.zoom_factor();
+                input::process(&mut gui.input, zoom_factor, umsg, wp.0, lp.0);
+            });
+            return LRESULT(0);
+        }
         // SAFETY: FFI / raw pointer operation required by IL2CPP interop
         return unsafe { orig_fn(hwnd, umsg, wparam, lparam) };
     }

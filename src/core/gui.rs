@@ -684,12 +684,8 @@ impl Gui {
             self.last_focused = focused;
         }
 
-        // Store this as an atomic value so the input thread can check it without locking the gui.
-        // Also capture input when the pointer hovers over plugin overlays so they're interactive
-        // (draggable, close button) without permanently blocking game input.
-        let consuming = self.is_consuming_input()
-            || self.context.is_pointer_over_area();
-        IS_CONSUMING_INPUT.store(consuming, atomic::Ordering::Relaxed);
+        // Store this as an atomic value so the input thread can check it without locking the gui
+        self.set_consuming_input(self.is_consuming_input());
 
         self.context.end_pass()
     }
