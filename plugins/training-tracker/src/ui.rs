@@ -14,25 +14,9 @@ use crate::memory_reader;
 use crate::skill_shop;
 use crate::tracker::{Facility, TRACKER};
 
-/// Overlay font size in pixels. Stored as f32 bits in an AtomicU32.
-static OVERLAY_FONT_SIZE: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
-
 /// Default overlay font size.
-const DEFAULT_FONT_SIZE: f32 = 11.0;
-
-fn get_font_size() -> f32 {
-    let bits = OVERLAY_FONT_SIZE.load(Ordering::Relaxed);
-    if bits == 0 {
-        DEFAULT_FONT_SIZE
-    } else {
-        f32::from_bits(bits)
-    }
-}
-
-fn set_font_size(size: f32) {
-    let clamped = size.clamp(6.0, 30.0);
-    OVERLAY_FONT_SIZE.store(clamped.to_bits(), Ordering::Relaxed);
-}
+const OVERLAY_FONT_SIZE: f32 = 12.0;
+const OVERLAY_MIN_WIDTH: f32 = 300.0;
 
 /// The overlay ID used during registration — must match for show/hide calls.
 const OVERLAY_ID: &std::ffi::CStr = c"training_tracker_overlay";
@@ -79,33 +63,6 @@ fn draw_menu_section_inner(ui: *mut c_void) {
             hlog_warn!(target: "training-tracker", "Host declined overlay_set_visible");
         }
     }
-
-    sdk.gui_small(ui, "Overlay font size (px):");
-    let mut font_buf = [0u8; 8];
-    let s = format!("{:.0}", get_font_size());
-    let bytes = s.as_bytes();
-    let len = bytes.len().min(7);
-    font_buf[..len].copy_from_slice(&bytes[..len]);
-    font_buf[len] = 0;
-    if sdk.gui_text_edit_singleline(ui, &mut font_buf) {
-        let end = font_buf.iter().position(|b| *b == 0).unwrap_or(font_buf.len());
-        if let Ok(s) = std::str::from_utf8(&font_buf[..end]) {
-            if let Ok(v) = s.trim().parse::<f32>() {
-                set_font_size(v);
-            }
-        }
-    }
-
-    if sdk.gui_small_button(ui, "Dump IL2CPP Diagnostics") {
-        crate::diagnostics::run_diagnostics();
-        sdk.show_notification("Diagnostics dumped to log");
-    }
-    if sdk.gui_small_button(ui, "Dump Skill Classes") {
-        crate::diagnostics::dump_skill_classes();
-        sdk.show_notification("Skill class diagnostics dumped to log");
-    }
-
-    sdk.gui_separator(ui);
 }
 
 /// Draw start/stop button and brief status in the menu.
@@ -186,8 +143,8 @@ fn draw_overlay_inner(ui: *mut c_void) {
     let sdk = Sdk::get();
     let tracking = memory_reader::TRACKING.load(Ordering::Relaxed);
 
-    sdk.gui_set_font_size(ui, get_font_size());
-    sdk.gui_set_min_width(ui, 300.0);
+    sdk.gui_set_font_size(ui, OVERLAY_FONT_SIZE);
+    sdk.gui_set_min_width(ui, OVERLAY_MIN_WIDTH);
 
     if tracking {
         draw_overlay_memory(ui);
