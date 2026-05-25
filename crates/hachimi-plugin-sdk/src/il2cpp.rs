@@ -147,6 +147,21 @@ impl Sdk {
         unsafe { (vt().il2cpp_class_get_methods)(klass, iter) }
     }
 
+    /// Post `callback` onto Unity's main (game) thread via the host synchronization context.
+    ///
+    /// `callback` must be `extern "C"` with no captures; store state in plugin statics.
+    pub fn schedule_on_main_thread(&self, callback: unsafe extern "C" fn()) {
+        // SAFETY: Host returns the attached IL2CPP main thread after init.
+        let thread = unsafe { (vt().il2cpp_get_main_thread)() };
+        if thread.is_null() {
+            return;
+        }
+        // SAFETY: `thread` is valid; `callback` must remain valid until invoked.
+        unsafe {
+            (vt().il2cpp_schedule_on_thread)(thread, callback);
+        }
+    }
+
     /// Free a string returned by il2cpp introspection (when host exposes `il2cpp_free` via resolve_symbol).
     pub fn free_il2cpp_string(&self, ptr: *mut c_char) {
         if ptr.is_null() {

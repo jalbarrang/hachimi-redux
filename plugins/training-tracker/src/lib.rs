@@ -12,6 +12,7 @@ extern crate hachimi_plugin_abi;
 mod diagnostics;
 mod hooks;
 mod memory_reader;
+mod overlay_cache;
 mod skill_shop;
 mod tracker;
 mod ui;

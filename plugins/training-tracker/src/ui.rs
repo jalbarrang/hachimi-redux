@@ -11,6 +11,7 @@ use std::sync::atomic::Ordering;
 use hachimi_plugin_sdk::Sdk;
 
 use crate::memory_reader;
+use crate::overlay_cache;
 use crate::skill_shop;
 use crate::tracker::{Facility, TRACKER};
 
@@ -92,13 +93,14 @@ fn draw_tracking_controls(ui: *mut c_void) {
         return;
     }
 
-    let status = match memory_reader::read_snapshot() {
+    overlay_cache::maybe_request_refresh();
+    let status = match overlay_cache::snapshot() {
         Some(snap) if snap.is_playing => format!(
             "\u{2705} Tracking • Turn {} • Total {}",
             snap.current_turn, snap.total_stats
         ),
         Some(_) => "\u{23f8} No active career".to_owned(),
-        None => "\u{26a0} Singleton unavailable".to_owned(),
+        None => "\u{26a0} Waiting for data…".to_owned(),
     };
     sdk.gui_small(ui, &status);
 }
@@ -156,14 +158,18 @@ fn draw_overlay_inner(ui: *mut c_void) {
 /// Overlay: memory-read live stats.
 fn draw_overlay_memory(ui: *mut c_void) {
     let sdk = Sdk::get();
+    overlay_cache::maybe_request_refresh();
 
-    let snap = match memory_reader::read_snapshot() {
+    let snap = match overlay_cache::snapshot() {
         Some(s) if s.is_playing => s,
         Some(_) => {
             sdk.gui_small(ui, "\u{1f3cb} No active career");
             return;
         }
-        None => return,
+        None => {
+            sdk.gui_small(ui, "\u{1f3cb} Loading career data…");
+            return;
+        }
     };
 
     sdk.gui_small(
@@ -232,7 +238,7 @@ extern "C" fn draw_skills_panel(ui: *mut c_void, _userdata: *mut c_void) {
 
 fn draw_skills_panel_inner(ui: *mut c_void) {
     let sdk = Sdk::get();
-    let skills = memory_reader::read_acquired_skills();
+    let skills = overlay_cache::skills();
 
     if skills.is_empty() {
         sdk.gui_small(ui, "No skills acquired yet");
@@ -260,7 +266,7 @@ extern "C" fn draw_bonds_panel(ui: *mut c_void, _userdata: *mut c_void) {
 
 fn draw_bonds_panel_inner(ui: *mut c_void) {
     let sdk = Sdk::get();
-    let evals = memory_reader::read_evaluations();
+    let evals = overlay_cache::evaluations();
 
     if evals.is_empty() {
         sdk.gui_small(ui, "No bond data available");
@@ -286,9 +292,10 @@ fn draw_bonds_panel_inner(ui: *mut c_void) {
 extern "C" fn draw_skill_shop_header(ui: *mut c_void, _userdata: *mut c_void) {
     let sdk = Sdk::get();
     if sdk.gui_small_button(ui, "\u{1f504} Refresh") {
-        skill_shop::refresh();
+        overlay_cache::mark_skill_shop_dirty();
+        overlay_cache::request_refresh_immediate();
     }
-    if let Some(sp) = skill_shop::read_skill_points() {
+    if let Some(sp) = overlay_cache::skill_points() {
         sdk.gui_small(ui, &format!("SP: {}", sp));
     }
 }
@@ -304,8 +311,9 @@ fn draw_skill_shop_panel_inner(ui: *mut c_void) {
     let sdk = Sdk::get();
     sdk.gui_horizontal(ui, draw_skill_shop_header, std::ptr::null_mut());
 
-    let entries = skill_shop::get_cached();
+    let entries = overlay_cache::skill_shop();
     if entries.is_empty() {
+        sdk.gui_small(ui, "Press Refresh to load shop skills");
         return;
     }
 

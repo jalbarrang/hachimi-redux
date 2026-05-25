@@ -234,6 +234,7 @@ pub fn start_tracking() -> Result<(), &'static str> {
     }
     TRACKING.store(true, Ordering::Relaxed);
     hlog_info!("Memory-read tracking STARTED");
+    crate::overlay_cache::request_refresh_immediate();
     Ok(())
 }
 

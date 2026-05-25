@@ -13,10 +13,10 @@
 //!       → .NeedSkillPoint
 //! ```
 //!
-//! Results are cached and only refreshed on explicit user request (Refresh button).
+//! Shop reads are invoked from [`crate::overlay_cache`] on the Unity main thread only.
 
 use std::ffi::c_void;
-use std::sync::{Mutex, OnceLock};
+use std::sync::OnceLock;
 
 use crate::memory_reader;
 use hachimi_plugin_sdk::Sdk;
@@ -36,29 +36,6 @@ pub struct SkillShopEntry {
     pub name: String,
     pub base_cost: i32,
     pub is_learned: bool,
-}
-
-// ---------------------------------------------------------------------------
-// Cache
-// ---------------------------------------------------------------------------
-
-static SHOP_CACHE: Mutex<Vec<SkillShopEntry>> = Mutex::new(Vec::new());
-
-pub fn get_cached() -> Vec<SkillShopEntry> {
-    SHOP_CACHE.lock().ok().map(|g| g.clone()).unwrap_or_default()
-}
-
-pub fn refresh() {
-    let entries = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(read_skill_shop)) {
-        Ok(v) => v,
-        Err(_) => {
-            hlog_error!("skill shop refresh PANICKED");
-            Vec::new()
-        }
-    };
-    if let Ok(mut guard) = SHOP_CACHE.lock() {
-        *guard = entries;
-    }
 }
 
 // ---------------------------------------------------------------------------
@@ -288,7 +265,7 @@ fn try_resolve() -> Result<Resolved, &'static str> {
 // Public: read current SP
 // ---------------------------------------------------------------------------
 
-pub fn read_skill_points() -> Option<i32> {
+pub(crate) fn read_skill_points() -> Option<i32> {
     let r = RESOLVED.get()?;
     if r.f_skill_point.is_null() {
         return None;
@@ -302,7 +279,18 @@ pub fn read_skill_points() -> Option<i32> {
 // Core read
 // ---------------------------------------------------------------------------
 
-fn read_skill_shop() -> Vec<SkillShopEntry> {
+/// Full skill-shop reconstruction (main thread only — via overlay cache).
+pub(crate) fn read_skill_shop() -> Vec<SkillShopEntry> {
+    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(read_skill_shop_inner)) {
+        Ok(v) => v,
+        Err(_) => {
+            hlog_error!("read_skill_shop PANICKED");
+            Vec::new()
+        }
+    }
+}
+
+fn read_skill_shop_inner() -> Vec<SkillShopEntry> {
     if !ensure_resolved() {
         return Vec::new();
     }
