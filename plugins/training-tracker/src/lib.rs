@@ -18,8 +18,8 @@ mod ui;
 
 use std::ffi::c_void;
 
-use hachimi_plugin_abi::{InitResult, Vtable};
-use hachimi_plugin_sdk::{init_result_to_i32, Sdk};
+use hachimi_plugin_abi::{InitResult, Vtable, API_VERSION};
+use hachimi_plugin_sdk::{init_result_to_i32, InitError, Sdk};
 
 /// Plugin entry point called by Hachimi after core hooking is complete.
 ///
@@ -28,8 +28,15 @@ use hachimi_plugin_sdk::{init_result_to_i32, Sdk};
 #[no_mangle]
 pub extern "C" fn hachimi_init(vtable_ptr: *const c_void, version: i32) -> i32 {
     // SAFETY: Host passes a valid vtable pointer during plugin load.
-    match unsafe { Sdk::init(vtable_ptr as *const Vtable, version) } {
+    match unsafe { Sdk::init_min(vtable_ptr as *const Vtable, version, API_VERSION) } {
         Ok(()) => init_inner(version),
+        Err(InitError::HostApiTooOld { required, actual }) => {
+            hlog_error!(
+                target: "training-tracker",
+                "Host API v{actual} is below required v{required} (plugin built for abi v{API_VERSION})"
+            );
+            init_result_to_i32(InitResult::Error)
+        }
         Err(_) => init_result_to_i32(InitResult::Error),
     }
 }

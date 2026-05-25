@@ -3,7 +3,7 @@
 
 use std::ffi::{c_void, CStr};
 
-use hachimi_plugin_abi::vt;
+use hachimi_plugin_sdk::Sdk;
 
 /// Minimal FieldInfo layout for reading field names and types.
 #[repr(C)]
@@ -43,32 +43,21 @@ impl TypeIntrospection {
     /// Resolve IL2CPP runtime functions via il2cpp_resolve_symbol.
     /// Returns None if any symbol fails to resolve.
     fn resolve() -> Option<Self> {
-        let vt = vt();
-        // SAFETY: IL2CPP FFI call; host vtable and resolved symbols are valid for process lifetime.
-        unsafe {
-            let type_get_name = (vt.il2cpp_resolve_symbol)(c"il2cpp_type_get_name".as_ptr());
-            let class_get_name = (vt.il2cpp_resolve_symbol)(c"il2cpp_class_get_name".as_ptr());
-            let class_get_fields = (vt.il2cpp_resolve_symbol)(c"il2cpp_class_get_fields".as_ptr());
+        let sdk = Sdk::get();
+        let type_get_name = sdk.resolve_symbol("il2cpp_type_get_name")?;
+        let class_get_name = sdk.resolve_symbol("il2cpp_class_get_name")?;
+        let class_get_fields = sdk.resolve_symbol("il2cpp_class_get_fields")?;
+        let free_fn = sdk.resolve_symbol("il2cpp_free")?;
 
-            if type_get_name.is_null() || class_get_name.is_null() || class_get_fields.is_null() {
-                hlog_warn!("Failed to resolve type introspection symbols: type_get_name={:?} class_get_name={:?} class_get_fields={:?}",
-                    type_get_name, class_get_name, class_get_fields);
-                return None;
-            }
-
-            let free_fn = (vt.il2cpp_resolve_symbol)(c"il2cpp_free".as_ptr());
-            if free_fn.is_null() {
-                hlog_warn!("Failed to resolve il2cpp_free");
-                return None;
-            }
-
-            Some(Self {
+        // SAFETY: Resolved symbols match il2cpp runtime export signatures.
+        Some(unsafe {
+            Self {
                 type_get_name: std::mem::transmute(type_get_name),
                 class_get_name: std::mem::transmute(class_get_name),
                 class_get_fields: std::mem::transmute(class_get_fields),
                 il2cpp_free: std::mem::transmute(free_fn),
-            })
-        }
+            }
+        })
     }
 
     /// Get the name of an Il2CppType. Returns "?" on failure.
@@ -193,14 +182,13 @@ const PROBE_FIELD_NAMES: &[&CStr] = &[
 
 /// Dump all methods on a class to the log, including return type names.
 fn dump_methods(class_label: &str, klass: *mut c_void, introspect: Option<&TypeIntrospection>) {
-    let vt = vt();
+    let sdk = Sdk::get();
     let mut iter: *mut c_void = std::ptr::null_mut();
     let mut count = 0u32;
 
     hlog_info!("  Methods on {}:", class_label);
     loop {
-        // SAFETY: Plugin FFI interop with Hachimi vtable
-        let method = unsafe { (vt.il2cpp_class_get_methods)(klass.cast(), &mut iter) };
+        let method = sdk.class_get_methods(klass.cast(), &mut iter);
         if method.is_null() {
             break;
         }
@@ -275,19 +263,21 @@ fn field_name_from_info(field: *mut c_void) -> &'static str {
 }
 
 fn probe_fields(class_label: &str, klass: *mut c_void) {
-    let vt = vt();
+    let sdk = Sdk::get();
     let mut found = 0u32;
 
     hlog_info!("  Probing fields on {}:", class_label);
     for name_bytes in PROBE_FIELD_NAMES {
-        // SAFETY: Plugin FFI interop with Hachimi vtable
-        // SAFETY: IL2CPP FFI call; field name is a valid C string.
-        let field = unsafe { (vt.il2cpp_get_field_from_name)(klass.cast(), name_bytes.as_ptr()) };
-        if !field.is_null() {
-            let field_name = field_name_from_info(field.cast());
-            hlog_info!("    ✓ field found: {} (FieldInfo={:?})", field_name, field);
-            found += 1;
-        }
+        let Some(field) = name_bytes
+            .to_str()
+            .ok()
+            .and_then(|n| sdk.get_field_from_name(klass.cast(), n))
+        else {
+            continue;
+        };
+        let field_name = field_name_from_info(field.cast());
+        hlog_info!("    ✓ field found: {} (FieldInfo={:?})", field_name, field);
+        found += 1;
     }
 
     hlog_info!(
@@ -300,10 +290,7 @@ fn probe_fields(class_label: &str, klass: *mut c_void) {
 
 /// Check if a class has a singleton-like `_instance` static field and try to get the instance.
 fn probe_singleton(class_label: &str, klass: *mut c_void) {
-    let vt = vt();
-    // SAFETY: Plugin FFI interop with Hachimi vtable
-    let instance = unsafe { (vt.il2cpp_get_singleton_like_instance)(klass.cast()) };
-    if !instance.is_null() {
+    if let Some(instance) = Sdk::get().get_singleton(klass.cast()) {
         hlog_info!("  ★ {} has LIVE singleton instance at {:?}", class_label, instance);
     } else {
         hlog_info!("  {} — no singleton instance (null or no _instance field)", class_label);
@@ -338,7 +325,7 @@ const DEEP_DIVE_CLASSES: &[(&CStr, &CStr, &CStr)] = &[
 
 /// Run the full diagnostic dump. Call from a menu button click.
 pub fn run_diagnostics() {
-    let vt = vt();
+    let sdk = Sdk::get();
 
     hlog_info!("=== TRAINING TRACKER DIAGNOSTICS START ===");
 
@@ -355,42 +342,39 @@ pub fn run_diagnostics() {
         hlog_info!("\n=== PHASE 1: DEEP DIVE ON KEY CLASSES ===");
         for &(asm, ns, class) in DEEP_DIVE_CLASSES {
             let class_name = class.to_str().unwrap_or("?");
-
-            // SAFETY: IL2CPP FFI call; assembly name is a valid C string.
-            let image = unsafe { (vt.il2cpp_get_assembly_image)(asm.as_ptr()) };
-            if image.is_null() {
+            let Some(image) = asm.to_str().ok().and_then(|a| sdk.get_assembly_image(a)) else {
                 continue;
-            }
-
-            // SAFETY: IL2CPP FFI call; namespace and class names are valid C strings.
-            let klass = unsafe { (vt.il2cpp_get_class)(image, ns.as_ptr(), class.as_ptr()) };
-            if klass.is_null() {
+            };
+            let Some(klass) = ns
+                .to_str()
+                .ok()
+                .and_then(|n| sdk.get_class(image, n, class.to_str().unwrap_or("?")))
+            else {
                 hlog_info!("[DEEP] {} — class NOT FOUND", class_name);
                 continue;
-            }
+            };
 
             deep_dive_class(class_name, klass.cast(), intro);
         }
     }
 
-    // Phase 2: Broad scan of all probe classes (lighter: singleton + probe fields + basic methods)
     hlog_info!("\n=== PHASE 2: BROAD CLASS SCAN ===");
     for &(asm, ns, class) in PROBE_CLASSES {
         let class_name = class.to_str().unwrap_or("?");
 
-        // SAFETY: IL2CPP FFI call; assembly name is a valid C string.
-        let image = unsafe { (vt.il2cpp_get_assembly_image)(asm.as_ptr()) };
-        if image.is_null() {
+        let Some(image) = asm.to_str().ok().and_then(|a| sdk.get_assembly_image(a)) else {
             hlog_warn!("Assembly not found for {}", class_name);
             continue;
-        }
+        };
 
-        // SAFETY: IL2CPP FFI call; namespace and class names are valid C strings.
-        let klass = unsafe { (vt.il2cpp_get_class)(image, ns.as_ptr(), class.as_ptr()) };
-        if klass.is_null() {
+        let Some(klass) = ns
+            .to_str()
+            .ok()
+            .and_then(|n| sdk.get_class(image, n, class.to_str().unwrap_or("?")))
+        else {
             hlog_info!("[{}] — class NOT FOUND", class_name);
             continue;
-        }
+        };
 
         hlog_info!("[{}] — class FOUND at {:?}", class_name, klass);
         probe_singleton(class_name, klass.cast());
@@ -436,7 +420,7 @@ const SKILL_CLASSES: &[(&CStr, &CStr, &CStr)] = &[
 ];
 
 pub fn dump_skill_classes() {
-    let vt = vt();
+    let sdk = Sdk::get();
     hlog_info!("=== SKILL CLASS DIAGNOSTICS START ===");
 
     let introspect = TypeIntrospection::resolve();
@@ -447,18 +431,17 @@ pub fn dump_skill_classes() {
     for &(asm, ns, class) in SKILL_CLASSES {
         let class_name = class.to_str().unwrap_or("?");
 
-        // SAFETY: IL2CPP FFI call; assembly name is a valid C string.
-        let image = unsafe { (vt.il2cpp_get_assembly_image)(asm.as_ptr()) };
-        if image.is_null() {
+        let Some(image) = asm.to_str().ok().and_then(|a| sdk.get_assembly_image(a)) else {
             continue;
-        }
-
-        // SAFETY: IL2CPP FFI call; namespace and class names are valid C strings.
-        let klass = unsafe { (vt.il2cpp_get_class)(image, ns.as_ptr(), class.as_ptr()) };
-        if klass.is_null() {
+        };
+        let Some(klass) = ns
+            .to_str()
+            .ok()
+            .and_then(|n| sdk.get_class(image, n, class.to_str().unwrap_or("?")))
+        else {
             hlog_info!("[SKILL] {} — NOT FOUND", class_name);
             continue;
-        }
+        };
 
         if let Some(ref intro) = introspect {
             deep_dive_class(class_name, klass.cast(), intro);
@@ -474,67 +457,61 @@ pub fn dump_skill_classes() {
         hlog_info!("_acquiredSkillList: {} items (list={:?})", count, list_ptr);
 
         if count > 0 {
-            // SAFETY: IL2CPP FFI call; host vtable and resolved symbols are valid for process lifetime.
+            // SAFETY: IL2CPP list object layout — klass at head; get_Item from resolved MethodInfo.
             unsafe {
-                // Get the list's inflated class and call get_Item(0)
                 let list_klass = *(list_ptr as *const *mut c_void);
-                let m_get_item = (vt.il2cpp_get_method)(list_klass.cast(), c"get_Item".as_ptr(), 1);
-                if !m_get_item.is_null() {
-                    // call_obj_with_i32 equivalent inline
-                    let mi = m_get_item;
-                    let fp: extern "C" fn(*mut c_void, i32, *const c_void) -> *mut c_void =
-                        std::mem::transmute(*(mi as *const usize));
-                    let first_item = fp(list_ptr, 0, mi);
+                let Some(m_get_item) = sdk.get_method(list_klass.cast(), "get_Item", 1) else {
+                    hlog_warn!("get_Item not found on list class");
+                    return;
+                };
+                let mi = m_get_item;
+                let fp: extern "C" fn(*mut c_void, i32, *const c_void) -> *mut c_void =
+                    std::mem::transmute(*(mi as *const usize));
+                let first_item = fp(list_ptr, 0, mi);
 
-                    if !first_item.is_null() {
-                        let item_klass = *(first_item as *const *mut c_void);
-                        hlog_info!(
-                            "First AcquiredSkill element: obj={:?} klass={:?}",
-                            first_item,
-                            item_klass
-                        );
+                if !first_item.is_null() {
+                    let item_klass = *(first_item as *const *mut c_void);
+                    hlog_info!(
+                        "First AcquiredSkill element: obj={:?} klass={:?}",
+                        first_item,
+                        item_klass
+                    );
 
-                        if let Some(ref intro) = introspect {
-                            let class_name_ptr = (intro.class_get_name)(item_klass);
-                            let class_name = if !class_name_ptr.is_null() {
-                                CStr::from_ptr(class_name_ptr).to_str().unwrap_or("?")
-                            } else {
-                                "?"
-                            };
-                            hlog_info!("AcquiredSkill runtime class name: {}", class_name);
-                            deep_dive_class(class_name, item_klass, intro);
-
-                            // Walk parent class chain to find inherited fields
-                            let il2cpp_class_get_parent =
-                                (vt.il2cpp_resolve_symbol)(c"il2cpp_class_get_parent".as_ptr());
-                            if !il2cpp_class_get_parent.is_null() {
-                                let get_parent: extern "C" fn(*mut c_void) -> *mut c_void =
-                                    std::mem::transmute(il2cpp_class_get_parent);
-                                let mut klass = item_klass;
-                                for depth in 0..5 {
-                                    let parent = get_parent(klass);
-                                    if parent.is_null() || parent == klass {
-                                        break;
-                                    }
-                                    let pname_ptr = (intro.class_get_name)(parent);
-                                    let pname = if !pname_ptr.is_null() {
-                                        CStr::from_ptr(pname_ptr).to_str().unwrap_or("?")
-                                    } else {
-                                        "?"
-                                    };
-                                    hlog_info!("  Parent[{}]: {} (klass={:?})", depth, pname, parent);
-                                    deep_dive_class(&format!("parent::{}", pname), parent, intro);
-                                    klass = parent;
-                                }
-                            }
+                    if let Some(ref intro) = introspect {
+                        let class_name_ptr = (intro.class_get_name)(item_klass);
+                        let class_name = if !class_name_ptr.is_null() {
+                            CStr::from_ptr(class_name_ptr).to_str().unwrap_or("?")
                         } else {
-                            dump_methods("AcquiredSkill(runtime)", item_klass, None);
+                            "?"
+                        };
+                        hlog_info!("AcquiredSkill runtime class name: {}", class_name);
+                        deep_dive_class(class_name, item_klass, intro);
+
+                        if let Some(il2cpp_class_get_parent) = sdk.resolve_symbol("il2cpp_class_get_parent") {
+                            let get_parent: extern "C" fn(*mut c_void) -> *mut c_void =
+                                std::mem::transmute(il2cpp_class_get_parent);
+                            let mut klass = item_klass;
+                            for depth in 0..5 {
+                                let parent = get_parent(klass);
+                                if parent.is_null() || parent == klass {
+                                    break;
+                                }
+                                let pname_ptr = (intro.class_get_name)(parent);
+                                let pname = if !pname_ptr.is_null() {
+                                    CStr::from_ptr(pname_ptr).to_str().unwrap_or("?")
+                                } else {
+                                    "?"
+                                };
+                                hlog_info!("  Parent[{}]: {} (klass={:?})", depth, pname, parent);
+                                deep_dive_class(&format!("parent::{}", pname), parent, intro);
+                                klass = parent;
+                            }
                         }
                     } else {
-                        hlog_info!("get_Item(0) returned null");
+                        dump_methods("AcquiredSkill(runtime)", item_klass, None);
                     }
                 } else {
-                    hlog_warn!("get_Item not found on list class");
+                    hlog_info!("get_Item(0) returned null");
                 }
             }
         }
@@ -542,11 +519,8 @@ pub fn dump_skill_classes() {
         hlog_info!("No acquired skill list available (not in a career or tracking not started)");
     }
 
-    // Phase 3: Probe for nested classes that weren't found as top-level
     hlog_info!("\n=== NESTED CLASS PROBE ===");
-    // SAFETY: IL2CPP FFI call; host vtable and resolved symbols are valid for process lifetime.
-    let image = unsafe { (vt.il2cpp_get_assembly_image)(c"umamusume.dll".as_ptr()) };
-    if !image.is_null() {
+    if let Some(image) = sdk.get_assembly_image("umamusume.dll") {
         // AcquiredSkill / SkillTips might be nested inside these parent classes
         let parent_candidates: &[(&CStr, &str)] = &[
             (c"WorkSingleModeCharaData", "WorkSingleModeCharaData"),
@@ -573,16 +547,22 @@ pub fn dump_skill_classes() {
         ];
 
         for &(parent_bytes, parent_label) in parent_candidates {
-            let parent_klass =
-                // SAFETY: IL2CPP FFI call; host vtable and resolved symbols are valid for process lifetime.
-                unsafe { (vt.il2cpp_get_class)(image, c"Gallop".as_ptr(), parent_bytes.as_ptr()) };
-            if parent_klass.is_null() {
+            let Some(parent_klass) = parent_bytes
+                .to_str()
+                .ok()
+                .and_then(|p| sdk.get_class(image, "Gallop", p))
+            else {
                 continue;
-            }
+            };
 
             for &(nested_bytes, nested_label) in nested_names {
-                // SAFETY: IL2CPP FFI call; host vtable and resolved symbols are valid for process lifetime.
-                let nested = unsafe { (vt.il2cpp_find_nested_class)(parent_klass, nested_bytes.as_ptr()) };
+                let Some(nested) = nested_bytes
+                    .to_str()
+                    .ok()
+                    .and_then(|n| sdk.find_nested_class(parent_klass, n))
+                else {
+                    continue;
+                };
                 if !nested.is_null() {
                     hlog_info!(
                         "  \u{2705} FOUND nested: {}.{} at {:?}",

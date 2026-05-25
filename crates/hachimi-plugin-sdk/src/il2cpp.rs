@@ -62,6 +62,36 @@ impl Sdk {
         }
     }
 
+    pub fn find_nested_class(&self, parent: *mut Il2CppClass, name: &str) -> Option<*mut Il2CppClass> {
+        let Ok(name_c) = CString::new(name) else {
+            return None;
+        };
+        // SAFETY: Parent class pointer from prior host resolution.
+        let ptr = unsafe { (vt().il2cpp_find_nested_class)(parent, name_c.as_ptr()) };
+        if ptr.is_null() {
+            None
+        } else {
+            Some(ptr)
+        }
+    }
+
+    pub fn get_field_from_name(
+        &self,
+        class: *mut Il2CppClass,
+        name: &str,
+    ) -> Option<*mut hachimi_plugin_abi::FieldInfo> {
+        let Ok(name_c) = CString::new(name) else {
+            return None;
+        };
+        // SAFETY: Class pointer from host il2cpp.
+        let ptr = unsafe { (vt().il2cpp_get_field_from_name)(class, name_c.as_ptr()) };
+        if ptr.is_null() {
+            None
+        } else {
+            Some(ptr)
+        }
+    }
+
     pub fn get_method_addr(
         &self,
         class: *mut Il2CppClass,

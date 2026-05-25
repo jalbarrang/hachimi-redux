@@ -4,11 +4,10 @@
 //! - Live career stats read directly from game memory (memory-read mode)
 //! - Training facility visit counts from hooks (complementary)
 
-use std::ffi::{c_void, CString};
+use std::ffi::c_void;
 use std::panic::{self, AssertUnwindSafe};
 use std::sync::atomic::Ordering;
 
-use hachimi_plugin_abi::vt;
 use hachimi_plugin_sdk::Sdk;
 
 use crate::memory_reader;
@@ -41,17 +40,15 @@ const OVERLAY_ID: &std::ffi::CStr = c"training_tracker_overlay";
 /// Register the plugin's UI components with the Hachimi GUI.
 pub fn register_ui() {
     let sdk = Sdk::get();
-    let version = sdk.version();
 
     sdk.register_menu_section(draw_menu_section, std::ptr::null_mut());
 
     if sdk.register_overlay("training_tracker_overlay", draw_overlay, std::ptr::null_mut()) {
         hlog_info!(target: "training-tracker", "UI registered (menu + overlay)");
     } else {
-        hlog_info!(
+        hlog_warn!(
             target: "training-tracker",
-            "UI registered (menu only, host API v{} < 3)",
-            version.raw()
+            "Menu registered; overlay registration declined by host"
         );
     }
 }
@@ -63,129 +60,95 @@ pub fn register_ui() {
 extern "C" fn draw_menu_section(ui: *mut c_void, _userdata: *mut c_void) {
     if panic::catch_unwind(AssertUnwindSafe(|| draw_menu_section_inner(ui))).is_err() {
         hlog_error!("draw_menu_section PANICKED");
-        let vt = vt();
-        // SAFETY: IL2CPP FFI call; host vtable and resolved symbols are valid for process lifetime.
-        unsafe {
-            (vt.gui_ui_colored_label)(ui, 255, 70, 70, 255, c"[Training Tracker: menu render error]".as_ptr());
-        }
+        Sdk::get().gui_colored_label(ui, 255, 70, 70, 255, "[Training Tracker: menu render error]");
     }
 }
 
 fn draw_menu_section_inner(ui: *mut c_void) {
-    let vt = vt();
-    let api_version = Sdk::get().version();
+    let sdk = Sdk::get();
 
-    // SAFETY: IL2CPP FFI call; host vtable and resolved symbols are valid for process lifetime.
-    unsafe {
-        let heading = c"\u{1f3cb} Training Tracker";
-        (vt.gui_ui_heading)(ui, heading.as_ptr());
+    sdk.gui_heading(ui, "\u{1f3cb} Training Tracker");
 
-        // --- Memory-read tracking controls ---
-        draw_tracking_controls(ui);
+    draw_tracking_controls(ui);
+    draw_hook_status(ui);
 
-        // --- Hook counts status + reset ---
-        draw_hook_status(ui);
-
-        // --- Show overlay button ---
-        if api_version.supports_overlay_visibility() {
-            let show_overlay = c"\u{1f4ca} Show Training Overlay";
-            if (vt.gui_ui_button)(ui, show_overlay.as_ptr()) {
-                (vt.gui_overlay_set_visible)(OVERLAY_ID.as_ptr(), true);
-                (vt.gui_show_notification)(c"Training overlay shown".as_ptr());
-            }
+    if sdk.gui_button(ui, "\u{1f4ca} Show Training Overlay") {
+        if sdk.overlay_set_visible(OVERLAY_ID.to_str().unwrap_or("training_tracker_overlay"), true) {
+            sdk.show_notification("Training overlay shown");
+        } else {
+            hlog_warn!(target: "training-tracker", "Host declined overlay_set_visible");
         }
-
-        // --- Overlay font size ---
-        if api_version.supports_font_size() {
-            let label = c"Overlay font size (px):";
-            (vt.gui_ui_small)(ui, label.as_ptr());
-
-            let mut font_buf = [0u8; 8];
-            let s = format!("{:.0}", get_font_size());
-            let bytes = s.as_bytes();
-            let len = bytes.len().min(7);
-            font_buf[..len].copy_from_slice(&bytes[..len]);
-            font_buf[len] = 0;
-            if (vt.gui_ui_text_edit_singleline)(ui, font_buf.as_mut_ptr() as *mut std::ffi::c_char, font_buf.len()) {
-                let end = font_buf.iter().position(|b| *b == 0).unwrap_or(font_buf.len());
-                if let Ok(s) = std::str::from_utf8(&font_buf[..end]) {
-                    if let Ok(v) = s.trim().parse::<f32>() {
-                        set_font_size(v);
-                    }
-                }
-            }
-        }
-
-        // --- Diagnostic dumps ---
-        let dump = c"Dump IL2CPP Diagnostics";
-        if (vt.gui_ui_small_button)(ui, dump.as_ptr()) {
-            crate::diagnostics::run_diagnostics();
-            (vt.gui_show_notification)(c"Diagnostics dumped to log".as_ptr());
-        }
-        let dump_skills = c"Dump Skill Classes";
-        if (vt.gui_ui_small_button)(ui, dump_skills.as_ptr()) {
-            crate::diagnostics::dump_skill_classes();
-            (vt.gui_show_notification)(c"Skill class diagnostics dumped to log".as_ptr());
-        }
-
-        (vt.gui_ui_separator)(ui);
     }
+
+    sdk.gui_small(ui, "Overlay font size (px):");
+    let mut font_buf = [0u8; 8];
+    let s = format!("{:.0}", get_font_size());
+    let bytes = s.as_bytes();
+    let len = bytes.len().min(7);
+    font_buf[..len].copy_from_slice(&bytes[..len]);
+    font_buf[len] = 0;
+    if sdk.gui_text_edit_singleline(ui, &mut font_buf) {
+        let end = font_buf.iter().position(|b| *b == 0).unwrap_or(font_buf.len());
+        if let Ok(s) = std::str::from_utf8(&font_buf[..end]) {
+            if let Ok(v) = s.trim().parse::<f32>() {
+                set_font_size(v);
+            }
+        }
+    }
+
+    if sdk.gui_small_button(ui, "Dump IL2CPP Diagnostics") {
+        crate::diagnostics::run_diagnostics();
+        sdk.show_notification("Diagnostics dumped to log");
+    }
+    if sdk.gui_small_button(ui, "Dump Skill Classes") {
+        crate::diagnostics::dump_skill_classes();
+        sdk.show_notification("Skill class diagnostics dumped to log");
+    }
+
+    sdk.gui_separator(ui);
 }
 
 /// Draw start/stop button and brief status in the menu.
 fn draw_tracking_controls(ui: *mut c_void) {
-    let vt = vt();
+    let sdk = Sdk::get();
     let tracking = memory_reader::TRACKING.load(Ordering::Relaxed);
 
     if !tracking {
-        let btn = c"\u{25b6} Start Memory Tracking";
-        // SAFETY: Plugin FFI interop with Hachimi vtable
-        if unsafe { (vt.gui_ui_button)(ui, btn.as_ptr()) } {
+        if sdk.gui_button(ui, "\u{25b6} Start Memory Tracking") {
             match memory_reader::start_tracking() {
-                // SAFETY: IL2CPP FFI call; host vtable and resolved symbols are valid for process lifetime.
-                Ok(()) => unsafe {
-                    (vt.gui_show_notification)(c"Memory tracking started!".as_ptr());
-                },
+                Ok(()) => {
+                    sdk.show_notification("Memory tracking started!");
+                }
                 Err(e) => {
-                    let msg = CString::new(format!("Failed: {}", e)).unwrap_or_default();
-                    // SAFETY: IL2CPP FFI call; host vtable and resolved symbols are valid for process lifetime.
-                    unsafe { (vt.gui_show_notification)(msg.as_ptr()) };
+                    sdk.show_notification(&format!("Failed: {}", e));
                     hlog_error!("start_tracking failed: {}", e);
                 }
             }
         }
-        let hint = c"Reads stats directly from game memory via IL2CPP";
-        // SAFETY: IL2CPP FFI call; host vtable and resolved symbols are valid for process lifetime.
-        unsafe { (vt.gui_ui_small)(ui, hint.as_ptr()) };
+        sdk.gui_small(ui, "Reads stats directly from game memory via IL2CPP");
         return;
     }
 
-    let btn = c"\u{23f9} Stop Memory Tracking";
-    // SAFETY: Plugin FFI interop with Hachimi vtable
-    if unsafe { (vt.gui_ui_button)(ui, btn.as_ptr()) } {
+    if sdk.gui_button(ui, "\u{23f9} Stop Memory Tracking") {
         memory_reader::stop_tracking();
-        // SAFETY: IL2CPP FFI call; host vtable and resolved symbols are valid for process lifetime.
-        unsafe { (vt.gui_show_notification)(c"Memory tracking stopped".as_ptr()) };
+        sdk.show_notification("Memory tracking stopped");
         return;
     }
 
-    // Brief status — detailed stats are in the overlay
     let status = match memory_reader::read_snapshot() {
-        Some(snap) if snap.is_playing => CString::new(format!(
+        Some(snap) if snap.is_playing => format!(
             "\u{2705} Tracking • Turn {} • Total {}",
             snap.current_turn, snap.total_stats
-        ))
-        .unwrap_or_default(),
-        Some(_) => c"\u{23f8} No active career".to_owned(),
-        None => c"\u{26a0} Singleton unavailable".to_owned(),
+        ),
+        Some(_) => "\u{23f8} No active career".to_owned(),
+        None => "\u{26a0} Singleton unavailable".to_owned(),
     };
-    // SAFETY: IL2CPP FFI call; host vtable and resolved symbols are valid for process lifetime.
-    unsafe { (vt.gui_ui_small)(ui, status.as_ptr()) };
+    sdk.gui_small(ui, &status);
 }
 
 /// Draw a compact hook-counts status line with a reset button.
 fn draw_hook_status(ui: *mut c_void) {
-    let vt = vt();
+    let sdk = Sdk::get();
 
     let tracker = match TRACKER.lock() {
         Ok(t) => t,
@@ -198,17 +161,12 @@ fn draw_hook_status(ui: *mut c_void) {
     }
     drop(tracker);
 
-    let status = CString::new(format!("Hook events: {} trainings recorded", total)).unwrap_or_default();
-    // SAFETY: Plugin FFI interop with Hachimi vtable
-    unsafe { (vt.gui_ui_small)(ui, status.as_ptr()) };
+    sdk.gui_small(ui, &format!("Hook events: {} trainings recorded", total));
 
-    let reset = c"Reset Counts";
-    // SAFETY: Plugin FFI interop with Hachimi vtable
-    if unsafe { (vt.gui_ui_small_button)(ui, reset.as_ptr()) } {
+    if sdk.gui_small_button(ui, "Reset Counts") {
         if let Ok(mut t) = TRACKER.lock() {
             t.counts = [0; 5];
-            // SAFETY: IL2CPP FFI call; host vtable and resolved symbols are valid for process lifetime.
-            unsafe { (vt.gui_show_notification)(c"Training counts reset!".as_ptr()) };
+            sdk.show_notification("Training counts reset!");
         }
     }
 }
@@ -220,28 +178,16 @@ fn draw_hook_status(ui: *mut c_void) {
 extern "C" fn draw_overlay(ui: *mut c_void, _userdata: *mut c_void) {
     if panic::catch_unwind(AssertUnwindSafe(|| draw_overlay_inner(ui))).is_err() {
         hlog_error!("draw_overlay PANICKED");
-        let vt = vt();
-        // SAFETY: IL2CPP FFI call; host vtable and resolved symbols are valid for process lifetime.
-        unsafe {
-            (vt.gui_ui_colored_label)(ui, 255, 70, 70, 255, c"[overlay render error]".as_ptr());
-        }
+        Sdk::get().gui_colored_label(ui, 255, 70, 70, 255, "[overlay render error]");
     }
 }
 
 fn draw_overlay_inner(ui: *mut c_void) {
-    let vt = vt();
-
+    let sdk = Sdk::get();
     let tracking = memory_reader::TRACKING.load(Ordering::Relaxed);
 
-    // SAFETY: IL2CPP FFI call; host vtable and resolved symbols are valid for process lifetime.
-    unsafe {
-        (vt.gui_ui_set_font_size)(ui, get_font_size());
-    }
-
-    // SAFETY: IL2CPP FFI call; host vtable and resolved symbols are valid for process lifetime.
-    unsafe {
-        (vt.gui_ui_set_min_width)(ui, 300.0);
-    }
+    sdk.gui_set_font_size(ui, get_font_size());
+    sdk.gui_set_min_width(ui, 300.0);
 
     if tracking {
         draw_overlay_memory(ui);
@@ -252,93 +198,72 @@ fn draw_overlay_inner(ui: *mut c_void) {
 
 /// Overlay: memory-read live stats.
 fn draw_overlay_memory(ui: *mut c_void) {
-    let vt = vt();
+    let sdk = Sdk::get();
 
     let snap = match memory_reader::read_snapshot() {
         Some(s) if s.is_playing => s,
         Some(_) => {
-            // SAFETY: IL2CPP FFI call; host vtable and resolved symbols are valid for process lifetime.
-            unsafe {
-                (vt.gui_ui_small)(ui, c"\u{1f3cb} No active career".as_ptr());
-            }
+            sdk.gui_small(ui, "\u{1f3cb} No active career");
             return;
         }
-        None => return, // Singleton unavailable, show nothing
+        None => return,
     };
 
-    // SAFETY: Reading field or calling method on non-null IL2CPP object pointer.
-    unsafe {
-        // Header with turn
-        let header = CString::new(format!(
-            "\u{1f3cb} Turn {} \u{2022} Month {}",
-            snap.current_turn, snap.month
-        ))
-        .unwrap_or_default();
-        (vt.gui_ui_small)(ui, header.as_ptr());
+    sdk.gui_small(
+        ui,
+        &format!("\u{1f3cb} Turn {} \u{2022} Month {}", snap.current_turn, snap.month),
+    );
 
-        // Stats: compact rows with levels
-        let lv = &snap.training_levels;
-        let row1 = CString::new(format!(
+    let lv = &snap.training_levels;
+    sdk.gui_small(
+        ui,
+        &format!(
             "Speed {:>4}(L{})  Stamina {:>4}(L{})  Power {:>4}(L{})",
             snap.speed, lv[0], snap.stamina, lv[1], snap.power, lv[2]
-        ))
-        .unwrap_or_default();
-        (vt.gui_ui_small)(ui, row1.as_ptr());
-
-        let row2 = CString::new(format!(
+        ),
+    );
+    sdk.gui_small(
+        ui,
+        &format!(
             "Guts {:>4}(L{})  Wit {:>4}(L{})  Total {:>4}",
             snap.guts, lv[3], snap.wiz, lv[4], snap.total_stats
-        ))
-        .unwrap_or_default();
-        (vt.gui_ui_small)(ui, row2.as_ptr());
+        ),
+    );
 
-        // Energy + Mood
-        let (mr, mg, mb) = memory_reader::motivation_color(snap.motivation);
-        let energy_mood = CString::new(format!(
+    let (mr, mg, mb) = memory_reader::motivation_color(snap.motivation);
+    sdk.gui_colored_label(
+        ui,
+        mr,
+        mg,
+        mb,
+        255,
+        &format!(
             "Energy {}/{}  Mood: {}",
             snap.hp,
             snap.max_hp,
             memory_reader::mood_label(snap.motivation)
-        ))
-        .unwrap_or_default();
-        (vt.gui_ui_colored_label)(ui, mr, mg, mb, 255, energy_mood.as_ptr());
+        ),
+    );
 
-        // Fans + Races (SP omitted until ObscuredInt decryption is implemented)
-        let extra = CString::new(format!(
+    sdk.gui_small(
+        ui,
+        &format!(
             "Fans {}  Races {}/{}W",
             format_number(snap.fan_count),
             snap.total_races,
             snap.win_count
-        ))
-        .unwrap_or_default();
-        (vt.gui_ui_small)(ui, extra.as_ptr());
+        ),
+    );
 
-        // Collapsible panels (requires API v6)
-        let api_version = Sdk::get().version();
-        if api_version.supports_collapsing() {
-            (vt.gui_ui_collapsing)(
-                ui,
-                c"\u{1f4d6} Skills".as_ptr(),
-                false,
-                Some(draw_skills_panel),
-                std::ptr::null_mut(),
-            );
-            (vt.gui_ui_collapsing)(
-                ui,
-                c"\u{1f91d} Bonds".as_ptr(),
-                false,
-                Some(draw_bonds_panel),
-                std::ptr::null_mut(),
-            );
-            (vt.gui_ui_collapsing)(
-                ui,
-                c"\u{1f6d2} Skill Shop".as_ptr(),
-                false,
-                Some(draw_skill_shop_panel),
-                std::ptr::null_mut(),
-            );
-        }
-    }
+    sdk.gui_collapsing(ui, "\u{1f4d6} Skills", false, draw_skills_panel, std::ptr::null_mut());
+    sdk.gui_collapsing(ui, "\u{1f91d} Bonds", false, draw_bonds_panel, std::ptr::null_mut());
+    sdk.gui_collapsing(
+        ui,
+        "\u{1f6d2} Skill Shop",
+        false,
+        draw_skill_shop_panel,
+        std::ptr::null_mut(),
+    );
 }
 
 /// Draw the skills panel inside a collapsing header.
@@ -349,28 +274,24 @@ extern "C" fn draw_skills_panel(ui: *mut c_void, _userdata: *mut c_void) {
 }
 
 fn draw_skills_panel_inner(ui: *mut c_void) {
-    let vt = vt();
+    let sdk = Sdk::get();
     let skills = memory_reader::read_acquired_skills();
 
     if skills.is_empty() {
-        // SAFETY: IL2CPP FFI call; host vtable and resolved symbols are valid for process lifetime.
-        unsafe { (vt.gui_ui_small)(ui, c"No skills acquired yet".as_ptr()) };
+        sdk.gui_small(ui, "No skills acquired yet");
         return;
     }
 
     for skill in &skills {
         let label = if skill.name.is_empty() {
-            CString::new(format!("Lv.{} \u{2022} Skill #{}", skill.level, skill.master_id)).unwrap_or_default()
+            format!("Lv.{} \u{2022} Skill #{}", skill.level, skill.master_id)
         } else {
-            CString::new(format!("Lv.{} \u{2022} {}", skill.level, skill.name)).unwrap_or_default()
+            format!("Lv.{} \u{2022} {}", skill.level, skill.name)
         };
-        // SAFETY: IL2CPP FFI call; host vtable and resolved symbols are valid for process lifetime.
-        unsafe { (vt.gui_ui_small)(ui, label.as_ptr()) };
+        sdk.gui_small(ui, &label);
     }
 
-    let count = CString::new(format!("{} skills", skills.len())).unwrap_or_default();
-    // SAFETY: IL2CPP FFI call; host vtable and resolved symbols are valid for process lifetime.
-    unsafe { (vt.gui_ui_colored_label)(ui, 150, 150, 150, 255, count.as_ptr()) };
+    sdk.gui_colored_label(ui, 150, 150, 150, 255, &format!("{} skills", skills.len()));
 }
 
 /// Draw the bonds/friendship panel inside a collapsing header.
@@ -381,17 +302,15 @@ extern "C" fn draw_bonds_panel(ui: *mut c_void, _userdata: *mut c_void) {
 }
 
 fn draw_bonds_panel_inner(ui: *mut c_void) {
-    let vt = vt();
+    let sdk = Sdk::get();
     let evals = memory_reader::read_evaluations();
 
     if evals.is_empty() {
-        // SAFETY: IL2CPP FFI call; host vtable and resolved symbols are valid for process lifetime.
-        unsafe { (vt.gui_ui_small)(ui, c"No bond data available".as_ptr()) };
+        sdk.gui_small(ui, "No bond data available");
         return;
     }
 
     for eval in &evals {
-        // Filter out NPCs that aren't present in this career
         if !eval.is_appear {
             continue;
         }
@@ -402,23 +321,18 @@ fn draw_bonds_panel_inner(ui: *mut c_void) {
         } else {
             eval.name.clone()
         };
-        let label = CString::new(format!("{} - {}/100", name, eval.value)).unwrap_or_default();
-        // SAFETY: IL2CPP FFI call; host vtable and resolved symbols are valid for process lifetime.
-        unsafe { (vt.gui_ui_colored_label)(ui, r, g, b, 255, label.as_ptr()) };
+        sdk.gui_colored_label(ui, r, g, b, 255, &format!("{} - {}/100", name, eval.value));
     }
 }
 
 /// Draw refresh button + SP display in a horizontal row.
 extern "C" fn draw_skill_shop_header(ui: *mut c_void, _userdata: *mut c_void) {
-    let vt = vt();
-    // SAFETY: IL2CPP FFI call; host vtable and resolved symbols are valid for process lifetime.
-    if unsafe { (vt.gui_ui_small_button)(ui, c"\u{1f504} Refresh".as_ptr()) } {
+    let sdk = Sdk::get();
+    if sdk.gui_small_button(ui, "\u{1f504} Refresh") {
         skill_shop::refresh();
     }
     if let Some(sp) = skill_shop::read_skill_points() {
-        let label = CString::new(format!("SP: {}", sp)).unwrap_or_default();
-        // SAFETY: IL2CPP FFI call; host vtable and resolved symbols are valid for process lifetime.
-        unsafe { (vt.gui_ui_small)(ui, label.as_ptr()) };
+        sdk.gui_small(ui, &format!("SP: {}", sp));
     }
 }
 
@@ -430,16 +344,10 @@ extern "C" fn draw_skill_shop_panel(ui: *mut c_void, _userdata: *mut c_void) {
 }
 
 fn draw_skill_shop_panel_inner(ui: *mut c_void) {
-    let vt = vt();
-
-    // Refresh button + current SP
-    // SAFETY: IL2CPP FFI call; host vtable and resolved symbols are valid for process lifetime.
-    unsafe {
-        (vt.gui_ui_horizontal)(ui, Some(draw_skill_shop_header), std::ptr::null_mut());
-    }
+    let sdk = Sdk::get();
+    sdk.gui_horizontal(ui, draw_skill_shop_header, std::ptr::null_mut());
 
     let entries = skill_shop::get_cached();
-
     if entries.is_empty() {
         return;
     }
@@ -471,22 +379,13 @@ fn draw_skill_shop_panel_inner(ui: *mut c_void) {
         };
 
         let label = if discount > 0 {
-            CString::new(format!("{} {} (-{}%{})", icon, name, discount, cost_str)).unwrap_or_default()
+            format!("{} {} (-{}%{})", icon, name, discount, cost_str)
+        } else if cost_str.is_empty() {
+            format!("{} {}", icon, name)
         } else {
-            CString::new(format!(
-                "{} {}{}",
-                icon,
-                name,
-                if cost_str.is_empty() {
-                    String::new()
-                } else {
-                    format!(" ({})", cost_str.trim())
-                }
-            ))
-            .unwrap_or_default()
+            format!("{} {} ({})", icon, name, cost_str.trim())
         };
-        // SAFETY: IL2CPP FFI call; host vtable and resolved symbols are valid for process lifetime.
-        unsafe { (vt.gui_ui_colored_label)(ui, r, g, b, 255, label.as_ptr()) };
+        sdk.gui_colored_label(ui, r, g, b, 255, &label);
     }
 }
 
@@ -505,7 +404,7 @@ pub fn bond_color(value: i32) -> (u8, u8, u8) {
 
 /// Overlay: hook-based training counts (fallback when not memory-tracking).
 fn draw_overlay_hooks(ui: *mut c_void) {
-    let vt = vt();
+    let sdk = Sdk::get();
 
     let tracker = match TRACKER.lock() {
         Ok(t) => t,
@@ -513,28 +412,22 @@ fn draw_overlay_hooks(ui: *mut c_void) {
     };
 
     if !tracker.active && tracker.total() == 0 {
-        return; // Don't show overlay until first training
+        return;
     }
 
     let counts = tracker.counts;
     let total = tracker.total();
     drop(tracker);
 
-    // SAFETY: IL2CPP FFI call; host vtable and resolved symbols are valid for process lifetime.
-    unsafe {
-        let heading = c"\u{1f3cb} Training";
-        (vt.gui_ui_small)(ui, heading.as_ptr());
+    sdk.gui_small(ui, "\u{1f3cb} Training");
 
-        for facility in Facility::ALL {
-            let count = counts[facility as usize];
-            let (r, g, b) = facility_color(facility);
-            let text = CString::new(format!("{}: {}", facility.name(), count)).unwrap_or_default();
-            (vt.gui_ui_colored_label)(ui, r, g, b, 255, text.as_ptr());
-        }
-
-        let total_text = CString::new(format!("Total: {}", total)).unwrap_or_default();
-        (vt.gui_ui_small)(ui, total_text.as_ptr());
+    for facility in Facility::ALL {
+        let count = counts[facility as usize];
+        let (r, g, b) = facility_color(facility);
+        sdk.gui_colored_label(ui, r, g, b, 255, &format!("{}: {}", facility.name(), count));
     }
+
+    sdk.gui_small(ui, &format!("Total: {}", total));
 }
 
 // ===========================================================================

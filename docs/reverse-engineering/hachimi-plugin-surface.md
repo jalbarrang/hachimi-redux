@@ -154,21 +154,22 @@ No-ops on Windows.
 | v6+ | `gui_ui_collapsing` |
 | v7+ | `gui_ui_set_font_size` |
 
-Check `Sdk::get().version().supports_*()` or compare `version >= N` against `hachimi_plugin_abi::API_VERSION`.
+Check host compatibility **once at init**: `Sdk::init_min(vtable, version, MIN_HOST_API)` or `ApiVersion::new(version).at_least(MIN_HOST_API)`. Plugin and host must use the same `hachimi-plugin-abi` `Vtable` layout (same repo build). Per-call success is reflected by host return values (`bool`), not version booleans.
 
 ## Plugin Patterns
 
 ### Init (recommended)
 
 ```rust
-use hachimi_plugin_sdk::{init_result_to_i32, Sdk};
-use hachimi_plugin_abi::{InitResult, Vtable};
+use hachimi_plugin_abi::{InitResult, API_VERSION, Vtable};
+use hachimi_plugin_sdk::{init_result_to_i32, InitError, Sdk};
 
 #[no_mangle]
 pub extern "C" fn hachimi_init(vtable_ptr: *const std::ffi::c_void, version: i32) -> i32 {
     // SAFETY: Host passes valid vtable at load.
-    match unsafe { Sdk::init(vtable_ptr as *const Vtable, version) } {
+    match unsafe { Sdk::init_min(vtable_ptr as *const Vtable, version, API_VERSION) } {
         Ok(()) => { /* register hooks / UI */ init_result_to_i32(InitResult::Ok) }
+        Err(InitError::HostApiTooOld { .. }) => init_result_to_i32(InitResult::Error),
         Err(_) => init_result_to_i32(InitResult::Error),
     }
 }

@@ -1,4 +1,4 @@
-//! API version feature gates matching host slot introductions.
+//! Host API version from `hachimi_init` — use for load-time compatibility only.
 
 use hachimi_plugin_abi::API_VERSION;
 
@@ -17,33 +17,15 @@ impl ApiVersion {
         self.0
     }
 
+    /// Whether the host reported at least `min` (check once at init, not per call).
     #[must_use]
-    pub const fn supports_overlay(self) -> bool {
-        self.0 >= 3
+    pub const fn at_least(self, min: i32) -> bool {
+        self.0 >= min
     }
 
+    /// API version of the abi crate this plugin was built against.
     #[must_use]
-    pub const fn supports_min_width(self) -> bool {
-        self.0 >= 4
-    }
-
-    #[must_use]
-    pub const fn supports_overlay_visibility(self) -> bool {
-        self.0 >= 5
-    }
-
-    #[must_use]
-    pub const fn supports_collapsing(self) -> bool {
-        self.0 >= 6
-    }
-
-    #[must_use]
-    pub const fn supports_font_size(self) -> bool {
-        self.0 >= 7
-    }
-
-    #[must_use]
-    pub const fn current_host() -> Self {
+    pub const fn abi_version() -> Self {
         Self(API_VERSION)
     }
 }

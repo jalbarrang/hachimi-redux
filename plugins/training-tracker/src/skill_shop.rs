@@ -19,7 +19,7 @@ use std::ffi::c_void;
 use std::sync::{Mutex, OnceLock};
 
 use crate::memory_reader;
-use hachimi_plugin_abi::vt;
+use hachimi_plugin_sdk::Sdk;
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -151,15 +151,19 @@ unsafe fn read_string(s: *mut c_void) -> Option<String> {
 
 unsafe fn read_field_i32(obj: *mut c_void, field: *mut c_void) -> i32 {
     let mut v: i32 = 0;
-    // SAFETY: IL2CPP FFI call; host vtable and resolved symbols are valid for process lifetime.
-    unsafe { (vt().il2cpp_get_field_value)(obj.cast(), field.cast(), &mut v as *mut _ as *mut c_void) };
+    // SAFETY: IL2CPP object and field pointers from resolved metadata.
+    unsafe {
+        Sdk::get().get_field_value(obj.cast(), field.cast(), &mut v as *mut _ as *mut c_void);
+    }
     v
 }
 
 unsafe fn decrypt_obscured_int(obj: *mut c_void, field: *mut c_void) -> i32 {
     let mut buf = [0u8; 16];
-    // SAFETY: IL2CPP FFI call; host vtable and resolved symbols are valid for process lifetime.
-    unsafe { (vt().il2cpp_get_field_value)(obj.cast(), field.cast(), buf.as_mut_ptr() as *mut c_void) };
+    // SAFETY: IL2CPP object and field pointers from resolved metadata.
+    unsafe {
+        Sdk::get().get_field_value(obj.cast(), field.cast(), buf.as_mut_ptr() as *mut c_void);
+    }
     let raw: [u8; 8] = [buf[0], buf[1], buf[2], buf[3], buf[4], buf[5], buf[6], buf[7]];
     decrypt_obscured_int_raw(&raw)
 }
@@ -186,64 +190,46 @@ fn ensure_resolved() -> bool {
 
 macro_rules! resolve {
     (class $img:expr, $ns:literal, $name:literal) => {{
-        // SAFETY: IL2CPP FFI call; class namespace and name are valid C strings.
-        let k = unsafe {
-            (vt().il2cpp_get_class)(
-                $img,
-                concat!($ns, "\0").as_ptr() as *const std::ffi::c_char,
-                concat!($name, "\0").as_ptr() as *const std::ffi::c_char,
-            )
-        };
-        if k.is_null() {
+        let sdk = Sdk::get();
+        let Some(k) = sdk.get_class($img, $ns, $name) else {
             return Err(concat!($name, " not found"));
-        }
-        k
+        };
+        k.cast::<c_void>()
     }};
     (nested $parent:expr, $name:literal) => {{
-        // SAFETY: IL2CPP FFI call; nested class name is a valid C string.
-        let k = unsafe {
-            (vt().il2cpp_find_nested_class)($parent, concat!($name, "\0").as_ptr() as *const std::ffi::c_char)
-        };
-        if k.is_null() {
+        let sdk = Sdk::get();
+        let Some(k) = sdk.find_nested_class($parent.cast(), $name) else {
             return Err(concat!("nested ", $name, " not found"));
-        }
-        k
+        };
+        k.cast::<c_void>()
     }};
     (method $klass:expr, $name:literal, $args:expr) => {{
-        // SAFETY: IL2CPP FFI call; method name is a valid C string.
-        let m = unsafe {
-            (vt().il2cpp_get_method)($klass, concat!($name, "\0").as_ptr() as *const std::ffi::c_char, $args)
-        };
-        if m.is_null() {
+        let sdk = Sdk::get();
+        let Some(m) = sdk.get_method($klass.cast(), $name, $args) else {
             return Err(concat!($name, " method not found"));
-        }
-        m as *const c_void
+        };
+        m.cast::<c_void>()
     }};
     (field $klass:expr, $name:literal) => {{
-        // SAFETY: IL2CPP FFI call; field name is a valid C string.
-        let f = unsafe {
-            (vt().il2cpp_get_field_from_name)($klass, concat!($name, "\0").as_ptr() as *const std::ffi::c_char)
-        };
-        if f.is_null() {
+        let sdk = Sdk::get();
+        let Some(f) = sdk.get_field_from_name($klass.cast(), $name) else {
             return Err(concat!($name, " field not found"));
-        }
-        f as *mut c_void
+        };
+        f.cast::<c_void>()
     }};
     (field_opt $klass:expr, $name:literal) => {{
-        // SAFETY: IL2CPP FFI call; field name is a valid C string.
-        unsafe {
-            (vt().il2cpp_get_field_from_name)($klass, concat!($name, "\0").as_ptr() as *const std::ffi::c_char)
-                as *mut c_void
-        }
+        Sdk::get()
+            .get_field_from_name($klass.cast(), $name)
+            .map(|f| f.cast::<c_void>())
+            .unwrap_or(std::ptr::null_mut())
     }};
 }
 
 fn try_resolve() -> Result<Resolved, &'static str> {
-    // SAFETY: IL2CPP FFI call; host vtable and resolved symbols are valid for process lifetime.
-    let img = unsafe { (vt().il2cpp_get_assembly_image)(c"umamusume.dll".as_ptr()) };
-    if img.is_null() {
+    let sdk = Sdk::get();
+    let Some(img) = sdk.get_assembly_image("umamusume.dll") else {
         return Err("umamusume.dll not found");
-    }
+    };
 
     // MasterDataManager (singleton hub)
     let mdm = resolve!(class img, "Gallop", "MasterDataManager");
@@ -330,9 +316,10 @@ fn read_skill_shop() -> Vec<SkillShopEntry> {
         None => return Vec::new(),
     };
 
-    // Get MasterDataManager singleton
-    // SAFETY: IL2CPP FFI call; host vtable and resolved symbols are valid for process lifetime.
-    let mdm = unsafe { (vt().il2cpp_get_singleton_like_instance)(r.mdm_klass.cast()) };
+    let mdm = Sdk::get()
+        .get_singleton(r.mdm_klass.cast())
+        .map(|p| p.cast::<c_void>())
+        .unwrap_or(std::ptr::null_mut());
     if mdm.is_null() {
         hlog_warn!("MasterDataManager singleton is null");
         return Vec::new();
@@ -385,12 +372,15 @@ fn read_skill_shop() -> Vec<SkillShopEntry> {
             continue;
         }
 
-        // SAFETY: IL2CPP FFI call; host vtable and resolved symbols are valid for process lifetime.
+        // SAFETY: IL2CPP list object layout — klass pointer at object head.
         let list_klass = unsafe { *(skill_list as *const *mut c_void) };
-        // SAFETY: IL2CPP FFI call; host vtable and resolved symbols are valid for process lifetime.
-        let m_cnt = unsafe { (vt().il2cpp_get_method)(list_klass, c"get_Count".as_ptr(), 0) };
-        // SAFETY: IL2CPP FFI call; host vtable and resolved symbols are valid for process lifetime.
-        let m_itm = unsafe { (vt().il2cpp_get_method)(list_klass, c"get_Item".as_ptr(), 1) };
+        let sdk = Sdk::get();
+        let Some(m_cnt) = sdk.get_method(list_klass.cast(), "get_Count", 0) else {
+            continue;
+        };
+        let Some(m_itm) = sdk.get_method(list_klass.cast(), "get_Item", 1) else {
+            continue;
+        };
         if m_cnt.is_null() || m_itm.is_null() {
             continue;
         }

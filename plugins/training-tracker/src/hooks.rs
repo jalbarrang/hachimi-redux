@@ -42,7 +42,7 @@ use std::ffi::{c_void, CStr};
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use crate::tracker::{Facility, TRACKER};
-use hachimi_plugin_abi::vt;
+use hachimi_plugin_sdk::Sdk;
 
 static HOOKS_INSTALLED: AtomicBool = AtomicBool::new(false);
 
@@ -164,13 +164,13 @@ struct MethodInfoCompat {
 
 /// Dump all method names on a class for diagnostics.
 fn dump_class_methods(class_name: &str, klass: *mut c_void) {
-    let vt = vt();
+    let sdk = Sdk::get();
     let mut iter: *mut c_void = std::ptr::null_mut();
     let mut count = 0u32;
     hlog_info!("Enumerating methods on {}:", class_name);
     loop {
         // SAFETY: Plugin FFI interop with Hachimi vtable
-        let method = unsafe { (vt.il2cpp_class_get_methods)(klass as _, &mut iter as *mut *mut c_void) };
+        let method = sdk.class_get_methods(klass as _, &mut iter);
         if method.is_null() {
             break;
         }
@@ -215,7 +215,7 @@ pub fn try_install_hooks() -> bool {
         return true;
     }
 
-    let vt = vt();
+    let sdk = Sdk::get();
 
     // List of (assembly, namespace, class, method, arg_count, hook_fn) to try.
     // These are educated guesses based on community research. Update after
@@ -281,37 +281,26 @@ pub fn try_install_hooks() -> bool {
 
     let mut installed_count = 0u32;
 
-    // --- Diagnostic: enumerate methods on key classes ---
-    // SAFETY: Plugin FFI interop with Hachimi vtable
-    unsafe {
-        // SAFETY: IL2CPP FFI call; assembly and class names are valid C strings.
-        let image = (vt.il2cpp_get_assembly_image)(c"umamusume.dll".as_ptr());
-        if !image.is_null() {
-            // Probe SingleModeMainViewController
-            let klass = (vt.il2cpp_get_class)(image, c"Gallop".as_ptr(), c"SingleModeMainViewController".as_ptr());
-            if !klass.is_null() {
-                dump_class_methods("SingleModeMainViewController", klass as _);
-            } else {
-                hlog_warn!("SingleModeMainViewController class not found!");
-            }
+    if let Some(image) = sdk.get_assembly_image("umamusume.dll") {
+        if let Some(klass) = sdk.get_class(image, "Gallop", "SingleModeMainViewController") {
+            dump_class_methods("SingleModeMainViewController", klass.cast());
+        } else {
+            hlog_warn!("SingleModeMainViewController class not found!");
+        }
 
-            // Probe some other training-related classes
-            for probe_class in [
-                c"TrainingView",
-                c"TrainingController",
-                c"TrainingSelectDecide",
-                c"TrainingMain",
-                c"TrainingMenu",
-                c"SingleModeViewController",
-                c"SingleModeSceneController",
-            ] {
-                let k = (vt.il2cpp_get_class)(image, c"Gallop".as_ptr(), probe_class.as_ptr());
-                let name = probe_class.to_str().unwrap_or("?");
-                if !k.is_null() {
-                    dump_class_methods(name, k as _);
-                } else {
-                    hlog_debug!("  Class {} not found", name);
-                }
+        for probe_class in [
+            "TrainingView",
+            "TrainingController",
+            "TrainingSelectDecide",
+            "TrainingMain",
+            "TrainingMenu",
+            "SingleModeViewController",
+            "SingleModeSceneController",
+        ] {
+            if let Some(k) = sdk.get_class(image, "Gallop", probe_class) {
+                dump_class_methods(probe_class, k.cast());
+            } else {
+                hlog_debug!("  Class {} not found", probe_class);
             }
         }
     }
@@ -325,35 +314,25 @@ pub fn try_install_hooks() -> bool {
             args,
         );
 
-        // SAFETY: Plugin FFI interop with Hachimi vtable
-        unsafe {
-            let image = (vt.il2cpp_get_assembly_image)(asm.as_ptr());
-            if image.is_null() {
-                hlog_warn!("  Assembly not found, skipping");
-                continue;
-            }
+        let Some(image) = sdk.get_assembly_image(asm.to_str().unwrap_or("")) else {
+            hlog_warn!("  Assembly not found, skipping");
+            continue;
+        };
+        let Some(klass) = sdk.get_class(image, ns.to_str().unwrap_or(""), class.to_str().unwrap_or("")) else {
+            hlog_warn!("  Class not found, skipping");
+            continue;
+        };
+        let Some(addr) = sdk.get_method_addr(klass, method.to_str().unwrap_or(""), *args) else {
+            hlog_warn!("  Method not found, skipping");
+            continue;
+        };
 
-            let klass = (vt.il2cpp_get_class)(image, ns.as_ptr(), class.as_ptr());
-            if klass.is_null() {
-                hlog_warn!("  Class not found, skipping");
-                continue;
-            }
+        hlog_info!("  Found at {:?}, installing hook...", addr);
 
-            let addr = (vt.il2cpp_get_method_addr)(klass, method.as_ptr(), *args);
-            if addr.is_null() {
-                hlog_warn!("  Method not found, skipping");
-                continue;
-            }
-
-            hlog_info!("  Found at {:?}, installing hook...", addr);
-
-            let hachimi = (vt.hachimi_instance)();
-            let interceptor = (vt.hachimi_get_interceptor)(hachimi);
-            let trampoline = (vt.interceptor_hook)(interceptor, addr, *hook_fn as *mut c_void);
-
-            if !trampoline.is_null() {
-                // Route trampoline to the correct storage based on the hook fn
-                let hook_ptr = *hook_fn as usize;
+        if let Some(trampoline) = sdk.hook(addr, *hook_fn as *mut c_void) {
+            let hook_ptr = *hook_fn as usize;
+            // SAFETY: Hook install runs once from init; static trampolines are read from hook callbacks only.
+            unsafe {
                 if hook_ptr == hook_on_click_training as usize {
                     ORIG_ON_CLICK_TRAINING_MENU = trampoline;
                 } else if hook_ptr == hook_on_select_command as usize {
@@ -363,13 +342,12 @@ pub fn try_install_hooks() -> bool {
                 } else if hook_ptr == hook_on_click_training_no_args as usize {
                     ORIG_ON_CLICK_TRAINING = trampoline;
                 }
-                installed_count += 1;
-                HOOKS_INSTALLED.store(true, Ordering::Relaxed);
-                hlog_info!("  ✓ Hook installed successfully!");
-                // Continue to install ALL hooks, not just the first
-            } else {
-                hlog_error!("  ✗ Hook installation failed");
             }
+            installed_count += 1;
+            HOOKS_INSTALLED.store(true, Ordering::Relaxed);
+            hlog_info!("  ✓ Hook installed successfully!");
+        } else {
+            hlog_error!("  ✗ Hook installation failed");
         }
     }
 

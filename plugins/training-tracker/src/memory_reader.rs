@@ -14,7 +14,7 @@ use std::ffi::c_void;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::OnceLock;
 
-use hachimi_plugin_abi::vt;
+use hachimi_plugin_sdk::Sdk;
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -147,39 +147,33 @@ fn resolve_class(
     ns: &std::ffi::CStr,
     name: &std::ffi::CStr,
 ) -> Result<*mut c_void, &'static str> {
-    let vt = vt();
-    // SAFETY: IL2CPP FFI call; assembly image and class names are valid C strings.
-    let klass = unsafe { (vt.il2cpp_get_class)(image.cast_mut(), ns.as_ptr(), name.as_ptr()) };
-    if klass.is_null() {
-        let label = name.to_str().unwrap_or("?");
-        hlog_error!("Class not found: {}", label);
+    let sdk = Sdk::get();
+    let ns_s = ns.to_str().map_err(|_| "invalid namespace")?;
+    let name_s = name.to_str().map_err(|_| "invalid class name")?;
+    let Some(klass) = sdk.get_class(image.cast(), ns_s, name_s) else {
+        hlog_error!("Class not found: {}", name_s);
         return Err("IL2CPP class not found");
-    }
-    Ok(klass)
+    };
+    Ok(klass.cast())
 }
 
 fn resolve_method(klass: *mut c_void, name: &std::ffi::CStr, args: i32) -> Result<*const c_void, &'static str> {
-    let vt = vt();
-    // SAFETY: IL2CPP FFI call; class pointer resolved above, method name is a valid C string.
-    let mi = unsafe { (vt.il2cpp_get_method)(klass.cast(), name.as_ptr(), args) };
-    if mi.is_null() {
-        let label = name.to_str().unwrap_or("?");
-        hlog_error!("Method not found: {} (args={})", label, args);
+    let sdk = Sdk::get();
+    let name_s = name.to_str().map_err(|_| "invalid method name")?;
+    let Some(mi) = sdk.get_method(klass.cast(), name_s, args) else {
+        hlog_error!("Method not found: {} (args={})", name_s, args);
         return Err("IL2CPP method not found");
-    }
-    Ok(mi)
+    };
+    Ok(mi.cast())
 }
 
 fn try_resolve() -> Result<ResolvedChain, &'static str> {
-    let vt = vt();
-
     hlog_info!("try_resolve: resolving IL2CPP assembly...");
-    // SAFETY: IL2CPP FFI call; host vtable and resolved symbols are valid for process lifetime.
-    let image = unsafe { (vt.il2cpp_get_assembly_image)(c"umamusume.dll".as_ptr()) };
-    if image.is_null() {
+    let Some(image) = Sdk::get().get_assembly_image("umamusume.dll") else {
         hlog_error!("try_resolve: umamusume.dll assembly not found");
         return Err("Assembly umamusume.dll not found");
-    }
+    };
+    let image = image.cast::<c_void>();
     // Resolve classes
     hlog_info!("try_resolve: resolving classes...");
     let wdm = resolve_class(image, c"Gallop", c"WorkDataManager")?;
@@ -264,16 +258,10 @@ pub fn read_snapshot() -> Option<CareerSnapshot> {
 
 fn read_snapshot_inner() -> Option<CareerSnapshot> {
     let chain = CHAIN.get()?;
-    let vt = vt();
+    let sdk = Sdk::get();
 
-    // Step 1: Get the WorkDataManager singleton
     hlog_trace!("snapshot: step 1 — get singleton");
-    // SAFETY: IL2CPP FFI call; host vtable and resolved symbols are valid for process lifetime.
-    let singleton = unsafe { (vt.il2cpp_get_singleton_like_instance)(chain.wdm_klass.cast()) };
-    if singleton.is_null() {
-        return None;
-    }
-    // Step 2: WorkDataManager → WorkSingleModeData
+    let singleton = sdk.get_singleton(chain.wdm_klass.cast())?.cast::<c_void>();
     hlog_trace!("snapshot: step 2 — get_SingleMode (singleton={:?})", singleton);
     // SAFETY: Reading field or calling method on non-null IL2CPP object pointer.
     let wsmd = unsafe { call_obj(singleton, chain.m_get_single_mode) };
@@ -392,29 +380,19 @@ const COMMAND_ID_SETS: &[[i32; 5]] = &[
 /// Auto-detects the correct command ID set by probing known sets.
 /// Returns [0; 5] if anything goes wrong.
 fn read_training_levels(chara: *mut c_void, chain: &ResolvedChain) -> [i32; 5] {
-    // First, verify the _trainingLevelDic field exists and is non-null.
-    // If the dictionary isn't initialized, calling GetTrainingLevel would crash.
-    let vt = vt();
+    let sdk = Sdk::get();
     hlog_trace!("training_levels: checking _trainingLevelDic field");
-    // SAFETY: IL2CPP FFI call; host vtable and resolved symbols are valid for process lifetime.
-    let field = unsafe {
-        (vt.il2cpp_get_field_from_name)(
-            // We need the chara object's class. We can get it from the object header.
-            // IL2CPP objects have klass at offset 0.
-            *(chara as *const *mut c_void), // object->klass
-            c"_trainingLevelDic".as_ptr(),
-        )
-    };
-    if field.is_null() {
+    // SAFETY: IL2CPP object header — klass pointer at offset 0.
+    let chara_klass = unsafe { *(chara as *const *mut c_void) };
+    let Some(field) = sdk.get_field_from_name(chara_klass.cast(), "_trainingLevelDic") else {
         hlog_trace!("training_levels: _trainingLevelDic field not found");
         return [0; 5];
-    }
+    };
 
-    // Read the field value (it's an object reference = pointer)
     let mut dict_ptr: *mut c_void = std::ptr::null_mut();
-    // SAFETY: IL2CPP FFI call; host vtable and resolved symbols are valid for process lifetime.
+    // SAFETY: IL2CPP object and field from resolved metadata.
     unsafe {
-        (vt.il2cpp_get_field_value)(chara.cast(), field.cast(), &mut dict_ptr as *mut _ as *mut c_void);
+        sdk.get_field_value(chara.cast(), field, &mut dict_ptr as *mut _ as *mut c_void);
     }
     if dict_ptr.is_null() {
         hlog_trace!("training_levels: dictionary is null, skipping");
@@ -492,37 +470,29 @@ pub unsafe fn read_list_field(
     obj: *mut c_void,
     field_name: &std::ffi::CStr,
 ) -> Option<(*mut c_void, i32, *const c_void)> {
-    let vt = vt();
-    // SAFETY: Reading Il2CppClass header from non-null object pointer.
+    let sdk = Sdk::get();
+    let field_s = field_name.to_str().ok()?;
+    // SAFETY: IL2CPP object header — klass pointer at offset 0.
     let obj_klass = unsafe { *(obj as *const *mut c_void) };
-    // SAFETY: IL2CPP FFI call; field name is a valid C string.
-    let field = unsafe { (vt.il2cpp_get_field_from_name)(obj_klass, field_name.as_ptr()) };
-    if field.is_null() {
-        return None;
-    }
+    let field = sdk.get_field_from_name(obj_klass.cast(), field_s)?;
 
     let mut list_ptr: *mut c_void = std::ptr::null_mut();
-    // SAFETY: IL2CPP FFI call; host vtable and resolved symbols are valid for process lifetime.
+    // SAFETY: IL2CPP object and field from resolved metadata.
     unsafe {
-        (vt.il2cpp_get_field_value)(obj.cast(), field.cast(), &mut list_ptr as *mut _ as *mut c_void);
+        sdk.get_field_value(obj.cast(), field, &mut list_ptr as *mut _ as *mut c_void);
     }
     if list_ptr.is_null() {
         return None;
     }
 
-    // SAFETY: IL2CPP FFI call; host vtable and resolved symbols are valid for process lifetime.
+    // SAFETY: IL2CPP list object layout — klass pointer at object head.
     let list_klass = unsafe { *(list_ptr as *const *mut c_void) };
-    // SAFETY: IL2CPP FFI call; host vtable and resolved symbols are valid for process lifetime.
-    let m_count = unsafe { (vt.il2cpp_get_method)(list_klass, c"get_Count".as_ptr(), 0) };
-    // SAFETY: IL2CPP FFI call; host vtable and resolved symbols are valid for process lifetime.
-    let m_item = unsafe { (vt.il2cpp_get_method)(list_klass, c"get_Item".as_ptr(), 1) };
-    if m_count.is_null() || m_item.is_null() {
-        return None;
-    }
+    let m_count = sdk.get_method(list_klass.cast(), "get_Count", 0)?;
+    let m_item = sdk.get_method(list_klass.cast(), "get_Item", 1)?;
 
     // SAFETY: Reading field or calling method on non-null IL2CPP object pointer.
-    let count = unsafe { call_i32(list_ptr, m_count) };
-    Some((list_ptr, count, m_item))
+    let count = unsafe { call_i32(list_ptr, m_count.cast()) };
+    Some((list_ptr, count, m_item.cast()))
 }
 
 // ---------------------------------------------------------------------------
@@ -576,7 +546,7 @@ unsafe fn read_acquired_skills_inner() -> Vec<AcquiredSkillInfo> {
         return Vec::new();
     }
 
-    let vt = vt();
+    let sdk = Sdk::get();
     let mut skills = Vec::with_capacity(count as usize);
     let mut m_master_id: *const c_void = std::ptr::null();
     let mut m_level: *const c_void = std::ptr::null();
@@ -594,20 +564,22 @@ unsafe fn read_acquired_skills_inner() -> Vec<AcquiredSkillInfo> {
         // Resolve methods on first element (inherited from SkillDataBase)
         if !methods_resolved {
             methods_resolved = true;
-            // SAFETY: IL2CPP FFI call; host vtable and resolved symbols are valid for process lifetime.
+            // SAFETY: IL2CPP object header — klass pointer at offset 0.
             let klass = unsafe { *(item as *const *mut c_void) };
 
-            // SAFETY: IL2CPP FFI call; host vtable and resolved symbols are valid for process lifetime.
-            m_master_id = unsafe { (vt.il2cpp_get_method)(klass, c"get_MasterId".as_ptr(), 0) } as _;
-            // SAFETY: IL2CPP FFI call; host vtable and resolved symbols are valid for process lifetime.
-            m_level = unsafe { (vt.il2cpp_get_method)(klass, c"get_Level".as_ptr(), 0) } as _;
-            // SAFETY: IL2CPP FFI call; host vtable and resolved symbols are valid for process lifetime.
-            m_master_data = unsafe { (vt.il2cpp_get_method)(klass, c"get_MasterData".as_ptr(), 0) } as _;
-
-            if m_master_id.is_null() || m_level.is_null() {
+            let (Some(mid), Some(lvl)) = (
+                sdk.get_method(klass.cast(), "get_MasterId", 0),
+                sdk.get_method(klass.cast(), "get_Level", 0),
+            ) else {
                 hlog_warn!("SkillDataBase methods not found (get_MasterId/get_Level)");
                 return Vec::new();
-            }
+            };
+            m_master_id = mid.cast();
+            m_level = lvl.cast();
+            m_master_data = sdk
+                .get_method(klass.cast(), "get_MasterData", 0)
+                .map(|m| m.cast())
+                .unwrap_or(std::ptr::null());
 
             static LOGGED: AtomicBool = AtomicBool::new(false);
             if !LOGGED.swap(true, Ordering::Relaxed) {
@@ -631,10 +603,12 @@ unsafe fn read_acquired_skills_inner() -> Vec<AcquiredSkillInfo> {
             let master_obj = unsafe { call_obj(item, m_master_data) };
             if !master_obj.is_null() {
                 if m_name.is_null() {
-                    // SAFETY: IL2CPP FFI call; host vtable and resolved symbols are valid for process lifetime.
+                    // SAFETY: IL2CPP object header — klass pointer at offset 0.
                     let master_klass = unsafe { *(master_obj as *const *mut c_void) };
-                    // SAFETY: IL2CPP FFI call; host vtable and resolved symbols are valid for process lifetime.
-                    m_name = unsafe { (vt.il2cpp_get_method)(master_klass, c"get_Name".as_ptr(), 0) } as _;
+                    m_name = sdk
+                        .get_method(master_klass.cast(), "get_Name", 0)
+                        .map(|m| m.cast())
+                        .unwrap_or(std::ptr::null());
                 }
                 if !m_name.is_null() {
                     // SAFETY: IL2CPP FFI call; host vtable and resolved symbols are valid for process lifetime.
@@ -709,7 +683,7 @@ unsafe fn read_evaluations_inner() -> Vec<EvaluationInfo> {
         return Vec::new();
     }
 
-    let vt = vt();
+    let sdk = Sdk::get();
     let mut evals = Vec::with_capacity(count as usize);
     let mut m_target_id: *const c_void = std::ptr::null();
     let mut m_value: *const c_void = std::ptr::null();
@@ -726,30 +700,29 @@ unsafe fn read_evaluations_inner() -> Vec<EvaluationInfo> {
 
         if !methods_resolved {
             methods_resolved = true;
-            // SAFETY: IL2CPP FFI call; host vtable and resolved symbols are valid for process lifetime.
+            // SAFETY: IL2CPP object header — klass pointer at offset 0.
             let klass = unsafe { *(item as *const *mut c_void) };
 
-            // SAFETY: IL2CPP FFI call; host vtable and resolved symbols are valid for process lifetime.
-            m_target_id = unsafe { (vt.il2cpp_get_method)(klass, c"get_TargetId".as_ptr(), 0) } as _;
-            // SAFETY: IL2CPP FFI call; host vtable and resolved symbols are valid for process lifetime.
-            m_value = unsafe { (vt.il2cpp_get_method)(klass, c"get_Value".as_ptr(), 0) } as _;
-            // SAFETY: IL2CPP FFI call; host vtable and resolved symbols are valid for process lifetime.
-            m_is_appear = unsafe { (vt.il2cpp_get_method)(klass, c"get_IsAppear".as_ptr(), 0) } as _;
-
-            if m_target_id.is_null() || m_value.is_null() {
+            let (Some(tid), Some(val)) = (
+                sdk.get_method(klass.cast(), "get_TargetId", 0),
+                sdk.get_method(klass.cast(), "get_Value", 0),
+            ) else {
                 hlog_warn!("Evaluation methods not found (get_TargetId/get_Value)");
                 return Vec::new();
-            }
+            };
+            m_target_id = tid.cast();
+            m_value = val.cast();
+            m_is_appear = sdk
+                .get_method(klass.cast(), "get_IsAppear", 0)
+                .map(|m| m.cast())
+                .unwrap_or(std::ptr::null());
 
-            // Resolve MasterDataUtil.GetCharaNameByCharaId for name lookup
-            // SAFETY: IL2CPP FFI calls for class/method resolution
-            unsafe {
-                let image = (vt.il2cpp_get_assembly_image)(c"umamusume.dll".as_ptr());
-                if !image.is_null() {
-                    let mdu = (vt.il2cpp_get_class)(image, c"Gallop".as_ptr(), c"MasterDataUtil".as_ptr());
-                    if !mdu.is_null() {
-                        m_get_chara_name = (vt.il2cpp_get_method)(mdu, c"GetCharaNameByCharaId".as_ptr(), 1) as _;
-                    }
+            if let Some(image) = sdk.get_assembly_image("umamusume.dll") {
+                if let Some(mdu) = sdk.get_class(image, "Gallop", "MasterDataUtil") {
+                    m_get_chara_name = sdk
+                        .get_method(mdu, "GetCharaNameByCharaId", 1)
+                        .map(|m| m.cast())
+                        .unwrap_or(std::ptr::null());
                 }
             }
 
@@ -807,13 +780,9 @@ unsafe fn read_evaluations_inner() -> Vec<EvaluationInfo> {
 /// Get the chara object pointer (WorkSingleModeCharaData) if available.
 pub fn get_chara_ptr() -> Option<*mut c_void> {
     let chain = CHAIN.get()?;
-    let vt = vt();
+    let sdk = Sdk::get();
 
-    // SAFETY: IL2CPP FFI call; host vtable and resolved symbols are valid for process lifetime.
-    let singleton = unsafe { (vt.il2cpp_get_singleton_like_instance)(chain.wdm_klass.cast()) };
-    if singleton.is_null() {
-        return None;
-    }
+    let singleton = sdk.get_singleton(chain.wdm_klass.cast())?.cast::<c_void>();
 
     // SAFETY: Reading field or calling method on non-null IL2CPP object pointer.
     let wsmd = unsafe { call_obj(singleton, chain.m_get_single_mode) };

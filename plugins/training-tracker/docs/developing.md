@@ -13,6 +13,6 @@ Output: `target/release/hachimi_training_tracker.dll` (Windows).
 ## Dependencies
 
 - `hachimi-plugin-abi` — `Vtable`, `vt()`, `hlog_*` macros
-- `hachimi-plugin-sdk` — `Sdk::init`, `ApiVersion`, safe GUI/IL2CPP/hook helpers
+- `hachimi-plugin-sdk` — `Sdk::init_min`, safe GUI/IL2CPP/hook helpers (load-time API check only)
 
 Copy the release DLL to the game directory and list it in `hachimi/config.json` → `load_libraries`.

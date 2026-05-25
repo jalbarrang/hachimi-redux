@@ -14,6 +14,11 @@ static SDK: OnceLock<Sdk> = OnceLock::new();
 pub enum InitError {
     NullVtable,
     AlreadyInitialized,
+    /// Host `version` is below the plugin's required minimum.
+    HostApiTooOld {
+        required: i32,
+        actual: i32,
+    },
 }
 
 /// Plugin runtime handle: vtable access and version-aware helpers.
@@ -27,8 +32,23 @@ impl Sdk {
     /// # Safety
     /// `vtable_ptr` must point to a valid `Vtable` for the process lifetime.
     pub unsafe fn init(vtable_ptr: *const Vtable, version: i32) -> Result<(), InitError> {
+        // SAFETY: Caller guarantees a valid vtable pointer for process lifetime.
+        unsafe { Self::init_min(vtable_ptr, version, i32::MIN) }
+    }
+
+    /// Install the vtable after verifying the host API is new enough.
+    ///
+    /// # Safety
+    /// `vtable_ptr` must point to a valid `Vtable` for the process lifetime.
+    pub unsafe fn init_min(vtable_ptr: *const Vtable, version: i32, min_host_api: i32) -> Result<(), InitError> {
         if vtable_ptr.is_null() {
             return Err(InitError::NullVtable);
+        }
+        if version < min_host_api {
+            return Err(InitError::HostApiTooOld {
+                required: min_host_api,
+                actual: version,
+            });
         }
         // SAFETY: Caller guarantees a valid vtable pointer for process lifetime.
         unsafe {
@@ -125,16 +145,13 @@ impl Sdk {
         unsafe { (vt().gui_register_menu_section)(Some(callback), userdata) }
     }
 
-    /// Register an overlay when the host API supports it (v3+).
+    /// Register an overlay. Returns `false` if the host declined registration.
     pub fn register_overlay(
         &self,
         id: &str,
         callback: hachimi_plugin_abi::GuiMenuSectionCallback,
         userdata: *mut c_void,
     ) -> bool {
-        if !self.version.supports_overlay() {
-            return false;
-        }
         let Ok(id_c) = CString::new(id) else {
             return false;
         };
