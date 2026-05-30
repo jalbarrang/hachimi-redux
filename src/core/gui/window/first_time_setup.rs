@@ -11,9 +11,6 @@ use crate::core::{
     Hachimi,
 };
 
-#[cfg(target_os = "android")]
-use super::super::android_keyboard::{handle_android_keyboard, ime_scroll_padding};
-
 pub(crate) struct FirstTimeSetupWindow {
     id: egui::Id,
     meta_index_url: String,
@@ -72,8 +69,6 @@ impl Window for FirstTimeSetupWindow {
                             ui.horizontal(|ui| {
                                 ui.label(t!("config_editor.meta_index_url"));
                                 let res = ui.add(egui::TextEdit::singleline(&mut self.meta_index_url).lock_focus(true));
-                                #[cfg(target_os = "android")]
-                                handle_android_keyboard(&res, &mut self.meta_index_url);
                                 #[cfg(target_os = "windows")]
                                 if res.has_focus() {
                                     ui.memory_mut(|mem| {
@@ -176,13 +171,6 @@ impl Window for FirstTimeSetupWindow {
                                                 last_section = Some(is_matched);
                                             }
                                         });
-                                    #[cfg(target_os = "android")]
-                                    {
-                                        let padding = ime_scroll_padding(ui.ctx());
-                                        if padding > 0.0 {
-                                            ui.add_space(padding);
-                                        }
-                                    }
                                 });
                             });
                         }

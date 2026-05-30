@@ -45,16 +45,6 @@ pub fn apply_ui_scale() {
     let canvas_scaler_list = GetCanvasScalerList(ui_manager);
     // SAFETY: FFI / raw pointer operation required by IL2CPP interop
     for scaler in unsafe { canvas_scaler_list.as_slice().iter() } {
-        #[cfg(target_os = "android")]
-        {
-            let res = CanvasScaler::get_m_ReferenceResolution(*scaler);
-            // SAFETY: FFI / raw pointer operation required by IL2CPP interop
-            unsafe {
-                (*res).x /= scale;
-                (*res).y /= scale;
-            }
-        }
-
         #[cfg(target_os = "windows")]
         CanvasScaler::set_scaleFactor(*scaler, scale);
     }
@@ -101,32 +91,6 @@ extern "C" fn ChangeResizeUIForPC(this: *mut Il2CppObject, width: i32, height: i
     apply_ui_scale();
 }
 
-#[cfg(target_os = "android")]
-extern "C" fn WaitBootSetup_MoveNext(enumerator: *mut Il2CppObject) -> bool {
-    use crate::il2cpp::symbols::MoveNextFn;
-    let moved = get_orig_fn!(WaitBootSetup_MoveNext, MoveNextFn)(enumerator);
-    if !moved {
-        apply_ui_scale();
-    }
-    moved
-}
-
-#[cfg(target_os = "android")]
-type WaitBootSetupFn = extern "C" fn(this: *mut Il2CppObject) -> crate::il2cpp::symbols::IEnumerator;
-#[cfg(target_os = "android")]
-extern "C" fn WaitBootSetup(this: *mut Il2CppObject) -> crate::il2cpp::symbols::IEnumerator {
-    let enumerator = get_orig_fn!(WaitBootSetup, WaitBootSetupFn)(this);
-    if Hachimi::instance().config.load().ui_scale == 1.0 {
-        return enumerator;
-    }
-
-    if let Err(e) = enumerator.hook_move_next(WaitBootSetup_MoveNext) {
-        error!("Failed to hook enumerator: {}", e);
-    }
-
-    enumerator
-}
-
 #[cfg(target_os = "windows")]
 static mut CREATERENDERTEXTUREFROMSCREEN_ADDR: usize = 0;
 #[cfg(target_os = "windows")]
@@ -148,13 +112,6 @@ pub fn init(umamusume: *const Il2CppImage) {
         let ChangeResizeUIForPC_addr = get_method_addr(UIManager, c"ChangeResizeUIForPC", 2);
 
         new_hook!(ChangeResizeUIForPC_addr, ChangeResizeUIForPC);
-    }
-
-    #[cfg(target_os = "android")]
-    {
-        let WaitBootSetup_addr = get_method_addr(UIManager, c"WaitBootSetup", 0);
-
-        new_hook!(WaitBootSetup_addr, WaitBootSetup);
     }
 
     // SAFETY: FFI / raw pointer operation required by IL2CPP interop

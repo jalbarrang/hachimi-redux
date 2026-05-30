@@ -10,7 +10,6 @@
 # Only check dependencies for platforms we actually target.
 targets = [
     "x86_64-pc-windows-msvc",
-    "aarch64-linux-android",
 ]
 
 # =============================================================================
@@ -55,6 +54,8 @@ allow = [
 exceptions = [
     # The project itself is GPL-3.0 (this is fine — it's our code).
     { allow = ["GPL-3.0-or-later"], crate = "hachimi" },
+    { allow = ["GPL-3.0-or-later"], crate = "hachimi-plugin-abi" },
+    { allow = ["GPL-3.0-or-later"], crate = "hachimi-plugin-sdk" },
     # egui fonts ship under OFL-1.1 + Ubuntu font license — standard for font crates.
     { allow = ["OFL-1.1", "Ubuntu-font-1.0"], crate = "epaint_default_fonts" },
 ]

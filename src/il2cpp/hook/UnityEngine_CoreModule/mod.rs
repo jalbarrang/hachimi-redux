@@ -13,10 +13,6 @@ mod Resources;
 pub mod Sprite;
 pub mod Texture;
 pub mod Texture2D;
-#[cfg(target_os = "android")]
-pub mod TouchScreenKeyboard;
-#[cfg(target_os = "android")]
-pub mod TouchScreenKeyboardType;
 pub mod Transform;
 pub mod UnityAction;
 
@@ -52,11 +48,6 @@ pub fn init() {
     RectTransform::init(image);
     Transform::init(image);
     RectOffset::init(image);
-    #[cfg(target_os = "android")]
-    {
-        TouchScreenKeyboard::init(image);
-        TouchScreenKeyboardType::init(image);
-    }
 
     #[cfg(target_os = "windows")]
     {

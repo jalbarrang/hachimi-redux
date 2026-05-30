@@ -24,9 +24,6 @@ use super::{
     ThemeEditorWindow, Window,
 };
 
-#[cfg(target_os = "android")]
-use super::super::android_keyboard::{handle_android_keyboard, ime_scroll_padding};
-
 pub(crate) struct ConfigEditor {
     last_ptr_config: usize,
     config: hachimi::Config,
@@ -127,8 +124,6 @@ impl ConfigEditor {
 
                 ui.label(t!("config_editor.meta_index_url"));
                 let res = ui.add(egui::TextEdit::singleline(&mut config.meta_index_url).lock_focus(true));
-                #[cfg(target_os = "android")]
-                handle_android_keyboard(&res, &mut config.meta_index_url);
                 #[cfg(target_os = "windows")]
                 if res.has_focus() {
                     ui.memory_mut(|mem| {
@@ -568,13 +563,6 @@ impl Window for ConfigEditor {
                                             Self::run_options_grid(&mut config, ui, self.current_tab);
                                         });
                                 });
-                            #[cfg(target_os = "android")]
-                            {
-                                let padding = ime_scroll_padding(ui.ctx());
-                                if padding > 0.0 {
-                                    ui.add_space(padding);
-                                }
-                            }
                         });
                     },
                     |ui| {

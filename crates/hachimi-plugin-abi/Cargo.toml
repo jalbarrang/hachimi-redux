@@ -2,6 +2,7 @@
 name = "hachimi-plugin-abi"
 version = "0.1.0"
 edition = "2021"
+license = "GPL-3.0-or-later"
 description = "Stable C ABI types for Hachimi plugins (Vtable, init, logging macros)"
 
 [lib]

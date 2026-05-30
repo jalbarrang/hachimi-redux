@@ -1,7 +1,5 @@
 //! In-game egui overlay: menu, dialogs, notifications, and plugin UI.
 
-#[cfg(target_os = "android")]
-mod android_keyboard;
 mod frame;
 mod instance;
 mod menu;
@@ -30,8 +28,6 @@ pub(crate) use notification::Notification;
 pub(crate) use tween::TweenInOutWithDelay;
 pub(crate) use window::BoxedWindow;
 
-#[cfg(target_os = "android")]
-pub use android_keyboard::{handle_android_keyboard, KeyboardOwner, KEYBOARD_GC_HANDLE, KEYBOARD_OWNER};
 pub use notification::NotificationGuard;
 pub use theme_preview::enqueue_theme_preview;
 pub use window::{PersistentMessageWindow, SimpleOkDialog, SimpleYesNoDialog, Window};
@@ -50,8 +46,6 @@ pub struct Gui {
     pub(crate) tmp_frame_count: u32,
     pub(crate) fps_text: String,
     pub(crate) last_focused: Option<egui::Id>,
-    #[cfg(target_os = "android")]
-    pub(crate) ime_cooldown: Option<Instant>,
 
     pub(crate) show_menu: bool,
 

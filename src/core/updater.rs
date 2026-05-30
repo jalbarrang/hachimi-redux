@@ -76,21 +76,6 @@ impl Updater {
                     return Ok(true);
                 }
             }
-            #[cfg(target_os = "android")]
-            {
-                if let Some(mutex) = Gui::instance() {
-                    mutex.lock().unwrap().show_window(Box::new(SimpleYesNoDialog::new(
-                        &t!("update_prompt_dialog.title"),
-                        &t!("update_prompt_dialog.android_content", version = latest.tag_name),
-                        |ok| {
-                            if !ok {
-                                return;
-                            }
-                            Hachimi::instance().updater.clone().run();
-                        },
-                    )));
-                }
-            }
         } else if let Some(mutex) = Gui::instance() {
             mutex
                 .lock()
@@ -128,18 +113,6 @@ impl Updater {
 
                 dialog_show.store(false, std::sync::atomic::Ordering::Relaxed)
             });
-        }
-        #[cfg(target_os = "android")]
-        {
-            use crate::{
-                android::utils,
-                core::hachimi::{UMAPATCHER_INSTALL_URL, UMAPATCHER_PACKAGE_NAME},
-            };
-            utils::open_app_or_fallback(
-                UMAPATCHER_PACKAGE_NAME,
-                &format!("{}.MainActivity", UMAPATCHER_PACKAGE_NAME.replace(".edge", "")),
-                UMAPATCHER_INSTALL_URL,
-            );
         }
     }
 

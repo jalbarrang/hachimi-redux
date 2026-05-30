@@ -2,13 +2,14 @@
 name = "hachimi-plugin-sdk"
 version = "0.1.0"
 edition = "2021"
+license = "GPL-3.0-or-later"
 description = "Ergonomic SDK for Hachimi plugins (Sdk, ApiVersion, safe wrappers)"
 
 [lib]
 crate-type = ["lib"]
 
 [dependencies]
-hachimi-plugin-abi = { path = "../hachimi-plugin-abi" }
+hachimi-plugin-abi = { path = "../hachimi-plugin-abi", version = "0.1.0" }
 
 [lints.rust]
 improper_ctypes = "warn"

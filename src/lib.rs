@@ -17,13 +17,6 @@ rust_i18n::i18n!("assets/locales", fallback = "en");
 pub mod core;
 pub mod il2cpp;
 
-/** Android **/
-#[cfg(target_os = "android")]
-mod android;
-
-#[cfg(target_os = "android")]
-use android::{game_impl, gui_impl, hachimi_impl, interceptor_impl, log_impl, symbols_impl};
-
 /** Windows **/
 #[cfg(target_os = "windows")]
 mod windows;

@@ -32,8 +32,6 @@ pub const REPO_PATH: &str = "kairusds/Hachimi-Edge";
 pub const GITHUB_API: &str = "https://api.github.com/repos";
 pub const CODEBERG_API: &str = "https://codeberg.org/api/v1/repos";
 pub const WEBSITE_URL: &str = "https://hachimi.noccu.art";
-pub const UMAPATCHER_PACKAGE_NAME: &str = "com.leadrdrk.umapatcher.edge";
-pub const UMAPATCHER_INSTALL_URL: &str = "https://github.com/kairusds/UmaPatcher-Edge/releases/latest";
 
 pub static CONFIG_LOAD_ERROR: AtomicBool = AtomicBool::new(false);
 
@@ -411,10 +409,6 @@ pub struct Config {
     #[cfg(target_os = "windows")]
     #[serde(flatten)]
     pub windows: hachimi_impl::Config,
-
-    #[cfg(target_os = "android")]
-    #[serde(flatten)]
-    pub android: hachimi_impl::Config,
 }
 
 impl Config {
@@ -476,18 +470,12 @@ impl Default for Config {
 
 #[derive(Deserialize, Default, Clone)]
 pub struct OsOption<T> {
-    #[cfg(target_os = "android")]
-    android: Option<T>,
-
     #[cfg(target_os = "windows")]
     windows: Option<T>,
 }
 
 impl<T> OsOption<T> {
     pub fn as_ref(&self) -> Option<&T> {
-        #[cfg(target_os = "android")]
-        return self.android.as_ref();
-
         #[cfg(target_os = "windows")]
         return self.windows.as_ref();
     }
@@ -619,15 +607,6 @@ impl LocalizedData {
         let path: Option<PathBuf>;
         let config: LocalizedDataConfig = if let Some(ld_dir) = &config.localized_data_dir {
             let ld_path = Path::new(data_dir).join(ld_dir);
-
-            // Create .nomedia
-            #[cfg(target_os = "android")]
-            {
-                _ = fs::OpenOptions::new()
-                    .create_new(true)
-                    .write(true)
-                    .open(ld_path.join(".nomedia"));
-            }
 
             let ld_config_path = ld_path.join("config.json");
             path = Some(ld_path);
@@ -830,10 +809,6 @@ impl Default for LocalizedDataConfig {
 
 #[derive(Deserialize)]
 pub struct AssetInfo<T> {
-    #[cfg(target_os = "android")]
-    #[serde(default)]
-    android: AssetMetadata,
-
     #[cfg(target_os = "windows")]
     #[serde(default)]
     windows: AssetMetadata,
@@ -845,9 +820,6 @@ pub struct AssetInfo<T> {
 impl<T> Default for AssetInfo<T> {
     fn default() -> Self {
         Self {
-            #[cfg(target_os = "android")]
-            android: Default::default(),
-
             #[cfg(target_os = "windows")]
             windows: Default::default(),
 
@@ -858,17 +830,11 @@ impl<T> Default for AssetInfo<T> {
 
 impl<T> AssetInfo<T> {
     pub fn metadata(self) -> AssetMetadata {
-        #[cfg(target_os = "android")]
-        return self.android;
-
         #[cfg(target_os = "windows")]
         return self.windows;
     }
 
     pub fn metadata_ref(&self) -> &AssetMetadata {
-        #[cfg(target_os = "android")]
-        return &self.android;
-
         #[cfg(target_os = "windows")]
         return &self.windows;
     }

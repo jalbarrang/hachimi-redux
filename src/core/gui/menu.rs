@@ -22,18 +22,12 @@ use crate::il2cpp::{
     symbols::Thread,
 };
 
-#[cfg(target_os = "android")]
-use crate::il2cpp::hook::umamusume::WebViewManager;
-
 #[cfg(target_os = "windows")]
 use crate::il2cpp::hook::UnityEngine_CoreModule::QualitySettings;
 
 use super::scale::get_scale;
 use super::window::{AboutWindow, BoxedWindow, ConfigEditor, FirstTimeSetupWindow, SimpleYesNoDialog};
 use super::{Gui, DISABLED_GAME_UIS};
-
-#[cfg(target_os = "android")]
-use super::android_keyboard::ime_scroll_padding;
 
 impl Gui {
     pub(crate) fn run_menu(&mut self) {
@@ -53,7 +47,6 @@ impl Gui {
                 .default_width(200.0 * scale)
                 .show_animated(ctx, self.show_menu, |ui| {
                     ui.with_layout(egui::Layout::top_down_justified(egui::Align::TOP), |ui| {
-                        #[cfg(target_os = "windows")]
                         {
                             ui.horizontal(|ui| {
                                 ui.add(Self::icon(ctx));
@@ -67,24 +60,6 @@ impl Gui {
                                 self.show_menu = false;
                                 self.menu_anim_time = None;
                             }
-                        }
-                        // did this because android phones have a notch
-                        #[cfg(target_os = "android")]
-                        {
-                            ui.horizontal(|ui| {
-                                ui.add(Self::icon(ctx));
-                                ui.heading(t!("hachimi"));
-                            });
-                            ui.label(env!("HACHIMI_DISPLAY_VERSION"));
-                            ui.horizontal(|ui| {
-                                if ui.button(t!("menu.close_menu")).clicked() {
-                                    self.show_menu = false;
-                                    self.menu_anim_time = None;
-                                }
-                                if ui.button(" \u{f29c} ").clicked() {
-                                    show_window = Some(Box::new(AboutWindow::new()));
-                                }
-                            });
                         }
                         if ui.button(t!("menu.check_for_updates")).clicked() {
                             Hachimi::instance().updater.clone().check_for_updates(|_| {});
@@ -285,34 +260,8 @@ impl Gui {
                                     },
                                 )));
                             }
-                            #[cfg(not(target_os = "windows"))]
-                            if ui.button(t!("menu.open_in_game_browser")).clicked() {
-                                show_window = Some(Box::new(SimpleYesNoDialog::new(
-                                    &t!("confirm_dialog_title"),
-                                    &t!("in_game_browser_confirm_content"),
-                                    |ok| {
-                                        if !ok {
-                                            return;
-                                        }
-                                        Thread::main_thread().schedule(|| {
-                                            WebViewManager::quick_open(
-                                                &t!("browser_dialog_title"),
-                                                &Hachimi::instance().config.load().open_browser_url,
-                                            );
-                                        });
-                                    },
-                                )));
-                            }
                             if ui.button(t!("menu.toggle_game_ui")).clicked() {
                                 Thread::main_thread().schedule(Self::toggle_game_ui);
-                            }
-
-                            #[cfg(target_os = "android")]
-                            {
-                                let padding = ime_scroll_padding(ui.ctx());
-                                if padding > 0.0 {
-                                    ui.add_space(padding);
-                                }
                             }
                         });
                     });
@@ -493,12 +442,10 @@ impl Gui {
                 ui.set_max_width(fixed_width);
 
                 ui.horizontal(|ui| {
-                    let _res = ui.add_sized(
+                    ui.add_sized(
                         [ui.available_width() - 30.0 * scale, row_height],
                         egui::TextEdit::singleline(search_term).hint_text(t!("search_filter")),
                     );
-                    #[cfg(target_os = "android")]
-                    handle_android_keyboard(&_res, search_term);
 
                     if ui.button("X").clicked() {
                         search_term.clear();

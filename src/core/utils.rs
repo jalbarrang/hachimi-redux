@@ -659,12 +659,6 @@ pub fn get_file_modified_time<P: AsRef<Path>>(path: P) -> Option<SystemTime> {
 }
 
 pub fn get_data_path() -> String {
-    #[cfg(target_os = "android")]
-    {
-        format!("/data/data/{}/files", Hachimi::instance().game.package_name)
-    }
-
-    #[cfg(target_os = "windows")]
     {
         use crate::{
             core::game::Region, il2cpp::hook::UnityEngine_CoreModule::Application, windows::utils::get_game_dir,

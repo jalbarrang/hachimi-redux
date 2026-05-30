@@ -87,8 +87,6 @@ impl Gui {
             tmp_frame_count: 0,
             fps_text: "FPS: 0".to_string(),
             last_focused: None,
-            #[cfg(target_os = "android")]
-            ime_cooldown: None,
 
             show_menu: false,
 

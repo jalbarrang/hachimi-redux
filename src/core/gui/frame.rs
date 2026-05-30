@@ -10,31 +10,20 @@ use super::theme_preview::take_pending_theme;
 use super::window::BoxedWindow;
 use super::{Gui, IS_CONSUMING_INPUT, PIXELS_PER_POINT_RATIO};
 
-#[cfg(target_os = "android")]
-use super::android_keyboard::{KeyboardOwner, KEYBOARD_OWNER};
-
 impl Gui {
     pub fn set_screen_size(&mut self, width: i32, height: i32) {
         let is_landscape = width > height;
         let main_axis_size = if is_landscape { height } else { width.min(height) };
 
         let orientation_scale = {
-            #[cfg(target_os = "windows")]
-            {
-                let orientation_ratio = if is_landscape {
-                    height as f32 / width as f32
-                } else {
-                    1.0
-                };
-                if is_landscape {
-                    orientation_ratio * Hachimi::instance().config.load().windows.gui_landscape_ratio
-                } else {
-                    1.0
-                }
-            }
-
-            #[cfg(target_os = "android")]
-            {
+            let orientation_ratio = if is_landscape {
+                height as f32 / width as f32
+            } else {
+                1.0
+            };
+            if is_landscape {
+                orientation_ratio * Hachimi::instance().config.load().windows.gui_landscape_ratio
+            } else {
                 1.0
             }
         };
@@ -146,71 +135,6 @@ impl Gui {
                     });
                 }
             }
-            self.last_focused = focused;
-        }
-        #[cfg(target_os = "android")]
-        {
-            use crate::android::utils::{
-                check_keyboard_status, set_keyboard_visible, BACK_BUTTON_PRESSED, IS_IME_VISIBLE,
-            };
-            use crate::il2cpp::symbols::Thread;
-
-            let focused = self.context.memory(|m| m.focused());
-            let wants_kb = self.context.wants_keyboard_input();
-
-            if let Ok(mut owner_lock) = KEYBOARD_OWNER.try_lock() {
-                if focused.is_some() && focused != self.last_focused && wants_kb {
-                    if owner_lock.is_none() {
-                        if !IS_IME_VISIBLE.load(Ordering::Acquire) {
-                            set_keyboard_visible(true);
-                            if let Some(id) = focused {
-                                *owner_lock = Some(KeyboardOwner::JNI(id));
-                            }
-                            self.ime_cooldown = Some(std::time::Instant::now() + std::time::Duration::from_millis(500));
-                        }
-                    }
-                } else if focused.is_none() && self.last_focused.is_some() {
-                    if let Some(KeyboardOwner::JNI(_)) = *owner_lock {
-                        set_keyboard_visible(false);
-                        *owner_lock = None;
-                    }
-                }
-
-                if let Some(KeyboardOwner::JNI(_)) = *owner_lock {
-                    if BACK_BUTTON_PRESSED.swap(false, Ordering::AcqRel) {
-                        *owner_lock = None;
-                        set_keyboard_visible(false);
-                        self.context.memory_mut(|mem| mem.stop_text_input());
-                        IS_IME_VISIBLE.store(false, Ordering::Release);
-                        self.last_focused = None;
-                        self.ime_cooldown = None;
-                    }
-                }
-            }
-
-            if self.tmp_frame_count % 20 == 0 {
-                let should_check = if let Some(until) = self.ime_cooldown {
-                    std::time::Instant::now() > until
-                } else {
-                    true
-                };
-
-                if should_check && IS_IME_VISIBLE.load(Ordering::Acquire) {
-                    if !check_keyboard_status() {
-                        self.context.memory_mut(|mem| mem.stop_text_input());
-                        IS_IME_VISIBLE.store(false, Ordering::Release);
-
-                        if let Ok(mut lock) = KEYBOARD_OWNER.try_lock() {
-                            if let Some(KeyboardOwner::JNI(_)) = *lock {
-                                *lock = None;
-                            }
-                        }
-                        self.last_focused = None;
-                        self.ime_cooldown = None;
-                    }
-                }
-            }
-
             self.last_focused = focused;
         }
 

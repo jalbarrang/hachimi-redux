@@ -1,6 +1,6 @@
 # hachimi-plugin-abi
 
-Stable C ABI types for Hachimi plugins: `Vtable` (57 slots), `API_VERSION = 7`, `set_vtable` / `vt()`, and `hlog_*` macros.
+Stable C ABI types for Hachimi plugins: `Vtable` (53 slots), `API_VERSION = 8`, `set_vtable` / `vt()`, and `hlog_*` macros.
 
 Use this crate alone for minimal plugins, or add `hachimi-plugin-sdk` for safe wrappers.
 

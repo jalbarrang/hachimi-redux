@@ -8,50 +8,6 @@ permissions:
   attestations: write
 
 jobs:
-  build-android:
-    runs-on: ubuntu-latest
-    if: "!contains(github.event.head_commit.message, '[ci skip]')"
-    steps:
-      - uses: actions/checkout@v6
-      - name: Cache Rust dependencies
-        uses: swatinem/rust-cache@v2
-
-      - name: Setup and Patch Dependencies
-        run: |
-          pushd ..
-          git clone --revision 44cdd653e2317d300fb8a6c9c36b03f23991e803 https://github.com/emilk/egui.git
-          cd egui
-          sed -i 's/ui.set_min_width(ui.available_width());/\/\/ ui.set_min_width(ui.available_width());/' crates/egui/src/containers/combo_box.rs
-          popd
-
-          echo -e "\negui = { path = '../egui/crates/egui' }" >> Cargo.toml
-          echo "egui_extras = { path = '../egui/crates/egui_extras' }" >> Cargo.toml
-
-      - name: Grant execute permission to build script
-        run: chmod +x tools/android/build.sh
-      - uses: dtolnay/rust-toolchain@stable
-      - name: Build Hachimi for Android
-        run: |
-          rustup target add aarch64-linux-android
-          RELEASE=1 ./tools/android/build.sh
-        env:
-          HACHIMI_IGNORE_DIRTY: "true"
-
-      - name: Attest Android
-        uses: actions/attest@v4
-        with:
-          subject-path: |
-            build/*.so
-            build/sha256.json
-
-      - name: Upload Android binaries
-        uses: actions/upload-artifact@v7
-        with:
-          name: android
-          path: |
-            build/*.so
-            build/sha256.json
-          
   build-windows:
     runs-on: windows-latest
     if: "!contains(github.event.head_commit.message, '[ci skip]')"
@@ -153,7 +109,7 @@ jobs:
             build/hachimi_installer.exe
 
   create-release:
-    needs: [build-android, build-windows]
+    needs: [build-windows]
     runs-on: ubuntu-latest
     if: "!contains(github.event.head_commit.message, '[ci skip]')"
     steps:
@@ -223,6 +179,5 @@ jobs:
         with:
           body_path: CHANGELOG.md
           files: |
-            artifacts/android/*
             artifacts/windows/*
           tag_name: ${{ env.RELEASE_VERSION }}

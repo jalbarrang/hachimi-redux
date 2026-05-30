@@ -66,5 +66,5 @@ missing_panics_doc = "allow"
 doc_markdown = "allow"
 
 [dependencies]
-hachimi-plugin-abi = { path = "../../crates/hachimi-plugin-abi" }
-hachimi-plugin-sdk = { path = "../../crates/hachimi-plugin-sdk" }
+hachimi-plugin-abi = { path = "../../crates/hachimi-plugin-abi", version = "0.1.0" }
+hachimi-plugin-sdk = { path = "../../crates/hachimi-plugin-sdk", version = "0.1.0" }

@@ -477,8 +477,6 @@ unsafe extern "C" fn gui_ui_text_edit_singleline(ui: *mut c_void, buffer: *mut c
         let original_value = value.clone();
 
         let response = ui.add(egui::TextEdit::singleline(&mut value).id(id).desired_width(80.0));
-        #[cfg(target_os = "android")]
-        gui::handle_android_keyboard(&response, &mut value);
 
         if response.gained_focus() {
             response.scroll_to_me(Some(Align::Center));
@@ -708,61 +706,6 @@ unsafe extern "C" fn gui_overlay_set_visible(id: *const c_char, visible: bool) -
     }
 }
 
-#[cfg(target_os = "android")]
-unsafe extern "C" fn android_dex_load(dex_ptr: *const u8, dex_len: usize, class_name: *const c_char) -> u64 {
-    crate::android::dex_bridge::dex_load(dex_ptr, dex_len, class_name)
-}
-
-#[cfg(not(target_os = "android"))]
-unsafe extern "C" fn android_dex_load(_dex_ptr: *const u8, _dex_len: usize, _class_name: *const c_char) -> u64 {
-    0
-}
-
-#[cfg(target_os = "android")]
-unsafe extern "C" fn android_dex_unload(handle: u64) -> bool {
-    crate::android::dex_bridge::dex_unload(handle)
-}
-
-#[cfg(not(target_os = "android"))]
-unsafe extern "C" fn android_dex_unload(_handle: u64) -> bool {
-    false
-}
-
-#[cfg(target_os = "android")]
-unsafe extern "C" fn android_dex_call_static_noargs(handle: u64, method: *const c_char, sig: *const c_char) -> bool {
-    let method = CStr::from_ptr(method);
-    let sig = CStr::from_ptr(sig);
-    crate::android::dex_bridge::call_static_noargs(handle, method, sig)
-}
-
-#[cfg(not(target_os = "android"))]
-unsafe extern "C" fn android_dex_call_static_noargs(_handle: u64, _method: *const c_char, _sig: *const c_char) -> bool {
-    false
-}
-
-#[cfg(target_os = "android")]
-unsafe extern "C" fn android_dex_call_static_string(
-    handle: u64,
-    method: *const c_char,
-    sig: *const c_char,
-    arg: *const c_char,
-) -> bool {
-    let method = CStr::from_ptr(method);
-    let sig = CStr::from_ptr(sig);
-    let arg = CStr::from_ptr(arg);
-    crate::android::dex_bridge::call_static_string(handle, method, sig, arg)
-}
-
-#[cfg(not(target_os = "android"))]
-unsafe extern "C" fn android_dex_call_static_string(
-    _handle: u64,
-    _method: *const c_char,
-    _sig: *const c_char,
-    _arg: *const c_char,
-) -> bool {
-    false
-}
-
 fn build_host_vtable() -> Vtable {
     Vtable {
         hachimi_instance,
@@ -813,10 +756,6 @@ fn build_host_vtable() -> Vtable {
         gui_ui_colored_label,
         gui_register_menu_item_icon,
         gui_register_menu_section_with_icon,
-        android_dex_load,
-        android_dex_unload,
-        android_dex_call_static_noargs,
-        android_dex_call_static_string,
         gui_register_overlay,
         gui_ui_set_min_width,
         gui_overlay_set_visible,

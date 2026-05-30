@@ -86,9 +86,6 @@ pub mod LibNative_Runtime;
 pub mod Plugins;
 pub mod umamusume;
 
-#[cfg(target_os = "android")]
-mod Cute_Core_Assembly;
-
 pub fn init() {
     info!("Initializing il2cpp hooks");
 
@@ -116,9 +113,6 @@ pub fn init() {
     Plugins::init();
     Cute_Cri_Assembly::init();
     DOTween::init();
-
-    #[cfg(target_os = "android")]
-    Cute_Core_Assembly::init();
 
     info!("Hooking finished");
 }

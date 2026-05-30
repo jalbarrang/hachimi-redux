@@ -160,13 +160,6 @@ pub struct Vtable {
         userdata: *mut c_void,
     ) -> bool,
 
-    pub android_dex_load: unsafe extern "C" fn(dex_ptr: *const u8, dex_len: usize, class_name: *const c_char) -> u64,
-    pub android_dex_unload: unsafe extern "C" fn(handle: u64) -> bool,
-    pub android_dex_call_static_noargs:
-        unsafe extern "C" fn(handle: u64, method: *const c_char, sig: *const c_char) -> bool,
-    pub android_dex_call_static_string:
-        unsafe extern "C" fn(handle: u64, method: *const c_char, sig: *const c_char, arg: *const c_char) -> bool,
-
     pub gui_register_overlay: unsafe extern "C" fn(
         id: *const c_char,
         callback: Option<GuiMenuSectionCallback>,
