@@ -1,0 +1,7 @@
+{"_type":"meta","title":"Plugin SDK redesign: events, manifest, capabilities, egui-share, proc-macro","plan_name":"plugin-sdk-redesign","created_at":"2026-05-30T17:52:28.040Z"}
+{"_type":"task","id":"t-001","description":"Add hachimi-plugin-macros proc-macro crate + PluginManifest/","details":"","status":"pending","created_at":"2026-05-30T17:52:28.040Z","updated_at":"2026-05-30T17:52:28.040Z"}
+{"_type":"task","id":"t-002","description":"Redesign abi Vtable: remove widget slots, add subscribe/unsu","details":"","status":"pending","created_at":"2026-05-30T17:52:28.040Z","updated_at":"2026-05-30T17:52:28.040Z"}
+{"_type":"task","id":"t-003","description":"SDK: egui re-export + ui_from_ptr, Sdk::on/capabilities, han","details":"","status":"pending","created_at":"2026-05-30T17:52:28.040Z","updated_at":"2026-05-30T17:52:28.040Z"}
+{"_type":"task","id":"t-004","description":"Host api.rs: implement new slots; wire event dispatch at run","details":"","status":"pending","created_at":"2026-05-30T17:52:28.040Z","updated_at":"2026-05-30T17:52:28.040Z"}
+{"_type":"task","id":"t-005","description":"Convert training-tracker: #[hachimi_plugin] init + manifest,","details":"","status":"pending","created_at":"2026-05-30T17:52:28.040Z","updated_at":"2026-05-30T17:52:28.040Z"}
+{"_type":"task","id":"t-006","description":"Workspace build/clippy/fmt/test; update docs/architecture.md","details":"","status":"pending","created_at":"2026-05-30T17:52:28.040Z","updated_at":"2026-05-30T17:52:28.040Z"}

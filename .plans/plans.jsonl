@@ -1,1 +1,2 @@
 {"_type":"plan","name":"drop-android-support","status":"in-progress","title":"Drop Android Support and Keep Windows-Only Code Paths","created_at":"2026-05-30T06:37:04.426Z","completed_at":null}
+{"_type":"plan","name":"plugin-sdk-redesign","status":"in-progress","title":"Plugin SDK redesign: events, manifest, capabilities, egui-share, proc-macro","created_at":"2026-05-30T17:52:28.086Z","completed_at":null}

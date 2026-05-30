@@ -1,0 +1,224 @@
+//! Career state snapshot: core stats, turn info, and training facility levels.
+
+use std::ffi::c_void;
+use std::sync::atomic::{AtomicBool, Ordering};
+
+use hachimi_plugin_sdk::Sdk;
+
+use super::chain::{ResolvedChain, CHAIN};
+use super::il2cpp::{call_bool, call_i32, call_i32_with_i32, call_obj};
+
+/// Snapshot of career state read from game memory.
+#[derive(Debug, Clone, Default)]
+pub struct CareerSnapshot {
+    pub is_playing: bool,
+    pub current_turn: i32,
+    pub month: i32,
+
+    // Core stats (decrypted from ObscuredInt by the C# getters)
+    pub speed: i32,
+    pub stamina: i32,
+    pub power: i32,
+    pub guts: i32,
+    pub wiz: i32,
+    pub total_stats: i32,
+
+    pub hp: i32,
+    pub max_hp: i32,
+    pub motivation: i32, // RaceDefine.Motivation enum (1-5)
+    pub fan_count: i32,
+    // NOTE: get_SkillPoint returns ObscuredInt (struct), not i32.
+    // Needs special decryption handling — skipped for now.
+    #[allow(dead_code)]
+    pub skill_point: i32,
+
+    pub total_races: i32,
+    pub win_count: i32,
+
+    /// Training facility levels [Speed, Stamina, Power, Guts, Wisdom].
+    /// Read via `GetTrainingLevel(commandId)`. 0 means not available.
+    pub training_levels: [i32; 5],
+}
+
+/// Read a snapshot of the current career state from game memory.
+/// Returns `None` if the chain isn't resolved or the singleton is unavailable.
+pub fn read_snapshot() -> Option<CareerSnapshot> {
+    // Catch panics from bad IL2CPP pointers so they don't take down the render thread.
+    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(read_snapshot_inner)) {
+        Ok(result) => result,
+        Err(_) => {
+            hlog_error!("read_snapshot PANICKED — IL2CPP call likely hit a bad pointer");
+            None
+        }
+    }
+}
+
+fn read_snapshot_inner() -> Option<CareerSnapshot> {
+    let chain = CHAIN.get()?;
+    let sdk = Sdk::get();
+
+    hlog_trace!("snapshot: step 1 — get singleton");
+    let singleton = sdk.get_singleton(chain.wdm_klass.cast())?.cast::<c_void>();
+    hlog_trace!("snapshot: step 2 — get_SingleMode (singleton={:?})", singleton);
+    // SAFETY: Reading field or calling method on non-null IL2CPP object pointer.
+    let wsmd = unsafe { call_obj(singleton, chain.m_get_single_mode) };
+    if wsmd.is_null() {
+        return Some(CareerSnapshot::default());
+    }
+
+    // Step 3: Check if a career is active
+    hlog_trace!("snapshot: step 3 — get_IsPlaying (wsmd={:?})", wsmd);
+    // SAFETY: Reading field or calling method on non-null IL2CPP object pointer.
+    let is_playing = unsafe { call_bool(wsmd, chain.m_get_is_playing) };
+
+    if !is_playing {
+        return Some(CareerSnapshot {
+            is_playing: false,
+            ..Default::default()
+        });
+    }
+
+    // Step 4: Read turn/career info from WorkSingleModeData
+    // NOTE: Only simple `get_` property accessors are safe here.
+    // `GetFinalTurn`/`GetRemainTurnNum` do master-data lookups and crash
+    // when called from the render thread.
+    hlog_trace!("snapshot: step 4 — turn/career info");
+    // SAFETY: Reading field or calling method on non-null IL2CPP object pointer.
+    let month = unsafe { call_i32(wsmd, chain.m_get_month) };
+    // SAFETY: Reading field or calling method on non-null IL2CPP object pointer.
+    let current_turn = unsafe { call_i32(wsmd, chain.m_get_current_turn) };
+    // SAFETY: Reading field or calling method on non-null IL2CPP object pointer.
+    let total_races = unsafe { call_i32(wsmd, chain.m_get_total_races) };
+    // SAFETY: Reading field or calling method on non-null IL2CPP object pointer.
+    let win_count = unsafe { call_i32(wsmd, chain.m_get_win_count) };
+
+    // Step 5: WorkSingleModeData → WorkSingleModeCharaData
+    hlog_trace!("snapshot: step 5 — get_Character");
+    // SAFETY: Reading field or calling method on non-null IL2CPP object pointer.
+    let chara = unsafe { call_obj(wsmd, chain.m_get_character) };
+    if chara.is_null() {
+        hlog_warn!("read_snapshot: get_Character returned null");
+        return Some(CareerSnapshot {
+            is_playing: true,
+            current_turn,
+            month,
+            total_races,
+            win_count,
+            ..Default::default()
+        });
+    }
+
+    // Step 6: Read all stats from WorkSingleModeCharaData
+    hlog_trace!("snapshot: step 6 — stats (chara={:?})", chara);
+    // SAFETY: Reading field or calling method on non-null IL2CPP object pointer.
+    let speed = unsafe { call_i32(chara, chain.m_get_speed) };
+    // SAFETY: Reading field or calling method on non-null IL2CPP object pointer.
+    let stamina = unsafe { call_i32(chara, chain.m_get_stamina) };
+    // SAFETY: Reading field or calling method on non-null IL2CPP object pointer.
+    let power = unsafe { call_i32(chara, chain.m_get_power) };
+    // SAFETY: Reading field or calling method on non-null IL2CPP object pointer.
+    let guts = unsafe { call_i32(chara, chain.m_get_guts) };
+    // SAFETY: Reading field or calling method on non-null IL2CPP object pointer.
+    let wiz = unsafe { call_i32(chara, chain.m_get_wiz) };
+    // SAFETY: Reading field or calling method on non-null IL2CPP object pointer.
+    let total_stats = unsafe { call_i32(chara, chain.m_get_all_total) };
+    hlog_trace!("snapshot: step 6b — hp/motivation/fans");
+    // SAFETY: Reading field or calling method on non-null IL2CPP object pointer.
+    let hp = unsafe { call_i32(chara, chain.m_get_hp) };
+    // SAFETY: Reading field or calling method on non-null IL2CPP object pointer.
+    let max_hp = unsafe { call_i32(chara, chain.m_get_max_hp) };
+    // SAFETY: Reading field or calling method on non-null IL2CPP object pointer.
+    let motivation = unsafe { call_i32(chara, chain.m_get_motivation) };
+    // SAFETY: Reading field or calling method on non-null IL2CPP object pointer.
+    let fan_count = unsafe { call_i32(chara, chain.m_get_fan_count) };
+
+    // Step 7: Read training levels per facility
+    hlog_trace!("snapshot: step 7 — training levels");
+    let training_levels = read_training_levels(chara, chain);
+
+    hlog_trace!("snapshot: complete (turn={}, total={})", current_turn, total_stats);
+    Some(CareerSnapshot {
+        is_playing: true,
+        current_turn,
+        month,
+        speed,
+        stamina,
+        power,
+        guts,
+        wiz,
+        total_stats,
+        hp,
+        max_hp,
+        motivation,
+        fan_count,
+        skill_point: 0, // ObscuredInt — needs decryption, not yet implemented
+        total_races,
+        win_count,
+        training_levels,
+    })
+}
+
+// ---------------------------------------------------------------------------
+// Training level detection
+// ---------------------------------------------------------------------------
+
+/// Known command ID sets per scenario: [Speed, Stamina, Power, Guts, Wisdom].
+const COMMAND_ID_SETS: &[[i32; 5]] = &[
+    [101, 105, 102, 103, 106],      // URA / base
+    [601, 602, 603, 604, 605],      // Aoharu
+    [1101, 1102, 1103, 1104, 1105], // Make a New Track (Arc)
+    [2101, 2102, 2103, 2104, 2105], // UAF type A
+    [2201, 2202, 2203, 2204, 2205], // UAF type B
+    [2301, 2302, 2303, 2304, 2305], // UAF type C
+    [901, 902, 903, 904, 906],      // Onsen (partially confirmed)
+];
+
+/// Read training levels for all 5 facilities.
+/// Auto-detects the correct command ID set by probing known sets.
+/// Returns [0; 5] if anything goes wrong.
+fn read_training_levels(chara: *mut c_void, chain: &ResolvedChain) -> [i32; 5] {
+    let sdk = Sdk::get();
+    hlog_trace!("training_levels: checking _trainingLevelDic field");
+    // SAFETY: IL2CPP object header — klass pointer at offset 0.
+    let chara_klass = unsafe { *(chara as *const *mut c_void) };
+    let Some(field) = sdk.get_field_from_name(chara_klass.cast(), "_trainingLevelDic") else {
+        hlog_trace!("training_levels: _trainingLevelDic field not found");
+        return [0; 5];
+    };
+
+    let mut dict_ptr: *mut c_void = std::ptr::null_mut();
+    // SAFETY: IL2CPP object and field from resolved metadata.
+    unsafe {
+        sdk.get_field_value(chara.cast(), field, &mut dict_ptr as *mut _ as *mut c_void);
+    }
+    if dict_ptr.is_null() {
+        hlog_trace!("training_levels: dictionary is null, skipping");
+        return [0; 5];
+    }
+
+    hlog_trace!("training_levels: probing command ID sets (dict={:?})", dict_ptr);
+    for set in COMMAND_ID_SETS {
+        let mut levels = [0i32; 5];
+        let mut any_positive = false;
+
+        for (i, &cmd_id) in set.iter().enumerate() {
+            // SAFETY: Reading field or calling method on non-null IL2CPP object pointer.
+            let level = unsafe { call_i32_with_i32(chara, chain.m_get_training_level, cmd_id) };
+            levels[i] = level;
+            if level > 0 {
+                any_positive = true;
+            }
+        }
+
+        if any_positive {
+            static LEVELS_LOGGED: AtomicBool = AtomicBool::new(false);
+            if !LEVELS_LOGGED.swap(true, Ordering::Relaxed) {
+                hlog_info!("Training levels matched set {:?} → {:?}", set, levels);
+            }
+            return levels;
+        }
+    }
+
+    hlog_trace!("training_levels: no matching command ID set found");
+    [0; 5]
+}

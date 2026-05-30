@@ -1,0 +1,107 @@
+//! Low-level IL2CPP call/read primitives shared by the entity readers.
+
+use std::ffi::c_void;
+
+use hachimi_plugin_sdk::Sdk;
+
+/// IL2CPP MethodInfo starts with the method_pointer at offset 0.
+/// We read it to get the callable function pointer.
+#[inline]
+pub(super) unsafe fn method_ptr(method_info: *const c_void) -> usize {
+    // SAFETY: Reading field or calling method on non-null IL2CPP object pointer.
+    unsafe { *(method_info as *const usize) }
+}
+
+/// Call an instance method that returns `*mut c_void` (an IL2CPP object).
+#[inline]
+pub(super) unsafe fn call_obj(this: *mut c_void, mi: *const c_void) -> *mut c_void {
+    // SAFETY: Transmuting IL2CPP MethodInfo pointer to callable function pointer.
+    let fp: extern "C" fn(*mut c_void, *const c_void) -> *mut c_void = unsafe { std::mem::transmute(method_ptr(mi)) };
+    fp(this, mi)
+}
+
+/// Call an instance method that returns `i32`.
+#[inline]
+pub(super) unsafe fn call_i32(this: *mut c_void, mi: *const c_void) -> i32 {
+    // SAFETY: Transmuting IL2CPP MethodInfo pointer to callable function pointer.
+    let fp: extern "C" fn(*mut c_void, *const c_void) -> i32 = unsafe { std::mem::transmute(method_ptr(mi)) };
+    fp(this, mi)
+}
+
+/// Call an instance method that returns `bool` (IL2CPP uses u8).
+#[inline]
+pub(super) unsafe fn call_bool(this: *mut c_void, mi: *const c_void) -> bool {
+    // SAFETY: Transmuting IL2CPP MethodInfo pointer to callable function pointer.
+    let fp: extern "C" fn(*mut c_void, *const c_void) -> u8 = unsafe { std::mem::transmute(method_ptr(mi)) };
+    fp(this, mi) != 0
+}
+
+/// Call an instance method that takes one `i32` arg and returns `i32`.
+/// IL2CPP calling convention: `fn(this, arg1, method_info) -> i32`.
+#[inline]
+pub(super) unsafe fn call_i32_with_i32(this: *mut c_void, mi: *const c_void, arg: i32) -> i32 {
+    // SAFETY: Transmuting IL2CPP MethodInfo pointer to callable function pointer.
+    let fp: extern "C" fn(*mut c_void, i32, *const c_void) -> i32 = unsafe { std::mem::transmute(method_ptr(mi)) };
+    fp(this, arg, mi)
+}
+
+/// Call an instance method that takes one `i32` arg and returns `*mut c_void`.
+#[inline]
+pub(super) unsafe fn call_obj_with_i32(this: *mut c_void, mi: *const c_void, arg: i32) -> *mut c_void {
+    let fp: extern "C" fn(*mut c_void, i32, *const c_void) -> *mut c_void =
+        // SAFETY: Transmuting IL2CPP MethodInfo pointer to callable function pointer.
+        unsafe { std::mem::transmute(method_ptr(mi)) };
+    fp(this, arg, mi)
+}
+
+/// Read an IL2CPP `System.String` object and convert to a Rust `String`.
+/// IL2CppString layout (64-bit):
+///   offset 0x00: Il2CppObject header (klass + monitor = 16 bytes)
+///   offset 0x10: int32 length (in UTF-16 code units)
+///   offset 0x14: char16_t[] chars (UTF-16 data)
+pub(super) unsafe fn read_il2cpp_string(str_obj: *mut c_void) -> Option<String> {
+    // SAFETY: Reading field or calling method on non-null IL2CPP object pointer.
+    unsafe {
+        if str_obj.is_null() {
+            return None;
+        }
+        let len = *(str_obj.byte_add(0x10) as *const i32);
+        if len <= 0 || len > 4096 {
+            return None;
+        }
+        let chars = str_obj.byte_add(0x14) as *const u16;
+        let slice = std::slice::from_raw_parts(chars, len as usize);
+        String::from_utf16(slice).ok()
+    }
+}
+
+/// Read an IL2CPP `List<T>` field from an object.
+/// Returns (list_ptr, count, get_Item method) or None.
+pub unsafe fn read_list_field(
+    obj: *mut c_void,
+    field_name: &std::ffi::CStr,
+) -> Option<(*mut c_void, i32, *const c_void)> {
+    let sdk = Sdk::get();
+    let field_s = field_name.to_str().ok()?;
+    // SAFETY: IL2CPP object header — klass pointer at offset 0.
+    let obj_klass = unsafe { *(obj as *const *mut c_void) };
+    let field = sdk.get_field_from_name(obj_klass.cast(), field_s)?;
+
+    let mut list_ptr: *mut c_void = std::ptr::null_mut();
+    // SAFETY: IL2CPP object and field from resolved metadata.
+    unsafe {
+        sdk.get_field_value(obj.cast(), field, &mut list_ptr as *mut _ as *mut c_void);
+    }
+    if list_ptr.is_null() {
+        return None;
+    }
+
+    // SAFETY: IL2CPP list object layout — klass pointer at object head.
+    let list_klass = unsafe { *(list_ptr as *const *mut c_void) };
+    let m_count = sdk.get_method(list_klass.cast(), "get_Count", 0)?;
+    let m_item = sdk.get_method(list_klass.cast(), "get_Item", 1)?;
+
+    // SAFETY: Reading field or calling method on non-null IL2CPP object pointer.
+    let count = unsafe { call_i32(list_ptr, m_count.cast()) };
+    Some((list_ptr, count, m_item.cast()))
+}
