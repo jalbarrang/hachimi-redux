@@ -10,9 +10,11 @@ use std::sync::atomic::Ordering;
 
 use hachimi_plugin_sdk::Sdk;
 
+use crate::class_dump;
 use crate::memory_reader;
 use crate::overlay_cache;
 use crate::skill_shop;
+use crate::skill_shop_prefs::{cycle_sort_mode, prefs, set_prefs, sort_mode_label, DistanceFilter, StyleFilter};
 use crate::tracker::{Facility, TRACKER};
 
 /// Default overlay font size.
@@ -63,6 +65,11 @@ fn draw_menu_section_inner(ui: *mut c_void) {
         } else {
             hlog_warn!(target: "training-tracker", "Host declined overlay_set_visible");
         }
+    }
+
+    if sdk.gui_button(ui, "\u{1f4cb} Dump All IL2CPP Classes") {
+        class_dump::dump_all_classes();
+        sdk.show_notification("Class dump complete — see il2cpp_classes.txt");
     }
 }
 
@@ -307,17 +314,15 @@ fn draw_skill_shop_panel_inner(ui: *mut c_void) {
         sdk.gui_small(ui, &format!("SP: {}", sp));
     }
 
-    let entries = overlay_cache::skill_shop();
+    draw_skill_shop_controls(ui);
+
+    let entries = skill_shop::prepare_entries_for_display(overlay_cache::skill_shop(), &prefs());
     if entries.is_empty() {
-        sdk.gui_small(ui, "No shop skills available");
+        sdk.gui_small(ui, "No shop skills match filters");
         return;
     }
 
     for entry in &entries {
-        if entry.is_learned {
-            continue;
-        }
-
         let icon = skill_shop::rarity_label(entry.rarity);
         let discount = skill_shop::discount_pct(entry.hint_level, false);
         let (r, g, b) = if entry.rarity >= 2 {
@@ -339,14 +344,49 @@ fn draw_skill_shop_panel_inner(ui: *mut c_void) {
             String::new()
         };
 
+        let prefix = if !entry.has_hint { "[full] " } else { "" };
+
         let label = if discount > 0 {
-            format!("{} {} (-{}%{})", icon, name, discount, cost_str)
+            format!("{}{} {} (-{}%{})", prefix, icon, name, discount, cost_str)
         } else if cost_str.is_empty() {
-            format!("{} {}", icon, name)
+            format!("{}{} {}", prefix, icon, name)
         } else {
-            format!("{} {} ({})", icon, name, cost_str.trim())
+            format!("{}{} {} ({})", prefix, icon, name, cost_str.trim())
         };
         sdk.gui_colored_label(ui, r, g, b, 255, &label);
+    }
+}
+
+fn draw_skill_shop_controls(ui: *mut c_void) {
+    let sdk = Sdk::get();
+    let p = prefs();
+
+    if sdk.gui_small_button(ui, &format!("Sort: {}", sort_mode_label(p.sort_mode))) {
+        cycle_sort_mode();
+    }
+
+    sdk.gui_small(ui, "Style:");
+    for &(label, filter) in StyleFilter::LABELS {
+        let selected = p.style_filter == filter;
+        if sdk.gui_small_button(ui, &format!("{}{}", if selected { "*" } else { "" }, label)) {
+            set_prefs(|prefs| prefs.style_filter = filter);
+        }
+    }
+
+    sdk.gui_small(ui, "Dist:");
+    for &(label, filter) in DistanceFilter::LABELS {
+        let selected = p.distance_filter == filter;
+        if sdk.gui_small_button(ui, &format!("{}{}", if selected { "*" } else { "" }, label)) {
+            set_prefs(|prefs| prefs.distance_filter = filter);
+        }
+    }
+
+    let mut show_hintless = p.show_hintless;
+    if sdk.gui_checkbox(ui, "Show full-price (no hint)", &mut show_hintless) {
+        set_prefs(|prefs| prefs.show_hintless = show_hintless);
+    }
+    if show_hintless {
+        sdk.gui_small(ui, "Open the in-game skill shop once to capture purchasable rows.");
     }
 }
 

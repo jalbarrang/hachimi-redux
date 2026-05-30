@@ -9,6 +9,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use hachimi_plugin_sdk::Sdk;
 
+use crate::deck_bonuses;
 use crate::memory_reader::{self, AcquiredSkillInfo, CareerSnapshot, EvaluationInfo};
 use crate::skill_shop::{self, SkillShopEntry};
 
@@ -68,6 +69,16 @@ extern "C" fn refresh_cache_cb() {
     let evaluations = memory_reader::read_evaluations();
     let skill_points = skill_shop::read_skill_points();
     let skill_shop = skill_shop::read_skill_shop();
+
+    // Deck bonuses: capture once when career starts, clear when it ends.
+    let is_playing = snapshot.as_ref().is_some_and(|s| s.is_playing);
+    if is_playing {
+        if let Some(chara) = memory_reader::get_chara_ptr() {
+            deck_bonuses::try_capture(chara);
+        }
+    } else {
+        deck_bonuses::clear();
+    }
 
     if let Ok(mut guard) = CACHE.lock() {
         guard.snapshot = snapshot;

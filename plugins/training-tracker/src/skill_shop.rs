@@ -18,7 +18,11 @@
 use std::ffi::c_void;
 use std::sync::OnceLock;
 
+use std::collections::HashSet;
+
 use crate::memory_reader;
+use crate::shop_hooks;
+use crate::skill_shop_prefs::{DistanceFilter, ShopSortMode, SkillShopPrefs, StyleFilter};
 use hachimi_plugin_sdk::Sdk;
 
 // ---------------------------------------------------------------------------
@@ -28,7 +32,6 @@ use hachimi_plugin_sdk::Sdk;
 /// A skill available in the shop, resolved from tips + master data.
 #[derive(Debug, Clone)]
 pub struct SkillShopEntry {
-    #[allow(dead_code)] // Available for future use (e.g. skill detail lookup)
     pub skill_id: i32,
     pub group_id: i32,
     pub rarity: i32,
@@ -36,6 +39,12 @@ pub struct SkillShopEntry {
     pub name: String,
     pub base_cost: i32,
     pub is_learned: bool,
+    /// `true` when derived from `_skillTipsList`; `false` for full-price (no hint) rows.
+    pub has_hint: bool,
+    /// Tag IDs from `MasterSkillData.SkillData.GetTagIds()` (distance/style/etc.).
+    pub tags: Vec<i32>,
+    /// `FilterSwitch` field — shop UI filter bitmask when tags are empty.
+    pub filter_switch: i32,
 }
 
 // ---------------------------------------------------------------------------
@@ -49,6 +58,7 @@ struct Resolved {
     m_get_skill_need_point: *const c_void,  // → MasterSingleModeSkillNeedPoint
 
     // MasterSkillData
+    m_msd_get: *const c_void,               // Get(int) → SkillData
     m_msd_get_list_by_group: *const c_void, // GetListWithGroupIdOrderByIdAsc(int)
 
     // MasterSingleModeSkillNeedPoint
@@ -58,9 +68,10 @@ struct Resolved {
     f_sd_id: *mut c_void,
     f_sd_rarity: *mut c_void,
     f_sd_group_rate: *mut c_void,
-    #[allow(dead_code)]
-    f_sd_grade_value: *mut c_void,
+    f_sd_group_id: *mut c_void,
+    f_sd_filter_switch: *mut c_void,
     m_sd_get_name: *const c_void,
+    m_sd_get_tag_ids: *const c_void, // GetTagIds() → List<Int32>
 
     // SingleModeSkillNeedPoint fields
     f_snp_need_skill_point: *mut c_void,
@@ -109,6 +120,13 @@ unsafe fn call_i32(this: *mut c_void, mi: *const c_void) -> i32 {
 unsafe fn call_obj_i32(this: *mut c_void, mi: *const c_void, arg: i32) -> *mut c_void {
     // SAFETY: Transmuting IL2CPP MethodInfo pointer to callable function pointer.
     let f: extern "C" fn(*mut c_void, i32, *const c_void) -> *mut c_void = unsafe { std::mem::transmute(mptr(mi)) };
+    f(this, arg, mi)
+}
+
+#[inline]
+unsafe fn call_i32_i32(this: *mut c_void, mi: *const c_void, arg: i32) -> i32 {
+    // SAFETY: Transmuting IL2CPP MethodInfo pointer to callable function pointer.
+    let f: extern "C" fn(*mut c_void, i32, *const c_void) -> i32 = unsafe { std::mem::transmute(mptr(mi)) };
     f(this, arg, mi)
 }
 
@@ -215,6 +233,7 @@ fn try_resolve() -> Result<Resolved, &'static str> {
 
     // MasterSkillData
     let msd_klass = resolve!(class img, "Gallop", "MasterSkillData");
+    let m_msd_get = resolve!(method msd_klass, "Get", 1);
     let m_msd_get_list = resolve!(method msd_klass, "GetListWithGroupIdOrderByIdAsc", 1);
 
     // MasterSkillData.SkillData (nested)
@@ -222,8 +241,13 @@ fn try_resolve() -> Result<Resolved, &'static str> {
     let f_sd_id = resolve!(field sd_klass, "Id");
     let f_sd_rarity = resolve!(field sd_klass, "Rarity");
     let f_sd_grate = resolve!(field sd_klass, "GroupRate");
-    let f_sd_grade = resolve!(field sd_klass, "GradeValue");
+    let f_sd_gid = resolve!(field sd_klass, "GroupId");
+    let f_sd_fswitch = resolve!(field_opt sd_klass, "FilterSwitch");
     let m_sd_name = resolve!(method sd_klass, "get_Name", 0);
+    let m_sd_get_tag_ids = sdk
+        .get_method(sd_klass.cast(), "GetTagIds", 0)
+        .map(|m| m.cast::<c_void>())
+        .unwrap_or(std::ptr::null());
 
     // MasterSingleModeSkillNeedPoint
     let snp_klass = resolve!(class img, "Gallop", "MasterSingleModeSkillNeedPoint");
@@ -246,13 +270,16 @@ fn try_resolve() -> Result<Resolved, &'static str> {
         mdm_klass: mdm as _,
         m_get_master_skill_data: m_get_msd,
         m_get_skill_need_point: m_get_snp,
+        m_msd_get,
         m_msd_get_list_by_group: m_msd_get_list,
         m_snp_get,
         f_sd_id,
         f_sd_rarity,
         f_sd_group_rate: f_sd_grate,
-        f_sd_grade_value: f_sd_grade,
+        f_sd_group_id: f_sd_gid,
+        f_sd_filter_switch: f_sd_fswitch,
         m_sd_get_name: m_sd_name,
+        m_sd_get_tag_ids,
         f_snp_need_skill_point: f_snp_cost,
         f_tips_group_id: f_gid,
         f_tips_rarity: f_rar,
@@ -427,6 +454,9 @@ fn read_skill_shop_inner() -> Vec<SkillShopEntry> {
             0
         };
 
+        // SAFETY: sd is a valid SkillData from the group's list.
+        let (tags, filter_switch) = unsafe { read_skill_tags(sd, r) };
+
         entries.push(SkillShopEntry {
             skill_id,
             group_id,
@@ -435,10 +465,18 @@ fn read_skill_shop_inner() -> Vec<SkillShopEntry> {
             name,
             base_cost,
             is_learned,
+            has_hint: true,
+            tags,
+            filter_switch,
         });
     }
 
-    sort_shop_entries(&mut entries);
+    let prefs = crate::skill_shop_prefs::prefs();
+    if prefs.show_hintless {
+        merge_hintless_entries(&mut entries, msd, snp, r, &learned_ids);
+    }
+
+    sort_shop_entries(&mut entries, prefs.sort_mode);
     entries
 }
 
@@ -509,9 +547,180 @@ pub fn pick_best_variant(candidates: &[SkillCandidate], learned_ids: &[i32]) -> 
     sorted.last().map(|c| (c.skill_id, true))
 }
 
-/// Sort shop entries: gold (rarity 2) first, then alphabetical by name.
-pub fn sort_shop_entries(entries: &mut [SkillShopEntry]) {
-    entries.sort_by(|a, b| b.rarity.cmp(&a.rarity).then(a.name.cmp(&b.name)));
+/// Sort shop entries according to [`ShopSortMode`].
+pub fn sort_shop_entries(entries: &mut [SkillShopEntry], mode: ShopSortMode) {
+    match mode {
+        ShopSortMode::RarityThenName => {
+            entries.sort_by(|a, b| b.rarity.cmp(&a.rarity).then(a.name.cmp(&b.name)));
+        }
+        ShopSortMode::NameOnly => {
+            entries.sort_by(|a, b| a.name.cmp(&b.name));
+        }
+    }
+}
+
+/// Whether an entry passes the overlay style/distance filters.
+pub fn entry_matches_filters(entry: &SkillShopEntry, style: StyleFilter, distance: DistanceFilter) -> bool {
+    let style_tag = style.tag_value();
+    let dist_tag = distance.tag_value();
+    if style_tag.is_none() && dist_tag.is_none() {
+        return true;
+    }
+    if entry.tags.is_empty() {
+        return true;
+    }
+    let style_ok = style_tag.is_none_or(|t| entry.tags.contains(&t));
+    let dist_ok = dist_tag.is_none_or(|t| entry.tags.contains(&t));
+    style_ok && dist_ok
+}
+
+/// Apply overlay filters and sort (for UI rendering).
+pub fn prepare_entries_for_display(mut entries: Vec<SkillShopEntry>, prefs: &SkillShopPrefs) -> Vec<SkillShopEntry> {
+    entries.retain(|e| !e.is_learned && entry_matches_filters(e, prefs.style_filter, prefs.distance_filter));
+    sort_shop_entries(&mut entries, prefs.sort_mode);
+    entries
+}
+
+unsafe fn read_i32_list(list: *mut c_void) -> Vec<i32> {
+    if list.is_null() {
+        return Vec::new();
+    }
+    // SAFETY: IL2CPP list object layout — klass pointer at object head.
+    let list_klass = unsafe { *(list as *const *mut c_void) };
+    let sdk = Sdk::get();
+    let Some(m_cnt) = sdk.get_method(list_klass.cast(), "get_Count", 0) else {
+        return Vec::new();
+    };
+    let Some(m_itm) = sdk.get_method(list_klass.cast(), "get_Item", 1) else {
+        return Vec::new();
+    };
+    if m_cnt.is_null() || m_itm.is_null() {
+        return Vec::new();
+    }
+    // SAFETY: Reading field or calling method on non-null IL2CPP object pointer.
+    let count = unsafe { call_i32(list, m_cnt) };
+    if count <= 0 || count > 32 {
+        return Vec::new();
+    }
+    let mut out = Vec::with_capacity(count as usize);
+    for i in 0..count {
+        // SAFETY: List<Int32>.get_Item returns the Int32 value directly, not a boxed object.
+        out.push(unsafe { call_i32_i32(list, m_itm, i) });
+    }
+    out
+}
+
+unsafe fn read_skill_tags(sd: *mut c_void, r: &Resolved) -> (Vec<i32>, i32) {
+    let filter_switch = if r.f_sd_filter_switch.is_null() {
+        0
+    } else {
+        // SAFETY: Plain Int32 field on master SkillData.
+        unsafe { read_field_i32(sd, r.f_sd_filter_switch) }
+    };
+
+    let tags = if r.m_sd_get_tag_ids.is_null() {
+        Vec::new()
+    } else {
+        // SAFETY: GetTagIds on master SkillData row.
+        let list = unsafe { call_obj(sd, r.m_sd_get_tag_ids) };
+        // SAFETY: List pointer from GetTagIds on valid SkillData.
+        unsafe { read_i32_list(list) }
+    };
+
+    (tags, filter_switch)
+}
+
+unsafe fn skill_need_point(skill_id: i32, snp: *mut c_void, r: &Resolved) -> i32 {
+    if snp.is_null() {
+        return 0;
+    }
+    // SAFETY: MasterSingleModeSkillNeedPoint.Get(skill_id).
+    let row = unsafe { call_obj_i32(snp, r.m_snp_get, skill_id) };
+    if row.is_null() {
+        return 0;
+    }
+    // SAFETY: NeedSkillPoint field on row.
+    unsafe { read_field_i32(row, r.f_snp_need_skill_point) }
+}
+
+unsafe fn build_entry_from_skill_data(
+    sd: *mut c_void,
+    snp: *mut c_void,
+    r: &Resolved,
+    learned_ids: &[i32],
+    has_hint: bool,
+    hint_level: i32,
+) -> Option<SkillShopEntry> {
+    if sd.is_null() {
+        return None;
+    }
+    // SAFETY: Master SkillData fields.
+    let skill_id = unsafe { read_field_i32(sd, r.f_sd_id) };
+    // SAFETY: sd is valid MasterSkillData.SkillData from Get or list item.
+    let (rarity, group_id, group_rate) = unsafe {
+        (
+            read_field_i32(sd, r.f_sd_rarity),
+            read_field_i32(sd, r.f_sd_group_id),
+            read_field_i32(sd, r.f_sd_group_rate),
+        )
+    };
+    if group_rate <= 0 {
+        return None;
+    }
+    let is_learned = learned_ids.contains(&skill_id);
+    // SAFETY: get_Name on SkillData.
+    let name = unsafe { read_string(call_obj(sd, r.m_sd_get_name)) }.unwrap_or_default();
+    // SAFETY: snp table and sd row are valid master-data pointers.
+    let base_cost = unsafe { skill_need_point(skill_id, snp, r) };
+    // SAFETY: Tag list from GetTagIds on the same SkillData row.
+    let (tags, filter_switch) = unsafe { read_skill_tags(sd, r) };
+    Some(SkillShopEntry {
+        skill_id,
+        group_id,
+        rarity,
+        hint_level,
+        name,
+        base_cost,
+        is_learned,
+        has_hint,
+        tags,
+        filter_switch,
+    })
+}
+
+fn merge_hintless_entries(
+    entries: &mut Vec<SkillShopEntry>,
+    msd: *mut c_void,
+    snp: *mut c_void,
+    r: &Resolved,
+    learned_ids: &[i32],
+) {
+    let hinted_groups: HashSet<i32> = entries.iter().map(|e| e.group_id).collect();
+    let hinted_ids: HashSet<i32> = entries.iter().map(|e| e.skill_id).collect();
+    let visible = shop_hooks::visible_skill_ids();
+    if visible.is_empty() {
+        return;
+    }
+
+    for skill_id in visible {
+        if hinted_ids.contains(&skill_id) {
+            continue;
+        }
+        // SAFETY: MasterSkillData.Get(skill_id).
+        let sd = unsafe { call_obj_i32(msd, r.m_msd_get, skill_id) };
+        if sd.is_null() {
+            continue;
+        }
+        // SAFETY: GroupId on SkillData.
+        let group_id = unsafe { read_field_i32(sd, r.f_sd_group_id) };
+        if hinted_groups.contains(&group_id) {
+            continue;
+        }
+        // SAFETY: Build full-price row from master data.
+        if let Some(entry) = unsafe { build_entry_from_skill_data(sd, snp, r, learned_ids, false, 0) } {
+            entries.push(entry);
+        }
+    }
 }
 
 /// Decrypt an ObscuredInt from its raw 8-byte representation.
@@ -655,6 +864,9 @@ mod tests {
             name: name.to_string(),
             base_cost: 0,
             is_learned: false,
+            has_hint: true,
+            tags: Vec::new(),
+            filter_switch: 0,
         }
     }
 
@@ -666,15 +878,44 @@ mod tests {
             entry("Beta", 1),
             entry("Gamma", 2),
         ];
-        sort_shop_entries(&mut entries);
+        sort_shop_entries(&mut entries, ShopSortMode::RarityThenName);
         let names: Vec<&str> = entries.iter().map(|e| e.name.as_str()).collect();
         assert_eq!(names, ["Alpha", "Gamma", "Beta", "Zetsu"]);
     }
 
     #[test]
+    fn sort_name_only() {
+        let mut entries = vec![entry("Zetsu", 2), entry("Alpha", 1), entry("Beta", 2)];
+        sort_shop_entries(&mut entries, ShopSortMode::NameOnly);
+        let names: Vec<&str> = entries.iter().map(|e| e.name.as_str()).collect();
+        assert_eq!(names, ["Alpha", "Beta", "Zetsu"]);
+    }
+
+    #[test]
+    fn filter_style_and_distance() {
+        let e = SkillShopEntry {
+            skill_id: 1,
+            group_id: 1,
+            rarity: 1,
+            hint_level: 0,
+            name: "Test".into(),
+            base_cost: 100,
+            is_learned: false,
+            has_hint: true,
+            tags: vec![2, 12],
+            filter_switch: 0,
+        };
+        assert!(entry_matches_filters(&e, StyleFilter::All, DistanceFilter::All));
+        assert!(entry_matches_filters(&e, StyleFilter::Senko, DistanceFilter::All));
+        assert!(!entry_matches_filters(&e, StyleFilter::Nige, DistanceFilter::All));
+        assert!(entry_matches_filters(&e, StyleFilter::Senko, DistanceFilter::Mile));
+        assert!(!entry_matches_filters(&e, StyleFilter::Senko, DistanceFilter::Short));
+    }
+
+    #[test]
     fn sort_stable_same_rarity() {
         let mut entries = vec![entry("C", 1), entry("A", 1), entry("B", 1)];
-        sort_shop_entries(&mut entries);
+        sort_shop_entries(&mut entries, ShopSortMode::RarityThenName);
         let names: Vec<&str> = entries.iter().map(|e| e.name.as_str()).collect();
         assert_eq!(names, ["A", "B", "C"]);
     }

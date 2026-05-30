@@ -9,11 +9,15 @@
 #[macro_use]
 extern crate hachimi_plugin_abi;
 
+mod class_dump;
+mod deck_bonuses;
 mod diagnostics;
 mod hooks;
 mod memory_reader;
 mod overlay_cache;
+mod shop_hooks;
 mod skill_shop;
+mod skill_shop_prefs;
 mod tracker;
 mod ui;
 
@@ -53,6 +57,9 @@ fn init_inner(version: i32) -> i32 {
     ui::register_ui();
 
     let hooked = hooks::try_install_hooks();
+    if shop_hooks::try_install_shop_hooks() {
+        hlog_info!(target: "training-tracker", "Skill shop visibility hooks installed");
+    }
 
     let sdk = Sdk::get();
     if hooked {

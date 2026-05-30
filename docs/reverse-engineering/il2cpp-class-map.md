@@ -348,7 +348,9 @@ Found via `il2cpp_find_nested_class(WorkSingleModeCharaData, "SkillTips")`.
 Master database row for a single skill definition. Nested inside `MasterSkillData`.
 Found via `il2cpp_find_nested_class(MasterSkillData, "SkillData")`.
 
-**Fields (runtime-verified 2026-05-24, 73 total):**
+> **Tag system (2026-05-25):** `TagId` is a raw string field. Call `GetTagIds()` to get parsed `List<Int32>` tag IDs, or `GetEnumTagList()` for `List<SingleModeDefine.SkillTag>`. The list is lazily cached in `_tagIdList` / `_eTagList`. For `List<Int32>`, `get_Item` returns unboxed `i32` directly (not a boxed object pointer).
+
+**Fields (runtime-verified 2026-05-24, 73 total; tag cache confirmed 2026-05-25):**
 | Field | Type | Purpose |
 |-------|------|---------|
 | `Id` | `Int32` | Primary key — skill ID |
@@ -382,8 +384,8 @@ Found via `il2cpp_find_nested_class(MasterSkillData, "SkillData")`.
 | `get_Remarks` | 0 | `String` | ✅ Skill description |
 | `get_Condition` | 0 | `String` | Formatted condition text |
 | `get_IsLevelUp` | 0 | `Boolean` | Whether skill is a level-up variant |
-| `GetEnumTagList` | 0 | `List<SkillTag>` | Parsed tag list |
-| `GetTagIds` | 0 | `List<Int32>` | Tag ID list |
+| `GetEnumTagList` | 0 | `List<SingleModeDefine.SkillTag>` | Parsed tag enum list |
+| `GetTagIds` | 0 | `List<Int32>` | Tag ID list (unboxed i32 — `get_Item` returns value, not boxed object) |
 | `ProcessDetail1/2` | 1 | void | Process ability details |
 
 ### `WorkSkillData`
@@ -571,8 +573,10 @@ Manages working copies of all support cards the player owns. Accessed via `WorkD
 - `SingleModeSupportCard` / `WorkSingleModeSupportCard` — not found
 - `SingleModeEvaluation` (top-level) — not found (exists only as `MasterSingleModeEvaluation.SingleModeEvaluation` nested class)
 - `TrainingPartnerInfo` — not found
-- `SingleModeChara` — not found
-- `SingleModeHomeInfo` — not found
+
+**✅ RESOLVED via full class dump (2026-05-25):**
+- `SkillTag` — found as **`Gallop.SingleModeDefine.SkillTag`** (nested class). Not a top-level `Gallop.SkillTag`. Resolve via `il2cpp_find_nested_class(SingleModeDefine, "SkillTag")`.
+- `PartsSingleModeSkillListItem.UpdateItem` — **3 args** on current Global build (was 4 JP / 2 old Global). The signature changed between game versions; use cascading resolution (try 4→3→2).
 
 **Nested class search exhausted (all NOT FOUND):**
 - `WorkSingleModeCharaData::AcquiredSkill`, `::SkillData`, `::Skill`, `::EvaluationInfo`, `::SupportCard`, `::TrainingPartner`
@@ -583,6 +587,98 @@ Manages working copies of all support cards the player owns. Accessed via `WorkD
 - `MasterSkillData::AcquiredSkill`, `::SkillTips`, `::Skill`, `::EvaluationInfo`, `::Evaluation`, `::SupportCard`, `::TrainingPartner`
 
 > **Approach for reading acquired skills**: Use `il2cpp_find_nested_class(WorkSkillData, "AcquiredSkill")` to get the klass pointer, or read the klass from a live list element. Inherited fields/methods from `SkillDataBase` are accessible on the `AcquiredSkill` instance directly via IL2CPP method invoke.
+
+### `SingleModeDefine.SkillTag` (nested enum)
+
+Skill tag categories for filtering. Nested inside `SingleModeDefine`.
+Found via `il2cpp_find_nested_class(SingleModeDefine, "SkillTag")`.
+
+> **⚠️ Not a top-level class.** `sdk.get_class(img, "Gallop", "SkillTag")` will fail. Must use nested class resolution.
+
+**Constants (confirmed 2026-05-25 via class dump):**
+| Name | Type |
+|------|------|
+| `SPEED` | `SingleModeDefine.SkillTag` |
+| `STAMINA` | `SingleModeDefine.SkillTag` |
+| `POWER` | `SingleModeDefine.SkillTag` |
+| `GUTS` | `SingleModeDefine.SkillTag` |
+| `WIZ` | `SingleModeDefine.SkillTag` |
+| `DOWN` | `SingleModeDefine.SkillTag` |
+| `SPECIAL` | `SingleModeDefine.SkillTag` |
+
+> **Note:** Distance/style filter tag IDs (Nige=1, Senko=2, etc., Short=11, Mile=12, etc.) come from `GetTagIds()` on `MasterSkillData.SkillData`, not from this enum. This enum categorizes stat-type tags.
+
+### `PartsSingleModeSkillListItem` (confirmed 2026-05-25)
+
+UI list item for the in-game skill shop / skill display. Used to render individual skill rows.
+
+**Key fields (from class dump 2026-05-25):**
+| Field | Type | Purpose |
+|-------|------|---------||
+| `_info` | `PartsSingleModeSkillListItem.Info` | Current skill info |
+| `_nameText` | `TextCommon` | Skill name label |
+| `_descText` | `TextCommon` | Skill description label |
+| `_needSkillPointText` | `TextCommon` | SP cost label |
+| `_hintLvText` | `TextCommon` | Hint level label |
+| `_bgButton` | `ButtonCommon` | Background button |
+| `_skillIcon` | `SkillIcon` | Icon reference |
+
+**Methods:**
+| Method | Args | Purpose |
+|--------|------|---------||
+| `UpdateItem` | 3 (current Global) | Populate item from Info. **Signature varies by version**: 4 (JP), 3 (Global 2026-05), 2 (old Global). |
+| `SetupOnClickSkillButton` | 1 | Wire click handler |
+| `SetupNeedSkillPoint` | 0 | Setup SP cost display |
+| `SetHintLv` | 0 | Setup hint level display |
+
+### `PartsSingleModeSkillListItem.Info` (nested class, confirmed 2026-05-25)
+
+Data object passed to `UpdateItem`. Contains all display state for one skill row.
+
+**Key fields:**
+| Field | Type | Purpose |
+|-------|------|---------||
+| `<Id>k__BackingField` | `Int32` | Skill ID |
+| `<Level>k__BackingField` | `Int32` | Skill level |
+| `<NeedSkillPoint>k__BackingField` | `Int32` | SP cost |
+| `<HintLv>k__BackingField` | `Int32` | Hint level |
+| `<MasterData>k__BackingField` | `MasterSkillData.SkillData` | Master data ref |
+| `<IsNew>k__BackingField` | `Boolean` | New skill flag |
+| `<IsDrawDesc>k__BackingField` | `Boolean` | Whether to show description |
+| `<IsDrawNeedSkillPoint>k__BackingField` | `Boolean` | Whether to show SP cost |
+| `<IsEventBonusSkill>k__BackingField` | `Boolean` | Event bonus flag |
+
+**Key methods:**
+| Method | Args | Return | Purpose |
+|--------|------|--------|---------||
+| `get_Id` | 0 | `Int32` | Skill ID |
+| `get_Name` | 0 | `String` | Display name |
+| `get_Level` | 0 | `Int32` | Level |
+| `get_NeedSkillPoint` | 0 | `Int32` | SP cost |
+| `get_MasterData` | 0 | `MasterSkillData.SkillData` | Master data |
+| `get_HintLv` | 0 | `Int32` | Hint level |
+
+### `SingleModeSkillLearningViewController` (confirmed 2026-05-25)
+
+Controller for the skill learning/purchase screen during career mode. Holds the full list of purchasable skills.
+
+**Key fields:**
+| Field | Type | Purpose |
+|-------|------|---------||
+| `_skillInfoList` | `List<SkillInfo>` | All skill groups available for purchase |
+| `_itemList` | `List<PartsSingleModeSkillLearningListItem>` | UI item pool |
+| `<RemainingPoint>k__BackingField` | `Int32` | Remaining SP |
+
+**Key methods:**
+| Method | Args | Return | Purpose |
+|--------|------|--------|---------||
+| `Setup` | 0 | void | Initialize the view with current career data |
+| `GetInfo` | 1 | `PartsSingleModeSkillLearningListItem.Info` | Get info for a skill ID |
+| `get_RemainingPoint` | 0 | `Int32` | Remaining SP |
+| `OnClickDecideButton` | 0 | void | Confirm skill purchase |
+| `OnClickResetButton` | 0 | void | Reset selections |
+
+> **Potential alternative data source:** `_skillInfoList` contains ALL purchasable skills (with and without hints), making it a potential alternative to the `_skillTipsList` + visible-row-capture approach currently used by the training tracker plugin.
 
 ### `StandaloneSimulator.SkillDetail`
 
@@ -957,7 +1053,7 @@ The tables below list hooks relevant to career/training. For the full list of ho
 | `TrainingParamChangePlate` | `PlayTypeWriteJp` (JP) / `PlayTypeWrite` (non-JP) | Training plate text | JP variant: 2 args (`message`, `skip_add_system_log`); non-JP: 1 arg (`message`) |
 | `SingleModeUtils` | `GetMonthTextByTurn` | Month text formatting | Template context exposes `month` and `half` filters |
 | `MasterSingleModeTurn.SingleModeTurn` | `get_Month`, `get_Half` | Turn calendar field accessors | These are field accessors on the nested `SingleModeTurn` class, not method hooks on `MasterSingleModeTurn` itself |
-| `PartsSingleModeSkillListItem` | `UpdateItem`, `SetupOnClickSkillButton` | Skill list rendering | `UpdateItem` has region-specific overloads: JP takes 4 args, non-JP takes 2 args |
+| `PartsSingleModeSkillListItem` | `UpdateItem`, `SetupOnClickSkillButton` | Skill list rendering | `UpdateItem` signature varies by game version: 4 args (JP), 3 args (current Global 2026-05), 2 args (old Global). Resolve at runtime by probing 4→3→2. |
 | `PartsSingleModeSkillLearningListItem` | `UpdateCurrent` | Skill learning text | |
 | `PartsSingleModeChoiceRewardTextElementViewModel` | `GetParameterValueText` | Choice reward text | |
 

@@ -19,14 +19,16 @@ Documentation of internal game structures, IL2CPP class hierarchies, and modding
 Research was conducted through:
 
 1. **Static metadata analysis** — Parsing `global-metadata.dat` (IL2CPP metadata v31) to extract all class, method, field, and property names without needing to execute the game binary
-2. **Existing mod analysis** — Studying [Hachimi Edge](https://github.com/Hachimi-Hachimi/Hachimi), [Trainers-Legend-G](https://github.com/MinamiChiwa/Trainers-Legend-G) (136 IL2CPP hooks, see [cross-reference](trainers-legend-g-crossref.md)), and [UmamusumeResponseAnalyzer](https://github.com/UmamusumeResponseAnalyzer/UmamusumeResponseAnalyzer) source code
-3. **Community protocol research** — Analyzing the MessagePack data structures from UmamusumeResponseAnalyzer's `Gallop/` namespace
-4. **Hook point identification** — Mapping Hachimi's existing IL2CPP hooks to understand what's already intercepted and what gaps remain
+2. **Runtime full class dump (2026-05-25)** — The training tracker plugin can enumerate ALL IL2CPP classes at runtime via `il2cpp_domain_get_assemblies` → `il2cpp_image_get_class` → fields/methods. Outputs to `il2cpp_classes.txt` (~21 MB, 105 assemblies, 14,832 classes in `umamusume.dll` alone). Triggered by a menu button. Includes declaring-type chain for nested classes (e.g. `MasterSkillData.SkillData`).
+3. **Existing mod analysis** — Studying [Hachimi Edge](https://github.com/Hachimi-Hachimi/Hachimi), [Trainers-Legend-G](https://github.com/MinamiChiwa/Trainers-Legend-G) (136 IL2CPP hooks, see [cross-reference](trainers-legend-g-crossref.md)), and [UmamusumeResponseAnalyzer](https://github.com/UmamusumeResponseAnalyzer/UmamusumeResponseAnalyzer) source code
+4. **Community protocol research** — Analyzing the MessagePack data structures from UmamusumeResponseAnalyzer's `Gallop/` namespace
+5. **Hook point identification** — Mapping Hachimi's existing IL2CPP hooks to understand what's already intercepted and what gaps remain
 
 ## Tools Used
 
 - **Il2CppDumper** (v6.7.46) — Metadata extraction (PE loader path failed; used direct metadata parsing)
 - **Node.js metadata parser** — Custom string table extraction from `global-metadata.dat`
+- **Runtime class dump** (training tracker plugin) — Full IL2CPP class/field/method enumeration via `il2cpp_domain_get_assemblies` API. Output: `il2cpp_classes.txt` next to game executable. Includes nested class qualified names.
 - **UmamusumeResponseAnalyzer source** — C# MessagePack deserialization classes as ground truth for protocol structures
 
 ## Important Notes
