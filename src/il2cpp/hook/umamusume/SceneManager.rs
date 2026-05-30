@@ -13,8 +13,14 @@ pub fn is_splash_shown() -> bool {
 fn ChangeViewCommon(next_view_id: i32) {
     if next_view_id == 1 {
         // ViewId.Splash
-        SPLASH_SHOWN.store(true, atomic::Ordering::Release);
+        let was_shown = SPLASH_SHOWN.swap(true, atomic::Ordering::AcqRel);
+        if !was_shown {
+            crate::core::plugin::events::dispatch_splash_shown();
+        }
     }
+    crate::core::plugin::events::dispatch_view_change(next_view_id);
+    // Re-evaluate Single Mode (career) state on each view change.
+    crate::core::plugin::career::on_view_change();
 }
 
 type ChangeViewJpfn = extern "C" fn(

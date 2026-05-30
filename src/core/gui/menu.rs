@@ -229,6 +229,7 @@ impl Gui {
                                             ui.heading(title);
                                         });
                                     }
+                                    let _scope = crate::core::plugin::OwnerScope::enter(section.owner);
                                     let _ = panic::catch_unwind(AssertUnwindSafe(|| {
                                         (section.callback)(
                                             ui as *mut _ as *mut c_void,
@@ -262,6 +263,11 @@ impl Gui {
                             }
                             if ui.button(t!("menu.toggle_game_ui")).clicked() {
                                 Thread::main_thread().schedule(Self::toggle_game_ui);
+                            }
+                            if ui.button(t!("menu.reload_plugins")).clicked() {
+                                let (reloaded, skipped) = crate::core::plugin::reload_all();
+                                show_notification =
+                                    Some(format!("Reloaded {reloaded} plugin(s), skipped {skipped}").into());
                             }
                         });
                     });

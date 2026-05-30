@@ -5,6 +5,7 @@
 
 use std::collections::HashSet;
 use std::ffi::c_void;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{LazyLock, Mutex, OnceLock};
 
 use hachimi_plugin_sdk::Sdk;
@@ -13,6 +14,9 @@ static RESOLVED: OnceLock<ShopHookResolved> = OnceLock::new();
 static VISIBLE_SKILL_IDS: LazyLock<Mutex<HashSet<i32>>> = LazyLock::new(|| Mutex::new(HashSet::new()));
 
 static mut ORIG_UPDATE_ITEM: *mut c_void = std::ptr::null_mut();
+
+/// Address of the hook function we installed (for unhooking on shutdown). 0 = none.
+static INSTALLED_HOOK_FN: AtomicUsize = AtomicUsize::new(0);
 
 struct ShopHookResolved {
     get_id: *const c_void,
@@ -179,6 +183,7 @@ pub fn try_install_shop_hooks() -> bool {
                 unsafe {
                     ORIG_UPDATE_ITEM = tramp;
                 }
+                INSTALLED_HOOK_FN.store(hook_fn as usize, Ordering::Release);
                 hlog_info!("Shop hooks: UpdateItem({}) installed", arg_count);
                 return true;
             }
@@ -187,4 +192,18 @@ pub fn try_install_shop_hooks() -> bool {
 
     hlog_warn!("Shop hooks: no UpdateItem variant found (tried 4, 3, 2 args)");
     false
+}
+
+/// Remove the shop hook so the plugin's DLL can be safely unloaded. Idempotent.
+pub fn uninstall_shop_hooks() {
+    let hook_fn = INSTALLED_HOOK_FN.swap(0, Ordering::AcqRel);
+    if hook_fn == 0 {
+        return;
+    }
+    Sdk::get().unhook(hook_fn as *mut c_void);
+    // SAFETY: hooks no longer fire once unhooked; reset the trampoline slot.
+    unsafe {
+        ORIG_UPDATE_ITEM = std::ptr::null_mut();
+    }
+    hlog_info!("Shop hooks: uninstalled");
 }

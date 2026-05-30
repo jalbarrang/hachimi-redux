@@ -8,6 +8,9 @@ use super::Gui;
 
 impl Gui {
     pub(crate) fn run_overlays(&mut self) {
+        // Fire the per-frame event for subscribed plugins (independent of overlays).
+        crate::core::plugin::events::dispatch_frame();
+
         let overlays = overlay::get_plugin_overlays();
         if overlays.is_empty() {
             return;
@@ -45,6 +48,7 @@ impl Gui {
                 .resizable(false)
                 .collapsible(true)
                 .show(ctx, |ui| {
+                    let _scope = crate::core::plugin::OwnerScope::enter(ov.owner);
                     let _ = panic::catch_unwind(AssertUnwindSafe(|| {
                         (ov.callback)(ui as *mut egui::Ui as *mut c_void, ov.userdata as *mut c_void);
                     }))

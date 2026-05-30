@@ -14,6 +14,8 @@ use super::types::GuiMenuSectionCallback;
 
 #[derive(Clone)]
 pub(crate) struct PluginOverlay {
+    pub(crate) handle: u64,
+    pub(crate) owner: u32,
     pub(crate) id: String,
     pub(crate) callback: GuiMenuSectionCallback,
     pub(crate) userdata: usize,
@@ -25,17 +27,37 @@ pub(crate) static PLUGIN_OVERLAYS: Lazy<Mutex<Vec<PluginOverlay>>> = Lazy::new(|
 /// Defaults to `true` (visible) when an overlay is first registered.
 static OVERLAY_VISIBILITY: Lazy<Mutex<HashMap<String, bool>>> = Lazy::new(|| Mutex::new(HashMap::new()));
 
-pub fn register_plugin_overlay(id: String, callback: GuiMenuSectionCallback, userdata: *mut c_void) {
+pub fn register_plugin_overlay(id: String, callback: GuiMenuSectionCallback, userdata: *mut c_void) -> u64 {
     OVERLAY_VISIBILITY
         .lock()
         .expect("lock poisoned")
         .entry(id.clone())
         .or_insert(true);
+    let handle = super::next_handle();
     PLUGIN_OVERLAYS.lock().expect("lock poisoned").push(PluginOverlay {
+        handle,
+        owner: super::current_owner(),
         id,
         callback,
         userdata: userdata as usize,
     });
+    handle
+}
+
+/// Remove all overlays owned by `owner`.
+pub(crate) fn remove_by_owner(owner: u32) {
+    PLUGIN_OVERLAYS
+        .lock()
+        .expect("lock poisoned")
+        .retain(|o| o.owner != owner);
+}
+
+/// Remove an overlay by handle. Returns whether anything was removed.
+pub(crate) fn remove_by_handle(handle: u64) -> bool {
+    let mut overlays = PLUGIN_OVERLAYS.lock().expect("lock poisoned");
+    let before = overlays.len();
+    overlays.retain(|o| o.handle != handle);
+    overlays.len() != before
 }
 
 pub(crate) fn get_plugin_overlays() -> Vec<PluginOverlay> {
@@ -63,13 +85,13 @@ pub fn set_overlay_visible(id: &str, visible: bool) {
 mod tests {
     use super::*;
 
-    static TEST_MUTEX: Mutex<()> = Mutex::new(());
+    use super::super::TEST_LOCK;
 
     extern "C" fn overlay_callback(_: *mut c_void, _: *mut c_void) {}
 
     #[test]
     fn has_plugin_overlays_reflects_registration_state() {
-        let _guard = TEST_MUTEX.lock().expect("lock poisoned");
+        let _guard = TEST_LOCK.lock().expect("lock poisoned");
 
         {
             let mut overlays = PLUGIN_OVERLAYS.lock().expect("lock poisoned");
@@ -78,12 +100,33 @@ mod tests {
 
         assert!(!has_plugin_overlays());
 
-        register_plugin_overlay("test".to_owned(), overlay_callback, std::ptr::null_mut());
+        let _ = register_plugin_overlay("test".to_owned(), overlay_callback, std::ptr::null_mut());
         assert!(has_plugin_overlays());
 
         {
             let mut overlays = PLUGIN_OVERLAYS.lock().expect("lock poisoned");
             overlays.clear();
         }
+    }
+
+    #[test]
+    fn remove_by_owner_only_drops_matching() {
+        let _guard = TEST_LOCK.lock().expect("lock poisoned");
+        PLUGIN_OVERLAYS.lock().expect("lock poisoned").clear();
+
+        {
+            let _s = super::super::OwnerScope::enter(7);
+            let _ = register_plugin_overlay("a".to_owned(), overlay_callback, std::ptr::null_mut());
+        }
+        {
+            let _s = super::super::OwnerScope::enter(8);
+            let _ = register_plugin_overlay("b".to_owned(), overlay_callback, std::ptr::null_mut());
+        }
+
+        remove_by_owner(7);
+        let overlays = get_plugin_overlays();
+        assert_eq!(overlays.len(), 1);
+        assert_eq!(overlays[0].owner, 8);
+        PLUGIN_OVERLAYS.lock().expect("lock poisoned").clear();
     }
 }

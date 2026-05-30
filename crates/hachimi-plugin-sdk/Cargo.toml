@@ -10,6 +10,8 @@ crate-type = ["lib"]
 
 [dependencies]
 hachimi-plugin-abi = { path = "../hachimi-plugin-abi", version = "0.1.0" }
+hachimi-plugin-macros = { path = "../hachimi-plugin-macros", version = "0.1.0" }
+egui = { version = "0.33.3", default-features = false }
 
 [lints.rust]
 improper_ctypes = "warn"

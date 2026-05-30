@@ -1,0 +1,14 @@
+[package]
+name = "hachimi-plugin-macros"
+version = "0.1.0"
+edition = "2021"
+license = "GPL-3.0-or-later"
+description = "Proc-macros for authoring Hachimi plugins (#[hachimi_plugin])"
+
+[lib]
+proc-macro = true
+
+[dependencies]
+syn = { version = "2", features = ["full"] }
+quote = "1"
+proc-macro2 = "1"

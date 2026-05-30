@@ -1,0 +1,55 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Expand host event set + plugin unload/reload (Hachimi-Edge-6yd)</title><style>:root { color-scheme: dark; --bg:#0b0d12; --panel:#11141b; --muted:#8b93a7; --text:#eef1f7; --line:#242936; --accent:#8b5cf6; --done:#33d69f; --blocked:#ff6b6b; }
+* { box-sizing: border-box; }
+body { margin:0; background:radial-gradient(circle at top left,#1c1730,transparent 34rem),var(--bg); color:var(--text); font:14px/1.5 Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+main { width:min(1040px, calc(100% - 48px)); margin:48px auto; }
+header { display:flex; justify-content:space-between; gap:24px; align-items:flex-start; margin-bottom:28px; }
+h1 { font-size:34px; line-height:1.08; margin:0 0 10px; letter-spacing:-0.04em; }
+h2 { font-size:15px; text-transform:uppercase; color:var(--muted); letter-spacing:0.14em; margin:0 0 14px; }
+.meta { color:var(--muted); display:flex; gap:12px; flex-wrap:wrap; }
+.pill { border:1px solid var(--line); border-radius:999px; padding:6px 10px; background:rgba(255,255,255,0.03); }
+section { background:rgba(17,20,27,0.82); border:1px solid var(--line); border-radius:18px; padding:22px; margin:18px 0; box-shadow:0 24px 80px rgba(0,0,0,0.24); }
+.handoff :first-child { margin-top:0; }
+.handoff :last-child { margin-bottom:0; }
+.handoff pre { background:#161922; border:1px solid var(--line); border-radius:10px; padding:14px 16px; overflow-x:auto; margin:12px 0; }
+.handoff pre code { font-family:ui-monospace, SFMono-Regular, Menlo, monospace; font-size:13px; color:#c7ccda; background:none; padding:0; border:none; border-radius:0; }
+.handoff code { font-family:ui-monospace, SFMono-Regular, Menlo, monospace; font-size:13px; background:rgba(139,92,246,0.12); color:var(--accent); padding:2px 6px; border-radius:5px; }
+.handoff strong { font-weight:650; }
+.handoff a { color:var(--accent); text-decoration:none; }
+.handoff a:hover { text-decoration:underline; }
+.handoff h1, .handoff h3, .handoff h4 { font-size:15px; text-transform:uppercase; color:var(--muted); letter-spacing:0.14em; margin:20px 0 10px; }
+.handoff p { margin:8px 0; }
+.handoff ul { margin:8px 0; padding-left:20px; }
+.handoff li { margin:4px 0; }
+.tasks { display:grid; gap:12px; }
+.task { border:1px solid var(--line); border-radius:14px; padding:16px; background:#0f1218; }
+.task-top { display:flex; gap:10px; align-items:center; margin-bottom:8px; }
+.id { color:var(--accent); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+.status { margin-left:auto; color:var(--muted); }
+.task.done .status { color:var(--done); }
+.task.blocked .status { color:var(--blocked); }
+.description { font-weight:650; }
+.details { color:#c7ccda; margin:0; white-space:pre-wrap; }
+.deps { color:var(--muted); margin-top:10px; font-size:12px; }</style></head><body><main><header><div><h1>Expand host event set + plugin unload/reload (Hachimi-Edge-6yd)</h1><div class="meta"><span class="pill">plugin-events-and-unload</span><span class="pill">8 tasks</span></div></div><div class="meta"><span class="pill">Generated 2026-05-30T20:01:38.820Z</span></div></header><section class="handoff"><h2>Handoff</h2><h2>Goal</h2>
+<p>Work <code>Hachimi-Edge-6yd</code>: (1) add game-lifecycle events so plugins stop re-implementing IL2CPP hooks, and (2) build a plugin unload/reload path. User chose: implement BOTH now; events = VIEW<em>CHANGE, CAREER</em>START/END, TRAINING<em>COMMAND, SPLASH</em>SHOWN; payloads as versioned <code>#[repr(C)]</code> structs; demonstrate by migrating training-tracker off its own hooks where covered.</p>
+<h2>Key design facts (from reading the repo)</h2>
+<ul>
+<li>Events are additive: new event-id constants need <strong>no</strong> new vtable slot and <strong>no</strong> <code>API<em>VERSION</code> bump (stays 9/42). This proves the v9 extensibility claim. <code>abi</em>layout.rs</code> stays unchanged.</li>
+<li>Existing host dispatch points found:</li>
+<li><code>src/il2cpp/hook/umamusume/SceneManager.rs::ChangeViewCommon(next<em>view</em>id)</code> — already hooks view changes and already detects splash (<code>next<em>view</em>id == 1</code>). Wire VIEW<em>CHANGE + SPLASH</em>SHOWN here. (Windows-only module — acceptable, project is Windows-centric.)</li>
+<li><code>SingleModeMainViewController.SendCommandAsync(6)</code> arg1 = command<em>id (runtime-verified 2026-05-23, per docs/reverse-engineering/single-mode-architecture.md). The plugin currently hooks this in <code>plugins/training-tracker/src/hooks.rs</code>. Move it host-side → emit TRAINING</em>COMMAND, then drop the plugin&#39;s hook (avoids double-hooking the same address).</li>
+<li>CAREER<em>START/END: no verified single hook point exists. Use the confirmed <code>WorkDataManager</code> singleton → <code>get</em>SingleMode()</code> → <code>get<em>IsPlaying()</code> chain (confirmed 2026-05-24), polled from the existing FRAME dispatch (render thread, same context the plugin&#39;s memory</em>reader already uses). Lazy-resolve + cache method addrs; on resolve failure, silently disable career events. Throttle (~ every N frames). Low blast radius: if wrong, events just don&#39;t fire and the plugin keeps working.</li>
+<li>Payload structs live in <code>hachimi<em>plugin</em>abi</code>: <code>ViewChangeEvent { view<em>id: i32 }</code>, <code>TrainingCommandEvent { command</em>id: i32 }</code>. CAREER_*/SPLASH carry null data.</li>
+<li>Dispatch helpers go in <code>src/core/plugin/events.rs</code> next to existing <code>dispatch<em>frame/config</em>reload/shutdown</code>. Core may call <code>crate::il2cpp</code> (api.rs already does).</li>
+</ul>
+<h2>Unload/reload reality (Phase C)</h2>
+<p>Native cdylib hot-reload is fundamentally unsafe if the plugin installed IL2CPP hooks: <code>FreeLibrary</code> unmaps the plugin&#39;s code while the game still holds trampolines pointing into it → crash on next game call. The host cannot know what a plugin hooked. Therefore:</p>
+<ul>
+<li>Implement <strong>owner-scoped</strong> GUI registrations + event subscriptions (tag each handle with an owning plugin id) so the host can reclaim a plugin&#39;s callbacks before unmap (this is the real safety fix for the GUI/event side).</li>
+<li>Store <code>HMODULE</code> per <code>Plugin</code>.</li>
+<li>Implement a guarded <code>unload_plugin</code>: dispatch SHUTDOWN to that plugin&#39;s subscriptions, reclaim its GUI+event handles, then <code>FreeLibrary</code>.</li>
+<li>Document the contract: a plugin that installs IL2CPP hooks MUST unhook them in its SHUTDOWN handler or it is unsafe to FreeLibrary. Add unit tests for owner-scoped reclaim.</li>
+</ul>
+<h2>Verification gate (after each change)</h2>
+<p><code>cargo build</code>, <code>cargo clippy --workspace --all-targets -- -D warnings</code>, <code>cargo fmt</code>, <code>cargo test</code>. Ignore fmt nightly-import warnings. Never launch the game.</p>
+<h2>Files</h2>
+<p>ABI: <code>crates/hachimi-plugin-abi/src/lib.rs</code>. Events: <code>src/core/plugin/events.rs</code>, <code>mod.rs</code>. Dispatch sites: <code>src/il2cpp/hook/umamusume/SceneManager.rs</code>, new <code>SingleModeMainViewController.rs</code> (+ register in <code>umamusume/mod.rs</code>), new career watcher. Host vtable: <code>src/core/plugin/api.rs</code>. Loader/unload: <code>src/windows/main.rs</code>, <code>src/core/hachimi/mod.rs</code>. Plugin: <code>plugins/training-tracker/src/{lib,hooks,tracker}.rs</code>. Docs: <code>docs/architecture.md</code>.</p></section><section><h2>Tasks</h2><div class="tasks"><article class="task pending"><div class="task-top"><span class="id">t-001</span><span class="description">ABI: add event constants + payload structs (no version bump)</span><span class="status">pending</span></div></article><article class="task pending"><div class="task-top"><span class="id">t-002</span><span class="description">events.rs: dispatch helpers for new events</span><span class="status">pending</span></div></article><article class="task pending"><div class="task-top"><span class="id">t-003</span><span class="description">Wire VIEW_CHANGE + SPLASH_SHOWN in SceneManager::ChangeViewC</span><span class="status">pending</span></div><div class="deps">Depends on t-002</div></article><article class="task pending"><div class="task-top"><span class="id">t-004</span><span class="description">Host hook SendCommandAsync(6) -&gt; TRAINING_COMMAND</span><span class="status">pending</span></div><div class="deps">Depends on t-002</div></article><article class="task pending"><div class="task-top"><span class="id">t-005</span><span class="description">Career watcher: poll IsPlaying from FRAME -&gt; CAREER_START/EN</span><span class="status">pending</span></div><div class="deps">Depends on t-002</div></article><article class="task pending"><div class="task-top"><span class="id">t-006</span><span class="description">Migrate training-tracker onto new events; drop redundant hoo</span><span class="status">pending</span></div><div class="deps">Depends on t-004, t-005</div></article><article class="task pending"><div class="task-top"><span class="id">t-007</span><span class="description">Unload/reload: owner-scoped handles, HMODULE, guarded unload</span><span class="status">pending</span></div><div class="deps">Depends on t-001</div></article><article class="task pending"><div class="task-top"><span class="id">t-008</span><span class="description">Docs update + full verification gate + close issue</span><span class="status">pending</span></div><div class="deps">Depends on t-003, t-006, t-007</div></article></div></section></main></body></html>

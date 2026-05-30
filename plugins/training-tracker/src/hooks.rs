@@ -1,364 +1,76 @@
-//! IL2CPP hooks for intercepting training commands.
+//! Training tracking via host lifecycle events (no plugin-side IL2CPP hooks).
 //!
-//! Strategy:
-//! We hook the method that the game calls when the player executes a training
-//! command during career mode. The game processes training via a network
-//! request/response cycle, but locally the UI calls a method to submit the
-//! chosen command. We intercept at the point where `command_id` is known.
-//!
-//! The exact method to hook depends on the game version. This module tries
-//! to resolve methods by name at runtime using the Hachimi vtable's IL2CPP
-//! helpers. If resolution fails, the plugin still loads — it just won't track.
-//!
-//! ## Hook targets (in priority order):
-//!
-//! 1. **`SingleModeViewController.OnSelectCommand(int commandType, int commandId)`**
-//!    — If this exists, it fires when the player taps a training button.
-//!
-//! 2. **`SingleModeMainViewController.OnClickTraining(int commandId)`**
-//!    — Alternative name for the same concept.
-//!
-//! 3. **Fallback: `TrainingParamChangePlate.PlayTypeWrite`**
-//!    — Already hooked by Hachimi for text. We can piggyback on the fact that
-//!    this fires after a training completes, but it doesn't carry command_id
-//!    directly.
-//!
-//! Because exact signatures depend on the game version, this module is designed
-//! to be **updated** once you do an IL2CPP dump of your specific build.
-//!
-//! ## Cross-reference note (Trainers-Legend-G)
-//!
-//! TLG (136 IL2CPP hooks) does NOT hook any training-command methods. Their
-//! SingleMode hooks are limited to model replacement:
-//!   - `SingleModeStartResultCharaViewer.SetupImageEffect(0)`
-//!   - `SingleModeSceneController.CreateModel(3)` — signature: (cardId, dressId, addVoiceCue)
-//!   - `WorkSingleModeCharaData.GetRaceDressId(1)`
-//!
-//! This confirms our hook candidates are novel — no existing open-source mod
-//! intercepts training commands. The `UmaControllerType` enum from TLG shows
-//! Training=0x2 and TrainingTop=0xa as distinct controller modes.
+//! Previously this module re-implemented IL2CPP hooks on
+//! `SingleModeMainViewController.SendCommandAsync` to observe training commands.
+//! The host now owns that hook and emits [`event::TRAINING_COMMAND`], plus
+//! [`event::CAREER_START`] / [`event::CAREER_END`] from its Single Mode watcher,
+//! so we simply subscribe instead of deriving our own hooks.
 
-use std::ffi::{c_void, CStr};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::ffi::c_void;
 
-use crate::tracker::{Facility, TRACKER};
+use hachimi_plugin_abi::{event, TrainingCommandEvent};
 use hachimi_plugin_sdk::Sdk;
 
-static HOOKS_INSTALLED: AtomicBool = AtomicBool::new(false);
+use crate::tracker::{Facility, TRACKER};
 
-// ---- Trampoline storage ----
-// Each hook target gets its own trampoline slot.
-static mut ORIG_ON_CLICK_TRAINING_MENU: *mut c_void = std::ptr::null_mut();
-static mut ORIG_COMMON_SEND_COMMAND: *mut c_void = std::ptr::null_mut();
-static mut ORIG_SEND_COMMAND_ASYNC: *mut c_void = std::ptr::null_mut();
-static mut ORIG_ON_CLICK_TRAINING: *mut c_void = std::ptr::null_mut();
-
-/// Hook for OnClickTrainingMenu(1) — arg is an IL2CPP object pointer.
-extern "C" fn hook_on_click_training(this: *mut c_void, arg1: *mut c_void) {
-    hlog_info!("[OnClickTrainingMenu] this={:?}, arg1={:?}", this, arg1);
-
-    // SAFETY: Plugin FFI interop with Hachimi vtable
-    unsafe {
-        if !ORIG_ON_CLICK_TRAINING_MENU.is_null() {
-            let orig: extern "C" fn(*mut c_void, *mut c_void) = std::mem::transmute(ORIG_ON_CLICK_TRAINING_MENU);
-            orig(this, arg1);
-        }
+extern "C" fn on_training_command(_event_id: u32, data: *const c_void, _userdata: *mut c_void) {
+    if data.is_null() {
+        return;
     }
-}
+    // SAFETY: for TRAINING_COMMAND the host points `data` at a TrainingCommandEvent
+    // that is valid for the callback's duration.
+    let cmd = unsafe { &*(data as *const TrainingCommandEvent) };
 
-/// Hook for CommonSendCommandAsync(2) — args could be objects or ints.
-/// Use pointer-sized args to be safe.
-extern "C" fn hook_on_select_command(this: *mut c_void, arg1: usize, arg2: usize) {
-    hlog_info!("[CommonSendCommandAsync] arg1=0x{:x}, arg2=0x{:x}", arg1, arg2);
-
-    // If values are small enough to be ints, log that interpretation too
-    if arg1 < 10000 && arg2 < 10000 {
-        hlog_info!("  As ints: arg1={}, arg2={}", arg1, arg2);
-    }
-
-    // SAFETY: Plugin FFI interop with Hachimi vtable
-    unsafe {
-        if !ORIG_COMMON_SEND_COMMAND.is_null() {
-            let orig: extern "C" fn(*mut c_void, usize, usize) = std::mem::transmute(ORIG_COMMON_SEND_COMMAND);
-            orig(this, arg1, arg2);
-        }
-    }
-}
-
-/// Hook for SendCommandAsync(6).
-/// Confirmed arg layout (2026-05-23 runtime analysis):
-///   arg1 = command_id (int, e.g. 106 = Wisdom)
-///   arg2 = 0 (possibly command_group_id)
-///   arg3 = 0 (possibly select_id)
-///   arg4 = pointer (callback/continuation object)
-///   arg5 = pointer (callback/continuation object)
-///   arg6 = 0
-extern "C" fn hook_send_command_async(
-    this: *mut c_void,
-    command_id: usize,
-    a2: usize,
-    a3: usize,
-    a4: usize,
-    a5: usize,
-    a6: usize,
-) {
-    // command_id is in the int range — safe to cast
-    let cid = command_id as i32;
-    hlog_info!("[SendCommandAsync] command_id={}", cid);
-
-    if let Some(facility) = Facility::from_command_id(cid) {
+    if let Some(facility) = Facility::from_command_id(cmd.command_id) {
         if let Ok(mut tracker) = TRACKER.lock() {
             tracker.active = true;
             tracker.record_training(facility);
             hlog_info!(
                 "Training recorded: {} (command_id={}, total={})",
                 facility.name(),
-                cid,
+                cmd.command_id,
                 tracker.counts[facility as usize]
             );
         }
     }
+}
 
-    // SAFETY: Plugin FFI interop with Hachimi vtable
-    unsafe {
-        if !ORIG_SEND_COMMAND_ASYNC.is_null() {
-            let orig: extern "C" fn(*mut c_void, usize, usize, usize, usize, usize, usize) =
-                std::mem::transmute(ORIG_SEND_COMMAND_ASYNC);
-            orig(this, command_id, a2, a3, a4, a5, a6);
-        }
+extern "C" fn on_career_start(_event_id: u32, _data: *const c_void, _userdata: *mut c_void) {
+    if let Ok(mut tracker) = TRACKER.lock() {
+        tracker.reset();
+        tracker.active = true;
     }
+    hlog_info!("Career started — tracker reset");
 }
 
-/// Hook for OnClickTraining(0) — no args, just logs entry into training view.
-extern "C" fn hook_on_click_training_no_args(this: *mut c_void) {
-    hlog_info!("[OnClickTraining] training view opened");
-
-    // SAFETY: Plugin FFI interop with Hachimi vtable
-    unsafe {
-        if !ORIG_ON_CLICK_TRAINING.is_null() {
-            let orig: extern "C" fn(*mut c_void) = std::mem::transmute(ORIG_ON_CLICK_TRAINING);
-            orig(this);
-        }
+extern "C" fn on_career_end(_event_id: u32, _data: *const c_void, _userdata: *mut c_void) {
+    if let Ok(mut tracker) = TRACKER.lock() {
+        tracker.active = false;
     }
+    hlog_info!("Career ended");
 }
 
-/// Minimal MethodInfo layout matching IL2CPP v31 (64-bit).
-/// Only the fields we need for diagnostics.
-#[repr(C)]
-struct MethodInfoCompat {
-    method_pointer: usize,
-    virtual_method_pointer: usize,
-    invoker_method: usize,
-    name: *const std::ffi::c_char,
-    klass: *mut c_void,
-    return_type: *const c_void,
-    parameters: *mut c_void,
-    _union1: usize,
-    _union2: usize,
-    token: u32,
-    flags: u16,
-    iflags: u16,
-    slot: u16,
-    parameters_count: u8,
+/// Fired before the host unloads this plugin (or on process detach). Remove every
+/// IL2CPP hook we installed so the host can safely free the DLL (UNLOADABLE).
+extern "C" fn on_shutdown(_event_id: u32, _data: *const c_void, _userdata: *mut c_void) {
+    crate::shop_hooks::uninstall_shop_hooks();
+    hlog_info!("Shutdown: hooks removed");
 }
 
-/// Dump all method names on a class for diagnostics.
-fn dump_class_methods(class_name: &str, klass: *mut c_void) {
+/// Subscribe to the host events that drive tracking. Returns `true` if the host
+/// advertises the events capability and the training-command subscription took.
+pub fn subscribe_events() -> bool {
     let sdk = Sdk::get();
-    let mut iter: *mut c_void = std::ptr::null_mut();
-    let mut count = 0u32;
-    hlog_info!("Enumerating methods on {}:", class_name);
-    loop {
-        // SAFETY: Plugin FFI interop with Hachimi vtable
-        let method = sdk.class_get_methods(klass as _, &mut iter);
-        if method.is_null() {
-            break;
-        }
-        // SAFETY: Plugin FFI interop with Hachimi vtable
-        unsafe {
-            let mi = &*(method as *const MethodInfoCompat);
-            if !mi.name.is_null() {
-                let name = std::ffi::CStr::from_ptr(mi.name);
-                if let Ok(s) = name.to_str() {
-                    // Filter to training/command/click/select/decide related
-                    let sl = s.to_ascii_lowercase();
-                    if sl.contains("train")
-                        || sl.contains("command")
-                        || sl.contains("click")
-                        || sl.contains("select")
-                        || sl.contains("decide")
-                        || sl.contains("exec")
-                        || sl.contains("start")
-                        || sl.contains("home")
-                    {
-                        hlog_info!("  {}::{} (args={})", class_name, s, mi.parameters_count);
-                    }
-                }
-            }
-        }
-        count += 1;
-        if count > 500 {
-            break;
-        }
-    }
-    hlog_info!("  {} total methods on {}", count, class_name);
-}
-
-/// Attempt to install hooks by resolving IL2CPP methods at runtime.
-///
-/// This tries several known class/method combinations. The first one that
-/// resolves successfully gets hooked.
-///
-/// Returns `true` if at least one hook was installed.
-pub fn try_install_hooks() -> bool {
-    if HOOKS_INSTALLED.load(Ordering::Relaxed) {
-        return true;
+    if !sdk.has_capability(hachimi_plugin_abi::capability::EVENTS) {
+        hlog_warn!("Host does not advertise the EVENTS capability; tracking disabled");
+        return false;
     }
 
-    let sdk = Sdk::get();
+    let null = std::ptr::null_mut();
+    let training = sdk.on(event::TRAINING_COMMAND, on_training_command, null);
+    sdk.on(event::CAREER_START, on_career_start, null);
+    sdk.on(event::CAREER_END, on_career_end, null);
+    sdk.on(event::SHUTDOWN, on_shutdown, null);
 
-    // List of (assembly, namespace, class, method, arg_count, hook_fn) to try.
-    // These are educated guesses based on community research. Update after
-    // running Il2CppDumper on your game version.
-    // Candidates derived from Il2CppDumper metadata analysis of the actual game.
-    // Classes/methods confirmed present in the global-metadata.dat:
-    //   - SingleModeMainViewController (class)
-    //   - OnClickTraining (method)
-    //   - OnDecide (method)
-    //   - TrainingSelectDecide (class)
-    //   - TrainingView, TrainingController, TrainingMain (classes)
-    //   - get_SelectedTrainingCommandId, get_TrainingCommandId (properties)
-    let candidates: &[(
-        &CStr,         // assembly name
-        &CStr,         // namespace
-        &CStr,         // class name
-        &CStr,         // method name
-        i32,           // arg count
-        *const c_void, // hook function pointer
-    )] = &[
-        // Candidate 1: OnClickTrainingMenu(1) — fires when player taps a specific
-        // training facility button. The arg is likely the menu index or command_id.
-        // Discovered via runtime method enumeration 2026-05-23.
-        (
-            c"umamusume.dll",
-            c"Gallop",
-            c"SingleModeMainViewController",
-            c"OnClickTrainingMenu",
-            1,
-            hook_on_click_training as *const c_void,
-        ),
-        // Candidate 2: CommonSendCommandAsync(2) — simpler command sender,
-        // likely (commandType, commandId) or similar.
-        (
-            c"umamusume.dll",
-            c"Gallop",
-            c"SingleModeMainViewController",
-            c"CommonSendCommandAsync",
-            2,
-            hook_on_select_command as *const c_void,
-        ),
-        // Candidate 3: SendCommandAsync(6) — full command submission with all params.
-        // We hook this to log all 6 args and identify which carries command_id.
-        (
-            c"umamusume.dll",
-            c"Gallop",
-            c"SingleModeMainViewController",
-            c"SendCommandAsync",
-            6,
-            hook_send_command_async as *const c_void,
-        ),
-        // Candidate 4: OnClickTraining(0) — no-arg, opens the training view.
-        // May not carry command_id but confirms training flow entry.
-        (
-            c"umamusume.dll",
-            c"Gallop",
-            c"SingleModeMainViewController",
-            c"OnClickTraining",
-            0,
-            hook_on_click_training_no_args as *const c_void,
-        ),
-    ];
-
-    let mut installed_count = 0u32;
-
-    if let Some(image) = sdk.get_assembly_image("umamusume.dll") {
-        if let Some(klass) = sdk.get_class(image, "Gallop", "SingleModeMainViewController") {
-            dump_class_methods("SingleModeMainViewController", klass.cast());
-        } else {
-            hlog_warn!("SingleModeMainViewController class not found!");
-        }
-
-        for probe_class in [
-            "TrainingView",
-            "TrainingController",
-            "TrainingSelectDecide",
-            "TrainingMain",
-            "TrainingMenu",
-            "SingleModeViewController",
-            "SingleModeSceneController",
-        ] {
-            if let Some(k) = sdk.get_class(image, "Gallop", probe_class) {
-                dump_class_methods(probe_class, k.cast());
-            } else {
-                hlog_debug!("  Class {} not found", probe_class);
-            }
-        }
-    }
-
-    for (asm, ns, class, method, args, hook_fn) in candidates {
-        hlog_info!(
-            "Trying hook: {}::{}::{} (args={})",
-            asm.to_str().unwrap_or("?"),
-            class.to_str().unwrap_or("?"),
-            method.to_str().unwrap_or("?"),
-            args,
-        );
-
-        let Some(image) = sdk.get_assembly_image(asm.to_str().unwrap_or("")) else {
-            hlog_warn!("  Assembly not found, skipping");
-            continue;
-        };
-        let Some(klass) = sdk.get_class(image, ns.to_str().unwrap_or(""), class.to_str().unwrap_or("")) else {
-            hlog_warn!("  Class not found, skipping");
-            continue;
-        };
-        let Some(addr) = sdk.get_method_addr(klass, method.to_str().unwrap_or(""), *args) else {
-            hlog_warn!("  Method not found, skipping");
-            continue;
-        };
-
-        hlog_info!("  Found at {:?}, installing hook...", addr);
-
-        if let Some(trampoline) = sdk.hook(addr, *hook_fn as *mut c_void) {
-            let hook_ptr = *hook_fn as usize;
-            // SAFETY: Hook install runs once from init; static trampolines are read from hook callbacks only.
-            unsafe {
-                if hook_ptr == hook_on_click_training as usize {
-                    ORIG_ON_CLICK_TRAINING_MENU = trampoline;
-                } else if hook_ptr == hook_on_select_command as usize {
-                    ORIG_COMMON_SEND_COMMAND = trampoline;
-                } else if hook_ptr == hook_send_command_async as usize {
-                    ORIG_SEND_COMMAND_ASYNC = trampoline;
-                } else if hook_ptr == hook_on_click_training_no_args as usize {
-                    ORIG_ON_CLICK_TRAINING = trampoline;
-                }
-            }
-            installed_count += 1;
-            HOOKS_INSTALLED.store(true, Ordering::Relaxed);
-            hlog_info!("  ✓ Hook installed successfully!");
-        } else {
-            hlog_error!("  ✗ Hook installation failed");
-        }
-    }
-
-    if installed_count == 0 {
-        hlog_warn!(
-            "No hook candidates found. The plugin will still load but won't \
-             track automatically."
-        );
-    } else {
-        hlog_info!("{} hooks installed for diagnostic capture", installed_count);
-    }
-
-    installed_count > 0
+    training != 0
 }

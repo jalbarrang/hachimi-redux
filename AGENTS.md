@@ -26,3 +26,4 @@ Read these on demand — don't load everything upfront.
 | Log file location and usage | [docs/logging.md](docs/logging.md) |
 | Beads issue tracker usage | [docs/issue-tracker.md](docs/issue-tracker.md) |
 | IL2CPP class maps, training system, network protocol, TLG cross-ref | [docs/reverse-engineering/](docs/reverse-engineering/README.md) |
+| Verify hook signatures (return type + arg count) before detouring | [docs/reverse-engineering/il2cpp-signatures.md](docs/reverse-engineering/il2cpp-signatures.md) |

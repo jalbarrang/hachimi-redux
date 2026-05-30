@@ -10,6 +10,7 @@ Documentation of internal game structures, IL2CPP class hierarchies, and modding
 | [training-system.md](training-system.md) | Training facilities, command IDs, stat gains, and facility levels |
 | [network-protocol.md](network-protocol.md) | MessagePack request/response structures for career mode |
 | [il2cpp-class-map.md](il2cpp-class-map.md) | Confirmed IL2CPP classes, methods, and fields from metadata analysis |
+| [il2cpp-signatures.md](il2cpp-signatures.md) | How to verify hook signatures (return type + arg count) against the trimmed `umamusume.dll` method dump in [il2cpp/](il2cpp/umamusume-methods.txt); the return-type/coroutine pitfall |
 | [hachimi-plugin-surface.md](hachimi-plugin-surface.md) | What the Hachimi plugin API exposes and how to use it for mods |
 | [qol-opportunities.md](qol-opportunities.md) | Quality of life enhancement ideas with feasibility analysis |
 | [trainers-legend-g-crossref.md](trainers-legend-g-crossref.md) | Cross-reference analysis of Trainers-Legend-G mod (136 hooks, race telemetry, IL2CPP patterns) |

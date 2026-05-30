@@ -32,6 +32,90 @@ pub type GuiMenuCallback = extern "C" fn(userdata: *mut c_void);
 pub type GuiMenuSectionCallback = extern "C" fn(ui: *mut c_void, userdata: *mut c_void);
 pub type GuiUiCallback = extern "C" fn(ui: *mut c_void, userdata: *mut c_void);
 
+/// Host → plugin event callback. `data` is event-specific (null for most events).
+pub type PluginEventFn = extern "C" fn(event_id: u32, data: *const c_void, userdata: *mut c_void);
+
+/// Plugin-exported metadata function: `hachimi_plugin_manifest() -> *const PluginManifest`.
+pub type PluginManifestFn = extern "C" fn() -> *const PluginManifest;
+
+/// Host→plugin event ids for [`Vtable::host_subscribe`].
+///
+/// Event ids are append-only and **do not** require an [`API_VERSION`] bump or a
+/// new vtable slot — adding an event is purely additive. Events whose `data` is
+/// non-null point at the matching `#[repr(C)]` payload struct documented below.
+pub mod event {
+    /// Fired once per rendered frame on the render thread. `data` is null.
+    pub const FRAME: u32 = 1;
+    /// Fired after the host reloads its config. `data` is null.
+    pub const CONFIG_RELOAD: u32 = 2;
+    /// Fired before the host unloads (process detach), or before a single plugin is
+    /// unloaded. `data` is null. A plugin that installed IL2CPP hooks MUST unhook
+    /// them here, otherwise unloading its DLL is unsafe.
+    pub const SHUTDOWN: u32 = 3;
+    /// Fired when the game changes view/scene. `data` → [`super::ViewChangeEvent`].
+    pub const VIEW_CHANGE: u32 = 4;
+    /// Fired when a Single Mode (career) run becomes active. `data` is null.
+    pub const CAREER_START: u32 = 5;
+    /// Fired when a Single Mode (career) run ends. `data` is null.
+    pub const CAREER_END: u32 = 6;
+    /// Fired when the player submits a training command. `data` → [`super::TrainingCommandEvent`].
+    pub const TRAINING_COMMAND: u32 = 7;
+    /// Fired once when the splash screen is first shown (game ready). `data` is null.
+    pub const SPLASH_SHOWN: u32 = 8;
+}
+
+/// Payload for [`event::VIEW_CHANGE`]. `data` points at one of these for the
+/// duration of the callback only — copy out what you need, don't retain the pointer.
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct ViewChangeEvent {
+    /// The game's next view id (`Gallop.ViewId`). `1` is the splash view.
+    pub view_id: i32,
+}
+
+/// Payload for [`event::TRAINING_COMMAND`]. Valid for the callback duration only.
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct TrainingCommandEvent {
+    /// The submitted Single Mode command id (e.g. `106` = Wisdom). Scenario-dependent.
+    pub command_id: i32,
+}
+
+/// Host capability bitflags returned by [`Vtable::host_capabilities`], plus
+/// plugin-declared flags set in [`PluginManifest::requested_caps`].
+pub mod capability {
+    // Host-provided capabilities (queried via `host_capabilities`).
+    pub const GUI: u64 = 1 << 0;
+    pub const OVERLAY: u64 = 1 << 1;
+    pub const EVENTS: u64 = 1 << 2;
+    pub const IL2CPP: u64 = 1 << 3;
+
+    // Plugin-declared flags (set in the manifest `requested_caps`).
+    /// The plugin promises it can be unloaded/reloaded at runtime: it removes every
+    /// IL2CPP hook it installed in its `SHUTDOWN` handler so the host can safely
+    /// `FreeLibrary` it. Without this flag the host only disconnects the plugin's
+    /// GUI/event callbacks and keeps the DLL mapped (it never force-unmaps code the
+    /// game may still call into).
+    pub const UNLOADABLE: u64 = 1 << 8;
+}
+
+/// Plugin metadata read by the host before/at init for introspection and validation.
+/// `name` and `version` are NUL-terminated, `'static`, UTF-8 C strings.
+#[repr(C)]
+pub struct PluginManifest {
+    /// `API_VERSION` the plugin was built against.
+    pub abi_version: i32,
+    /// Minimum host API version the plugin requires.
+    pub min_host_api: i32,
+    /// Capability bits the plugin intends to use (see [`capability`]).
+    pub requested_caps: u64,
+    pub name: *const c_char,
+    pub version: *const c_char,
+}
+
+// SAFETY: the pointers reference 'static C strings; the manifest is read-only.
+unsafe impl Sync for PluginManifest {}
+
 #[repr(i32)]
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Hash)]
 pub enum InitResult {
@@ -117,40 +201,29 @@ pub struct Vtable {
 
     pub log: unsafe extern "C" fn(level: i32, target: *const c_char, message: *const c_char),
 
+    // Host services
+    /// Capability bitflags (see [`capability`]).
+    pub host_capabilities: unsafe extern "C" fn() -> u64,
+    /// Subscribe to a host event. Returns a non-zero subscription handle, or 0 on failure.
+    pub host_subscribe: unsafe extern "C" fn(event_id: u32, callback: PluginEventFn, userdata: *mut c_void) -> u64,
+    /// Remove a subscription previously returned by `host_subscribe`.
+    pub host_unsubscribe: unsafe extern "C" fn(handle: u64),
+
+    // GUI registration. Plugins draw with the shared `egui::Ui` handed to their
+    // callbacks (cast via the SDK); there are no per-widget slots.
+    /// Returns a non-zero registration handle, or 0 on failure.
     pub gui_register_menu_item:
-        unsafe extern "C" fn(label: *const c_char, callback: Option<GuiMenuCallback>, userdata: *mut c_void) -> bool,
+        unsafe extern "C" fn(label: *const c_char, callback: Option<GuiMenuCallback>, userdata: *mut c_void) -> u64,
+    /// Returns a non-zero registration handle, or 0 on failure.
     pub gui_register_menu_section:
-        unsafe extern "C" fn(callback: Option<GuiMenuSectionCallback>, userdata: *mut c_void) -> bool,
-    pub gui_show_notification: unsafe extern "C" fn(message: *const c_char) -> bool,
-    pub gui_ui_heading: unsafe extern "C" fn(ui: *mut c_void, text: *const c_char) -> bool,
-    pub gui_ui_label: unsafe extern "C" fn(ui: *mut c_void, text: *const c_char) -> bool,
-    pub gui_ui_small: unsafe extern "C" fn(ui: *mut c_void, text: *const c_char) -> bool,
-    pub gui_ui_separator: unsafe extern "C" fn(ui: *mut c_void) -> bool,
-    pub gui_ui_button: unsafe extern "C" fn(ui: *mut c_void, text: *const c_char) -> bool,
-    pub gui_ui_small_button: unsafe extern "C" fn(ui: *mut c_void, text: *const c_char) -> bool,
-    pub gui_ui_checkbox: unsafe extern "C" fn(ui: *mut c_void, text: *const c_char, value: *mut bool) -> bool,
-    pub gui_ui_text_edit_singleline:
-        unsafe extern "C" fn(ui: *mut c_void, buffer: *mut c_char, buffer_len: usize) -> bool,
-    pub gui_ui_horizontal:
-        unsafe extern "C" fn(ui: *mut c_void, callback: Option<GuiUiCallback>, userdata: *mut c_void) -> bool,
-    pub gui_ui_grid: unsafe extern "C" fn(
-        ui: *mut c_void,
-        id: *const c_char,
-        columns: usize,
-        spacing_x: f32,
-        spacing_y: f32,
-        callback: Option<GuiUiCallback>,
-        userdata: *mut c_void,
-    ) -> bool,
-    pub gui_ui_end_row: unsafe extern "C" fn(ui: *mut c_void) -> bool,
-    pub gui_ui_colored_label:
-        unsafe extern "C" fn(ui: *mut c_void, r: u8, g: u8, b: u8, a: u8, text: *const c_char) -> bool,
+        unsafe extern "C" fn(callback: Option<GuiMenuSectionCallback>, userdata: *mut c_void) -> u64,
     pub gui_register_menu_item_icon: unsafe extern "C" fn(
         label: *const c_char,
         icon_uri: *const c_char,
         icon_ptr: *const u8,
         icon_len: usize,
     ) -> bool,
+    /// Returns a non-zero registration handle, or 0 on failure.
     pub gui_register_menu_section_with_icon: unsafe extern "C" fn(
         title: *const c_char,
         icon_uri: *const c_char,
@@ -158,25 +231,12 @@ pub struct Vtable {
         icon_len: usize,
         callback: Option<GuiMenuSectionCallback>,
         userdata: *mut c_void,
-    ) -> bool,
-
-    pub gui_register_overlay: unsafe extern "C" fn(
-        id: *const c_char,
-        callback: Option<GuiMenuSectionCallback>,
-        userdata: *mut c_void,
-    ) -> bool,
-
-    pub gui_ui_set_min_width: unsafe extern "C" fn(ui: *mut c_void, width: f32) -> bool,
-
+    ) -> u64,
+    /// Returns a non-zero registration handle, or 0 on failure.
+    pub gui_register_overlay:
+        unsafe extern "C" fn(id: *const c_char, callback: Option<GuiMenuSectionCallback>, userdata: *mut c_void) -> u64,
+    /// Remove any registration (menu item/section/overlay) by its handle.
+    pub gui_unregister: unsafe extern "C" fn(handle: u64) -> bool,
+    pub gui_show_notification: unsafe extern "C" fn(message: *const c_char) -> bool,
     pub gui_overlay_set_visible: unsafe extern "C" fn(id: *const c_char, visible: bool) -> bool,
-
-    pub gui_ui_set_font_size: unsafe extern "C" fn(ui: *mut c_void, size: f32) -> bool,
-
-    pub gui_ui_collapsing: unsafe extern "C" fn(
-        ui: *mut c_void,
-        heading: *const c_char,
-        default_open: bool,
-        callback: Option<GuiUiCallback>,
-        userdata: *mut c_void,
-    ) -> bool,
 }

@@ -32,6 +32,21 @@ impl Sdk {
         }
     }
 
+    /// Remove a hook previously installed via [`Self::hook`], identified by its hook
+    /// function address. Returns the original address, or `None` if it wasn't hooked.
+    /// Plugins that opt in to `capability::UNLOADABLE` must call this for every hook
+    /// they installed from their `SHUTDOWN` handler.
+    pub fn unhook(&self, hook_addr: *mut c_void) -> Option<*mut c_void> {
+        let interceptor = self.interceptor();
+        // SAFETY: hook_addr was installed via this same interceptor.
+        let orig = unsafe { (vt().interceptor_unhook)(interceptor, hook_addr) };
+        if orig.is_null() {
+            None
+        } else {
+            Some(orig)
+        }
+    }
+
     #[must_use]
     pub fn trampoline_addr(&self, hook_addr: *mut c_void) -> Option<*mut c_void> {
         let interceptor = self.interceptor();

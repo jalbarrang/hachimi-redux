@@ -31,6 +31,7 @@ mod RaceInfo;
 mod RaceUtil;
 mod SaveDataManager;
 pub mod Screen;
+mod SingleModeMainViewController;
 pub mod SingleModeStartResultCharaViewer;
 mod SingleModeUtils;
 mod StoryChoiceController;
@@ -91,6 +92,7 @@ pub fn init() {
     GraphicSettings::init(image);
     CameraController::init(image);
     SingleModeStartResultCharaViewer::init(image);
+    SingleModeMainViewController::init(image);
     WebViewManager::init(image);
     DialogCommon::init(image);
     PartsSingleModeSkillLearningListItem::init(image);

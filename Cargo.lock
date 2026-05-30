@@ -632,10 +632,21 @@ name = "hachimi-plugin-abi"
 version = "0.1.0"
 
 [[package]]
+name = "hachimi-plugin-macros"
+version = "0.1.0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.109",
+]
+
+[[package]]
 name = "hachimi-plugin-sdk"
 version = "0.1.0"
 dependencies = [
+ "egui",
  "hachimi-plugin-abi",
+ "hachimi-plugin-macros",
 ]
 
 [[package]]

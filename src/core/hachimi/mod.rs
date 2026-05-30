@@ -202,6 +202,7 @@ impl Hachimi {
 
         new_config.language.set_locale();
         self.config.store(Arc::new(new_config));
+        super::plugin::events::dispatch_config_reload();
     }
 
     pub fn save_config(&self, config: &Config) -> Result<(), Error> {
@@ -217,6 +218,7 @@ impl Hachimi {
 
         config.language.set_locale();
         self.config.store(Arc::new(config));
+        super::plugin::events::dispatch_config_reload();
         Ok(())
     }
 

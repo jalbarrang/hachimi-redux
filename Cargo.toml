@@ -4,6 +4,7 @@ members = [
     ".",
     "crates/hachimi-plugin-abi",
     "crates/hachimi-plugin-sdk",
+    "crates/hachimi-plugin-macros",
     "plugins/training-tracker",
 ]
 

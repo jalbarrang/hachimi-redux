@@ -21,59 +21,51 @@ mod skill_shop_prefs;
 mod tracker;
 mod ui;
 
-use std::ffi::c_void;
+use hachimi_plugin_sdk::{hachimi_plugin, Sdk};
 
-use hachimi_plugin_abi::{InitResult, Vtable, API_VERSION};
-use hachimi_plugin_sdk::{init_result_to_i32, InitError, Sdk};
-
-/// Plugin entry point called by Hachimi after core hooking is complete.
-///
-/// # Safety
-/// Called by the host with a valid vtable pointer.
-#[no_mangle]
-pub extern "C" fn hachimi_init(vtable_ptr: *const c_void, version: i32) -> i32 {
-    // SAFETY: Host passes a valid vtable pointer during plugin load.
-    match unsafe { Sdk::init_min(vtable_ptr as *const Vtable, version, API_VERSION) } {
-        Ok(()) => init_inner(version),
-        Err(InitError::HostApiTooOld { required, actual }) => {
-            hlog_error!(
-                target: "training-tracker",
-                "Host API v{actual} is below required v{required} (plugin built for abi v{API_VERSION})"
-            );
-            init_result_to_i32(InitResult::Error)
-        }
-        Err(_) => init_result_to_i32(InitResult::Error),
-    }
-}
-
-fn init_inner(version: i32) -> i32 {
+/// Plugin entry point. The macro generates the `hachimi_init` and
+/// `hachimi_plugin_manifest` C exports; `min_api`/version come from the SDK and Cargo.
+#[hachimi_plugin(name = "training-tracker", caps = hachimi_plugin_sdk::capability::UNLOADABLE)]
+fn init(sdk: &Sdk) -> Result<(), &'static str> {
     hlog_info!(
         target: "training-tracker",
         "Training Tracker plugin v{} initializing (host API v{})",
         env!("CARGO_PKG_VERSION"),
-        version
+        sdk.version().raw()
     );
 
     ui::register_ui();
 
-    let hooked = hooks::try_install_hooks();
+    let tracking = hooks::subscribe_events();
     if shop_hooks::try_install_shop_hooks() {
         hlog_info!(target: "training-tracker", "Skill shop visibility hooks installed");
     }
 
-    let sdk = Sdk::get();
-    if hooked {
-        hlog_info!(target: "training-tracker", "Training Tracker ready — hooks installed");
+    if tracking {
+        hlog_info!(target: "training-tracker", "Training Tracker ready — subscribed to host events");
         sdk.show_notification("Training Tracker loaded!");
     } else {
         hlog_warn!(
             target: "training-tracker",
-            "Training Tracker loaded without hooks. The UI is registered \
-             but training won't be tracked automatically. See the log for \
-             details on which methods were tried."
+            "Training Tracker loaded but training-command events are unavailable. \
+             The UI is registered but training won't be tracked automatically."
         );
-        sdk.show_notification("Training Tracker loaded (no hooks - see log)");
+        sdk.show_notification("Training Tracker loaded (no tracking - see log)");
     }
 
-    init_result_to_i32(InitResult::Ok)
+    Ok(())
+}
+
+#[cfg(test)]
+mod manifest_tests {
+    #[test]
+    fn manifest_declares_unloadable() {
+        // SAFETY: the generated manifest is a 'static read-only struct.
+        let manifest = unsafe { &*crate::hachimi_plugin_manifest() };
+        assert_ne!(
+            manifest.requested_caps & hachimi_plugin_sdk::capability::UNLOADABLE,
+            0,
+            "training-tracker must advertise UNLOADABLE so the host can hot-reload it"
+        );
+    }
 }
