@@ -90,12 +90,14 @@ unsafe fn read_turn_info(ti: *mut c_void) -> CommandInfo {
         let failure_rate = resolve_obj_method(ti, "get_TrainingFailureRate", 0)
             .map(|m| call_i32(ti, m))
             .unwrap_or(0);
-        // Displayed preview = base Value + client-computed BonusValue (support cards,
-        // scenario amplifiers). `BonusParamIncDecInfoDic` is logged separately to
-        // confirm it is not an additional (double-counted) term — see issue 23x.
+        // Displayed preview = base (`ParamIncDecInfoDic`) + bonus
+        // (`BonusParamIncDecInfoDic`). The bonus holds the client-computed support-card
+        // and scenario-amplifier gains; `ParamsIncDecInfo.BonusValue` is always 0.
+        // Confirmed in-game (Aoharu amplifier turn) — see issue 23x. Sum all four
+        // components so any future non-zero `BonusValue` is still counted.
         let main = read_param_dict(ti, "ParamIncDecInfoDic");
         let bonus2 = read_param_dict(ti, "BonusParamIncDecInfoDic");
-        let per_stat: [i32; 5] = std::array::from_fn(|s| main[s].0 + main[s].1);
+        let per_stat: [i32; 5] = std::array::from_fn(|s| main[s].0 + main[s].1 + bonus2[s].0 + bonus2[s].1);
         let stat_gain = per_stat.iter().sum();
         log_breakdown_on_change(command_id, &main, &bonus2);
         CommandInfo {

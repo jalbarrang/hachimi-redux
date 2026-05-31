@@ -368,11 +368,26 @@ fn draw_training_tab(ui: &mut egui::Ui) {
     if any_capped {
         ui.small("\u{26a0} target/cap reached — further training wasted");
     }
-    if let Some(best) = rec.iter().position(|f| f.is_best) {
-        ui.small(format!(
-            "\u{2605} best: {} — projected score {} (評価点 gain, risk-adjusted)",
-            stats[best].0, rec[best].score
-        ));
+    let race_encouraged = recommend::scenario_encourages_racing(snap.scenario_id);
+    match recommend::turn_suggestion(&rec, snap.failure_rates, race_encouraged) {
+        recommend::TurnSuggestion::Train(best) => {
+            ui.small(format!(
+                "\u{2605} best: {} — projected score {} (評価点 gain, risk-adjusted)",
+                stats[best].0, rec[best].score
+            ));
+        }
+        recommend::TurnSuggestion::Rest => {
+            ui.colored_label(
+                egui::Color32::from_rgb(120, 200, 255),
+                "\u{1f4a4} All trainings risky (>30%) — Rest to recover energy",
+            );
+        }
+        recommend::TurnSuggestion::Race => {
+            ui.colored_label(
+                egui::Color32::from_rgb(255, 200, 50),
+                "\u{1f3c1} All trainings risky (>30%) — Race (scenario rewards it)",
+            );
+        }
     }
 
     ui.add_space(4.0);

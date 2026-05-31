@@ -59,6 +59,20 @@ What the model captures:
 `MOOD_DROP_PENALTY` is a deliberate estimate — refine once we can compare against
 real careers. Tests assert *shape* (monotonicity, clamping), not these magnitudes.
 
+## Rest vs. Race fallback
+
+When **every** facility with live data exceeds `ALL_RISKY_PCT` (30%) failure,
+training is a bad turn. `turn_suggestion` then returns:
+- **Rest** (recover energy) on most scenarios, or
+- **Race** on scenarios that reward racing (`scenario_encourages_racing`, keyed on
+  `get_ScenarioId` via `RACE_ENCOURAGED_SCENARIOS`).
+
+`RACE_ENCOURAGED_SCENARIOS` is populated from confirmed scenario ids. The Track
+Blazer id is still **TODO** — needs one in-game turn on that scenario so the
+`Command info: scenario_id=N …` log line reveals its id (and its training
+command-id set, which may need adding to `COMMAND_ID_SETS`). Until then the
+fallback is always Rest, which is correct for non-race scenarios.
+
 ## Display
 
 Training tab, a `★N` / `N` score row under the fail% row (green ★ on the single

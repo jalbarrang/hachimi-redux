@@ -71,15 +71,15 @@ WorkSingleModeData
 - **`failure_rate` is a plain `Int32`** (the `<TrainingFailureRate>k__BackingField`
   is not obscured) — read directly, no XOR. The per-stat `Value` *is* an
   `ObscuredInt` and is decrypted via `read_obscured_int_field`.
-- **Per-stat gain** = `Value + BonusValue` from `ParamIncDecInfoDic[stat]`. The
-  server proto `SingleModeParamsIncDecInfo` sends only a single `value` (base), so
-  `BonusValue` (and the separate `BonusParamIncDecInfoDic`) are **computed
-  client-side during `Apply`** — they hold the preview bonus from support cards and
-  **scenario amplifiers** (e.g. Make a New Track / Track Blazer tools). Reading
-  `Value + BonusValue` is therefore **scenario-agnostic** — no scenario detection
-  needed (`get_ScenarioId` remains a fallback). `BonusParamIncDecInfoDic` is read
-  and logged separately (`log_breakdown_once`) to confirm it is not an additional,
-  double-counted term. See issue `Hachimi-Edge-23x`.
+- **Per-stat gain** = `ParamIncDecInfoDic[stat].Value` (base) **+
+  `BonusParamIncDecInfoDic[stat].Value`** (bonus). Confirmed in-game on an Aoharu
+  amplifier turn: `ParamsIncDecInfo.BonusValue` is **always 0**; the real preview
+  bonus (support cards **and** scenario amplifiers — e.g. Aoharu spirit burst,
+  Track Blazer tools) lives in the **separate `BonusParamIncDecInfoDic`**, which is
+  zero on non-amplified turns and populates when a bonus is active. Summing
+  `base + bonus` is therefore **scenario-agnostic** — no scenario detection needed.
+  The reader sums all four components so any future non-zero `BonusValue` is still
+  counted. See issue `Hachimi-Edge-23x`.
 - **Total stat gain** = sum of per-stat gains over the 5 main stats (Speed..Wiz).
   Skill points / motivation / Hp deltas are intentionally excluded from the
   headline number (they are not "stats"); they can be surfaced separately later.

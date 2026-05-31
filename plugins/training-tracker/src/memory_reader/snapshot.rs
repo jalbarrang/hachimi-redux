@@ -65,6 +65,10 @@ pub struct CareerSnapshot {
     /// Per-facility, per-stat gain: outer = facility slot, inner = [Speed, Stamina,
     /// Power, Guts, Wisdom] delta. Drives the projected-評価点 recommendation.
     pub per_stat_gains: [[i32; 5]; 5],
+
+    /// Active scenario id (`get_ScenarioId`). Drives the rest-vs-race suggestion
+    /// when every facility is too risky. `0` means unknown.
+    pub scenario_id: i32,
 }
 
 /// Read a snapshot of the current career state from game memory.
@@ -175,12 +179,17 @@ fn read_snapshot_inner() -> Option<CareerSnapshot> {
     // Step 10: Per-facility failure rate + stat-gain preview (live command info)
     hlog_trace!("snapshot: step 10 — command info");
     let (failure_rates, stat_gains, per_stat_gains) = align_command_infos(&read_command_infos(wsmd));
+
+    // Step 11: Active scenario id (rest-vs-race suggestion)
+    // SAFETY: Reading a getter on a non-null IL2CPP chara object.
+    let scenario_id = unsafe { call_i32(chara, chain.m_get_scenario_id) };
     {
         // One-shot diagnostic so the live values land in hachimi.log for verification.
         static CMD_LOGGED: AtomicBool = AtomicBool::new(false);
         if !CMD_LOGGED.swap(true, Ordering::Relaxed) {
             hlog_info!(
-                "Command info: failure_rates={:?} stat_gains={:?} per_stat_gains={:?}",
+                "Command info: scenario_id={} failure_rates={:?} stat_gains={:?} per_stat_gains={:?}",
+                scenario_id,
                 failure_rates,
                 stat_gains,
                 per_stat_gains
@@ -215,6 +224,7 @@ fn read_snapshot_inner() -> Option<CareerSnapshot> {
         failure_rates,
         stat_gains,
         per_stat_gains,
+        scenario_id,
     })
 }
 

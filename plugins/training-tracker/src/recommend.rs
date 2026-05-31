@@ -21,6 +21,53 @@ use crate::stat_targets;
 
 /// Failure % above which the extra downside penalty applies.
 const RISK_THRESHOLD_PCT: i32 = 25;
+/// If EVERY available facility's failure % exceeds this, training is a bad turn —
+/// suggest resting (or racing on race-encouraged scenarios) instead.
+const ALL_RISKY_PCT: i32 = 30;
+
+/// Scenario ids where racing (rather than resting) is the better fallback when all
+/// trainings are too risky — e.g. Track Blazer-style scenarios that reward racing.
+/// Populated from confirmed `get_ScenarioId` values; empty ⇒ always suggest Rest.
+/// TODO(23x/feedback): add the Track Blazer scenario id once captured from the log.
+const RACE_ENCOURAGED_SCENARIOS: &[i32] = &[];
+
+/// Whether the given scenario rewards racing enough to prefer it over resting when
+/// every facility is too risky.
+#[must_use]
+pub fn scenario_encourages_racing(scenario_id: i32) -> bool {
+    RACE_ENCOURAGED_SCENARIOS.contains(&scenario_id)
+}
+
+/// The overall suggestion for the turn.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TurnSuggestion {
+    /// Train the given facility slot (the best by projected score).
+    Train(usize),
+    /// All facilities are too risky — rest to recover energy.
+    Rest,
+    /// All facilities are too risky, but this scenario rewards racing.
+    Race,
+}
+
+/// Decide the turn suggestion: if every facility with live data exceeds
+/// [`ALL_RISKY_PCT`] failure, suggest Rest (or Race when `race_encouraged`);
+/// otherwise train the best-scoring facility.
+#[must_use]
+pub fn turn_suggestion(scores: &[FacilityScore; 5], failure_rates: [i32; 5], race_encouraged: bool) -> TurnSuggestion {
+    let known: Vec<usize> = (0..5).filter(|&i| scores[i].known).collect();
+    let all_risky = !known.is_empty() && known.iter().all(|&i| failure_rates[i] > ALL_RISKY_PCT);
+    if all_risky {
+        return if race_encouraged {
+            TurnSuggestion::Race
+        } else {
+            TurnSuggestion::Rest
+        };
+    }
+    match scores.iter().position(|f| f.is_best) {
+        Some(i) => TurnSuggestion::Train(i),
+        None => TurnSuggestion::Rest,
+    }
+}
 /// Stat points lost on a failed training (applied to the trained stats).
 const FAILURE_STAT_LOSS: i32 = 5;
 /// Eval-point cost of one motivation-level drop on failure. A rough, tunable guess
@@ -205,6 +252,66 @@ mod tests {
             failure_rates: [0, -1, -1, -1, -1],
         };
         assert!(score_facilities(&with_room)[0].score > 0);
+    }
+
+    #[test]
+    fn suggest_rest_when_all_risky() {
+        let mut gains = [[0i32; 5]; 5];
+        for (i, g) in gains.iter_mut().enumerate() {
+            g[i] = 10; // every facility raises one stat
+        }
+        let input = Inputs {
+            current: [300; 5],
+            per_stat_gains: &gains,
+            caps: [0; 5],
+            targets: [0; 5],
+            failure_rates: [35, 40, 31, 50, 33], // all > 30%
+        };
+        let scores = score_facilities(&input);
+        assert_eq!(
+            turn_suggestion(&scores, input.failure_rates, false),
+            TurnSuggestion::Rest
+        );
+        assert_eq!(
+            turn_suggestion(&scores, input.failure_rates, true),
+            TurnSuggestion::Race
+        );
+    }
+
+    #[test]
+    fn suggest_train_when_one_is_safe() {
+        let mut gains = [[0i32; 5]; 5];
+        for (i, g) in gains.iter_mut().enumerate() {
+            g[i] = 10;
+        }
+        let input = Inputs {
+            current: [300; 5],
+            per_stat_gains: &gains,
+            caps: [0; 5],
+            targets: [0; 5],
+            failure_rates: [35, 40, 5, 50, 33], // Power is safe
+        };
+        let scores = score_facilities(&input);
+        assert_eq!(
+            turn_suggestion(&scores, input.failure_rates, false),
+            TurnSuggestion::Train(2)
+        );
+    }
+
+    #[test]
+    fn no_data_suggests_rest() {
+        let input = Inputs {
+            current: [300; 5],
+            per_stat_gains: &[[0i32; 5]; 5],
+            caps: [0; 5],
+            targets: [0; 5],
+            failure_rates: [-1; 5],
+        };
+        let scores = score_facilities(&input);
+        assert_eq!(
+            turn_suggestion(&scores, input.failure_rates, false),
+            TurnSuggestion::Rest
+        );
     }
 
     #[test]

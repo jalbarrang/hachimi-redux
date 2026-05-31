@@ -39,8 +39,7 @@ pub(super) struct ResolvedChain {
     pub(super) m_get_motivation: *const c_void,
     pub(super) m_get_fan_count: *const c_void,
     pub(super) m_get_training_level: *const c_void, // GetTrainingLevel(1 arg: commandId)
-    #[allow(dead_code)]
-    pub(super) m_get_scenario_id: *const c_void, // get_ScenarioId(0 args), reserved for scenario detection
+    pub(super) m_get_scenario_id: *const c_void,    // get_ScenarioId(0 args)
 
     // Aptitudes (RaceDefine.ProperGrade getters, 0 args) — for evaluation estimate.
     pub(super) m_apt_dist_short: *const c_void,
