@@ -322,10 +322,10 @@ fn read_star(chara: *mut c_void, chain: &ResolvedChain) -> i32 {
 
 /// Known command ID sets per scenario: [Speed, Stamina, Power, Guts, Wisdom].
 const COMMAND_ID_SETS: &[[i32; 5]] = &[
-    [101, 105, 102, 103, 106],      // URA / base
-    [601, 602, 603, 604, 605],      // Aoharu
-    [1101, 1102, 1103, 1104, 1105], // Make a New Track (Arc)
-    [2101, 2102, 2103, 2104, 2105], // UAF type A
+    [101, 105, 102, 103, 106],      // URA Finale / base
+    [601, 602, 603, 604, 605],      // Unity Cup (JP: Aoharu Hai)
+    [1101, 1102, 1103, 1104, 1105], // Trackblazer (a.k.a. Make a New Track) — to confirm
+    [2101, 2102, 2103, 2104, 2105], // UAF type A (JP-only so far)
     [2201, 2202, 2203, 2204, 2205], // UAF type B
     [2301, 2302, 2303, 2304, 2305], // UAF type C
     [901, 902, 903, 904, 906],      // Onsen (partially confirmed)
