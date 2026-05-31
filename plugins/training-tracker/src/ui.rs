@@ -20,10 +20,37 @@ use crate::tracker::{Facility, TRACKER};
 
 /// Default overlay font size.
 const OVERLAY_FONT_SIZE: f32 = 12.0;
-const OVERLAY_MIN_WIDTH: f32 = 300.0;
+const OVERLAY_MIN_WIDTH: f32 = 340.0;
+/// Max height for scrollable list tabs (Skills/Bonds/Shop), in points.
+const LIST_MAX_HEIGHT: f32 = 220.0;
 
 /// The overlay ID used during registration — must match for show/hide calls.
 const OVERLAY_ID: &str = "training_tracker_overlay";
+
+/// In-panel tabs for the overlay (selection is in-memory only; resets on reload).
+#[derive(Clone, Copy, PartialEq, Eq)]
+#[repr(u8)]
+enum Tab {
+    Training = 0,
+    Skills = 1,
+    Bonds = 2,
+    Shop = 3,
+}
+
+static SELECTED_TAB: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(0);
+
+fn selected_tab() -> Tab {
+    match SELECTED_TAB.load(Ordering::Relaxed) {
+        1 => Tab::Skills,
+        2 => Tab::Bonds,
+        3 => Tab::Shop,
+        _ => Tab::Training,
+    }
+}
+
+fn set_selected_tab(tab: Tab) {
+    SELECTED_TAB.store(tab as u8, Ordering::Relaxed);
+}
 
 /// Register the plugin's UI components with the Hachimi GUI.
 pub fn register_ui() {
@@ -157,71 +184,165 @@ fn draw_overlay_inner(ui: &mut egui::Ui) {
     ui.style_mut().override_font_id = Some(egui::FontId::proportional(OVERLAY_FONT_SIZE));
     ui.set_min_width(OVERLAY_MIN_WIDTH);
 
-    if tracking {
-        draw_overlay_memory(ui);
-    } else {
+    if !tracking {
+        draw_start_hint(ui);
+        // No-op unless hook-based counts were recorded before tracking was enabled.
         draw_overlay_hooks(ui);
+        return;
+    }
+
+    draw_tab_bar(ui);
+    ui.separator();
+
+    match selected_tab() {
+        Tab::Training => draw_training_tab(ui),
+        Tab::Skills => draw_skills_tab(ui),
+        Tab::Bonds => draw_bonds_tab(ui),
+        Tab::Shop => draw_skill_shop_tab(ui),
     }
 }
 
-/// Overlay: memory-read live stats.
-fn draw_overlay_memory(ui: &mut egui::Ui) {
-    overlay_cache::maybe_request_refresh();
+/// Hint shown when memory tracking is off.
+fn draw_start_hint(ui: &mut egui::Ui) {
+    ui.small("\u{1f3cb} Training Tracker");
+    ui.small("Memory tracking is off.");
+    ui.small("Open Plugins \u{25b8} Training Tracker, then press Start Memory Tracking.");
+}
 
-    let snap = match overlay_cache::snapshot() {
-        Some(s) if s.is_playing => s,
+/// Horizontal tab bar (text labels).
+fn draw_tab_bar(ui: &mut egui::Ui) {
+    ui.horizontal(|ui| {
+        for (tab, label) in [
+            (Tab::Training, "Training"),
+            (Tab::Skills, "Skills"),
+            (Tab::Bonds, "Bonds"),
+            (Tab::Shop, "Shop"),
+        ] {
+            if ui.selectable_label(selected_tab() == tab, label).clicked() {
+                set_selected_tab(tab);
+            }
+        }
+    });
+}
+
+/// Resolve the live career snapshot, drawing a placeholder when unavailable.
+fn current_snapshot(ui: &mut egui::Ui) -> Option<memory_reader::CareerSnapshot> {
+    overlay_cache::maybe_request_refresh();
+    match overlay_cache::snapshot() {
+        Some(s) if s.is_playing => Some(s),
         Some(_) => {
             ui.small("\u{1f3cb} No active career");
-            return;
+            None
         }
         None => {
             ui.small("\u{1f3cb} Loading career data…");
-            return;
+            None
         }
+    }
+}
+
+/// Training tab: overview + stat tables (egui::Grid).
+fn draw_training_tab(ui: &mut egui::Ui) {
+    let Some(snap) = current_snapshot(ui) else {
+        return;
     };
 
-    ui.small(format!(
-        "\u{1f3cb} Turn {} \u{2022} Month {}",
-        snap.current_turn, snap.month
-    ));
+    egui::Grid::new("tt_overview")
+        .num_columns(2)
+        .striped(true)
+        .show(ui, |ui| {
+            ui.label("Turn");
+            ui.label(format!("{} \u{2022} Month {}", snap.current_turn, snap.month));
+            ui.end_row();
+
+            let (mr, mg, mb) = memory_reader::motivation_color(snap.motivation);
+            ui.label("Energy");
+            ui.colored_label(
+                egui::Color32::from_rgb(mr, mg, mb),
+                format!(
+                    "{}/{}  {}",
+                    snap.hp,
+                    snap.max_hp,
+                    memory_reader::mood_label(snap.motivation)
+                ),
+            );
+            ui.end_row();
+        });
+
+    ui.add_space(4.0);
 
     let lv = &snap.training_levels;
-    ui.small(format!(
-        "Speed {:>4}(L{})  Stamina {:>4}(L{})  Power {:>4}(L{})",
-        snap.speed, lv[0], snap.stamina, lv[1], snap.power, lv[2]
-    ));
-    ui.small(format!(
-        "Guts {:>4}(L{})  Wit {:>4}(L{})  Total {:>4}",
-        snap.guts, lv[3], snap.wiz, lv[4], snap.total_stats
-    ));
+    let stats = [
+        ("Speed", snap.speed, lv[0]),
+        ("Stamina", snap.stamina, lv[1]),
+        ("Power", snap.power, lv[2]),
+        ("Guts", snap.guts, lv[3]),
+        ("Wit", snap.wiz, lv[4]),
+    ];
+    egui::Grid::new("tt_stats")
+        .num_columns(stats.len())
+        .striped(true)
+        .show(ui, |ui| {
+            for (name, _, level) in &stats {
+                ui.label(format!("{} (L{})", name, level));
+            }
+            ui.end_row();
+            for (_, value, _) in &stats {
+                ui.strong(value.to_string());
+            }
+            ui.end_row();
+        });
 
-    let (mr, mg, mb) = memory_reader::motivation_color(snap.motivation);
-    ui.colored_label(
-        egui::Color32::from_rgb(mr, mg, mb),
-        format!(
-            "Energy {}/{}  Mood: {}",
-            snap.hp,
-            snap.max_hp,
-            memory_reader::mood_label(snap.motivation)
-        ),
-    );
-
+    ui.add_space(4.0);
+    ui.horizontal(|ui| {
+        ui.strong(format!("Total {}", snap.total_stats));
+        ui.separator();
+        // Rank is filled by Hachimi-Edge-2we (live get_EvaluationValue + master table).
+        ui.label("Rank: \u{2014}");
+    });
     ui.small(format!(
         "Fans {}  Races {}/{}W",
         format_number(snap.fan_count),
         snap.total_races,
         snap.win_count
     ));
+}
 
-    egui::CollapsingHeader::new("\u{1f4d6} Skills")
-        .default_open(false)
+/// Skills tab: acquired-skills list (scrollable).
+fn draw_skills_tab(ui: &mut egui::Ui) {
+    overlay_cache::maybe_request_refresh();
+    egui::ScrollArea::vertical()
+        .max_height(LIST_MAX_HEIGHT)
+        .auto_shrink([false, true])
         .show(ui, draw_skills_panel);
-    egui::CollapsingHeader::new("\u{1f91d} Bonds")
-        .default_open(false)
+}
+
+/// Bonds tab: bond names + progress (scrollable).
+fn draw_bonds_tab(ui: &mut egui::Ui) {
+    overlay_cache::maybe_request_refresh();
+    egui::ScrollArea::vertical()
+        .max_height(LIST_MAX_HEIGHT)
+        .auto_shrink([false, true])
         .show(ui, draw_bonds_panel);
-    egui::CollapsingHeader::new("\u{1f6d2} Skill Shop")
-        .default_open(false)
-        .show(ui, draw_skill_shop_panel);
+}
+
+/// Skill Shop tab: SP + filters + purchasable list (scrollable).
+fn draw_skill_shop_tab(ui: &mut egui::Ui) {
+    overlay_cache::maybe_request_refresh();
+    if overlay_cache::snapshot().is_none() {
+        ui.small("Loading shop data…");
+        return;
+    }
+
+    if let Some(sp) = overlay_cache::skill_points() {
+        ui.strong(format!("SP: {}", sp));
+    }
+    draw_skill_shop_controls(ui);
+    ui.separator();
+    egui::ScrollArea::vertical()
+        .max_height(LIST_MAX_HEIGHT)
+        .auto_shrink([false, true])
+        .show(ui, draw_skill_shop_list);
 }
 
 /// Draw the skills panel inside a collapsing header.
@@ -275,19 +396,8 @@ fn draw_bonds_panel(ui: &mut egui::Ui) {
     }
 }
 
-/// Draw the skill shop panel inside a collapsing header.
-fn draw_skill_shop_panel(ui: &mut egui::Ui) {
-    if overlay_cache::snapshot().is_none() {
-        ui.small("Loading shop data\u{2026}");
-        return;
-    }
-
-    if let Some(sp) = overlay_cache::skill_points() {
-        ui.small(format!("SP: {}", sp));
-    }
-
-    draw_skill_shop_controls(ui);
-
+/// Skill shop purchasable list (rendered inside the Shop tab's scroll area).
+fn draw_skill_shop_list(ui: &mut egui::Ui) {
     let entries = skill_shop::prepare_entries_for_display(overlay_cache::skill_shop(), &prefs());
     if entries.is_empty() {
         ui.small("No shop skills match filters");
