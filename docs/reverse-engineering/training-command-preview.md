@@ -86,6 +86,19 @@ WorkSingleModeData
 
 ---
 
+## Facility → stat spread (confirmed in-game)
+
+Each facility raises several stats (plus Skill Points, excluded from the gain total).
+Confirmed against live `base` values, array order `[Speed, Stamina, Power, Guts, Wit]`:
+
+| Facility (cmd) | Stats raised |
+|----------------|--------------|
+| Speed (101)    | Speed + Power |
+| Stamina (105)  | Stamina + Guts |
+| Power (102)    | Power + Stamina |
+| Guts (103)     | Guts + Power + Speed |
+| Wit (106)      | Wit + Speed (and a large Skill-Point gain) |
+
 ## Facility alignment
 
 `TurnInfo`s come back in list order; each carries its `command_id`. The pure
