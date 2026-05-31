@@ -23,7 +23,6 @@ mod shop_hooks;
 mod skill_shop;
 mod skill_shop_prefs;
 mod stat_targets;
-mod tracker;
 mod ui;
 
 use hachimi_plugin_sdk::{hachimi_plugin, Sdk};
@@ -42,22 +41,19 @@ fn init(sdk: &Sdk) -> Result<(), &'static str> {
     stat_targets::load();
     ui::register_ui();
 
-    let tracking = hooks::subscribe_events();
+    let events = hooks::subscribe_events();
     if shop_hooks::try_install_shop_hooks() {
         hlog_info!(target: "training-tracker", "Skill shop visibility hooks installed");
     }
 
-    if tracking {
-        hlog_info!(target: "training-tracker", "Training Tracker ready — subscribed to host events");
-        sdk.show_notification("Training Tracker loaded!");
-    } else {
+    if !events {
         hlog_warn!(
             target: "training-tracker",
-            "Training Tracker loaded but training-command events are unavailable. \
-             The UI is registered but training won't be tracked automatically."
+            "Host does not advertise EVENTS; shutdown teardown of IL2CPP hooks is unavailable."
         );
-        sdk.show_notification("Training Tracker loaded (no tracking - see log)");
     }
+    hlog_info!(target: "training-tracker", "Training Tracker ready");
+    sdk.show_notification("Training Tracker loaded!");
 
     Ok(())
 }

@@ -3,7 +3,6 @@
 //! With API v9 the host hands plugins the real `egui::Ui`, so we draw with egui
 //! directly. Registers a menu section and an overlay that display:
 //! - Live career stats read directly from game memory (memory-read mode)
-//! - Training facility visit counts from hooks (complementary)
 
 use std::ffi::c_void;
 use std::panic::{self, AssertUnwindSafe};
@@ -19,7 +18,6 @@ use crate::recommend;
 use crate::skill_shop;
 use crate::skill_shop_prefs::{cycle_sort_mode, prefs, set_prefs, sort_mode_label, DistanceFilter, StyleFilter};
 use crate::stat_targets;
-use crate::tracker::{Facility, TRACKER};
 
 /// Default overlay font size.
 const OVERLAY_FONT_SIZE: f32 = 12.0;
@@ -90,7 +88,6 @@ fn draw_menu_section_inner(ui: &mut egui::Ui) {
     ui.heading("\u{1f3cb} Training Tracker");
 
     draw_tracking_controls(ui);
-    draw_hook_status(ui);
     draw_stat_targets(ui);
 
     if ui.button("\u{1f4ca} Show Training Overlay").clicked() {
@@ -181,31 +178,6 @@ fn draw_stat_targets(ui: &mut egui::Ui) {
     }
 }
 
-/// Draw a compact hook-counts status line with a reset button.
-fn draw_hook_status(ui: &mut egui::Ui) {
-    let sdk = Sdk::get();
-
-    let tracker = match TRACKER.lock() {
-        Ok(t) => t,
-        Err(_) => return,
-    };
-
-    let total = tracker.total();
-    if !tracker.active && total == 0 {
-        return;
-    }
-    drop(tracker);
-
-    ui.small(format!("Hook events: {} trainings recorded", total));
-
-    if ui.small_button("Reset Counts").clicked() {
-        if let Ok(mut t) = TRACKER.lock() {
-            t.counts = [0; 5];
-            sdk.show_notification("Training counts reset!");
-        }
-    }
-}
-
 // ===========================================================================
 // Overlay (always-on-screen HUD)
 // ===========================================================================
@@ -224,13 +196,15 @@ fn draw_overlay_inner(ui: &mut egui::Ui) {
     ui.style_mut().override_font_id = Some(egui::FontId::proportional(OVERLAY_FONT_SIZE));
     ui.set_min_width(OVERLAY_MIN_WIDTH);
 
+    // Start/Stop memory tracking, just above the tabs.
+    draw_overlay_tracking_toggle(ui, tracking);
+
     if !tracking {
         draw_start_hint(ui);
-        // No-op unless hook-based counts were recorded before tracking was enabled.
-        draw_overlay_hooks(ui);
         return;
     }
 
+    ui.separator();
     draw_tab_bar(ui);
     ui.separator();
 
@@ -245,8 +219,7 @@ fn draw_overlay_inner(ui: &mut egui::Ui) {
 /// Hint shown when memory tracking is off.
 fn draw_start_hint(ui: &mut egui::Ui) {
     ui.small("\u{1f3cb} Training Tracker");
-    ui.small("Memory tracking is off.");
-    ui.small("Open Plugins \u{25b8} Training Tracker, then press Start Memory Tracking.");
+    ui.small("Memory tracking is off — press Start Tracking above.");
 }
 
 /// Horizontal tab bar (text labels).
@@ -652,47 +625,28 @@ pub fn bond_color(value: i32) -> (u8, u8, u8) {
     }
 }
 
-/// Overlay: hook-based training counts (fallback when not memory-tracking).
-fn draw_overlay_hooks(ui: &mut egui::Ui) {
-    let tracker = match TRACKER.lock() {
-        Ok(t) => t,
-        Err(_) => return,
-    };
-
-    if !tracker.active && tracker.total() == 0 {
-        return;
-    }
-
-    let counts = tracker.counts;
-    let total = tracker.total();
-    drop(tracker);
-
-    ui.small("\u{1f3cb} Training");
-
-    for facility in Facility::ALL {
-        let count = counts[facility as usize];
-        let (r, g, b) = facility_color(facility);
-        ui.colored_label(
-            egui::Color32::from_rgb(r, g, b),
-            format!("{}: {}", facility.name(), count),
-        );
-    }
-
-    ui.small(format!("Total: {}", total));
-}
-
 // ===========================================================================
 // Helpers
 // ===========================================================================
 
-/// Color per facility (matching common game UI colors).
-pub(crate) fn facility_color(facility: Facility) -> (u8, u8, u8) {
-    match facility {
-        Facility::Speed => (70, 130, 255),   // Blue
-        Facility::Stamina => (255, 70, 70),  // Red
-        Facility::Power => (255, 140, 40),   // Orange
-        Facility::Guts => (255, 130, 180),   // Pink
-        Facility::Wisdom => (100, 220, 100), // Green
+/// Compact Start/Stop memory-tracking button for the overlay (above the tabs).
+fn draw_overlay_tracking_toggle(ui: &mut egui::Ui, tracking: bool) {
+    let sdk = Sdk::get();
+    if tracking {
+        if ui.button("\u{23f9} Stop Tracking").clicked() {
+            memory_reader::stop_tracking();
+            sdk.show_notification("Memory tracking stopped");
+        }
+    } else if ui.button("\u{25b6} Start Tracking").clicked() {
+        match memory_reader::start_tracking() {
+            Ok(()) => {
+                sdk.show_notification("Memory tracking started!");
+            }
+            Err(e) => {
+                sdk.show_notification(&format!("Failed: {}", e));
+                hlog_error!("start_tracking failed: {}", e);
+            }
+        }
     }
 }
 
@@ -776,25 +730,6 @@ mod tests {
     fn format_number_negative() {
         assert_eq!(format_number(-1000), "-1,000");
         assert_eq!(format_number(-42), "-42");
-    }
-
-    // ---- facility_color ----
-
-    #[test]
-    fn facility_colors_distinct() {
-        let colors: Vec<_> = Facility::ALL.iter().map(|f| facility_color(*f)).collect();
-        // All 5 should be different
-        for i in 0..colors.len() {
-            for j in (i + 1)..colors.len() {
-                assert_ne!(
-                    colors[i],
-                    colors[j],
-                    "Facilities {:?} and {:?} share color",
-                    Facility::ALL[i],
-                    Facility::ALL[j]
-                );
-            }
-        }
     }
 
     // ---- motivation helpers (from memory_reader, tested here for convenience) ----
