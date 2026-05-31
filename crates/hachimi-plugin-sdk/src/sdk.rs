@@ -138,15 +138,62 @@ impl Sdk {
     }
 
     // ── GUI registration ──
+    //
+    // The host UI is a two-layer system:
+    //   * **L1 — Control Center**: a hotkey-toggled modal with a Plugins tab. Each
+    //     registered *page* becomes a selectable sub-nav entry there.
+    //   * **L2 — floating HUD**: draggable, collapsible *panels* drawn over the game,
+    //     with a global lock (click-through) and persisted positions.
+    //
+    // `register_page` / `register_panel` are the preferred names; the callback
+    // receives a host `Ui` pointer to cast with [`crate::ui_from_ptr`].
 
-    /// Register a menu section. The callback receives a host `Ui` pointer; cast it
-    /// with [`crate::ui_from_ptr`] and draw egui directly. Returns a handle (0 = fail).
+    /// Register an **L1 page** (Plugins tab). Returns a handle (0 = fail).
+    pub fn register_page(&self, callback: GuiMenuSectionCallback, userdata: *mut c_void) -> u64 {
+        self.register_menu_section(callback, userdata)
+    }
+
+    /// Register an **L1 page** with a title + icon shown in the Plugins sub-nav.
+    /// `icon_bytes` should be PNG data. Returns a handle (0 = fail).
+    pub fn register_page_with_icon(
+        &self,
+        title: &str,
+        icon_uri: &str,
+        icon_bytes: &[u8],
+        callback: GuiMenuSectionCallback,
+        userdata: *mut c_void,
+    ) -> u64 {
+        let (Ok(title_c), Ok(uri_c)) = (CString::new(title), CString::new(icon_uri)) else {
+            return 0;
+        };
+        // SAFETY: pointers are valid for the duration of the call; host copies the data.
+        unsafe {
+            (vt().gui_register_menu_section_with_icon)(
+                title_c.as_ptr(),
+                uri_c.as_ptr(),
+                icon_bytes.as_ptr(),
+                icon_bytes.len(),
+                Some(callback),
+                userdata,
+            )
+        }
+    }
+
+    /// Register an **L2 panel** (floating HUD), identified by `id`. Returns a handle (0 = fail).
+    pub fn register_panel(&self, id: &str, callback: GuiMenuSectionCallback, userdata: *mut c_void) -> u64 {
+        self.register_overlay(id, callback, userdata)
+    }
+
+    /// Register a menu section (lower-level name for [`Self::register_page`]).
+    /// The callback receives a host `Ui` pointer; cast it with [`crate::ui_from_ptr`]
+    /// and draw egui directly. Returns a handle (0 = fail).
     pub fn register_menu_section(&self, callback: GuiMenuSectionCallback, userdata: *mut c_void) -> u64 {
         // SAFETY: callback lifetime managed by plugin; host stores until unregister/unload.
         unsafe { (vt().gui_register_menu_section)(Some(callback), userdata) }
     }
 
-    /// Register an overlay window. Returns a handle (0 = fail).
+    /// Register an overlay window (lower-level name for [`Self::register_panel`]).
+    /// Returns a handle (0 = fail).
     pub fn register_overlay(&self, id: &str, callback: GuiMenuSectionCallback, userdata: *mut c_void) -> u64 {
         let Ok(id_c) = CString::new(id) else {
             return 0;

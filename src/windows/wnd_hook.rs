@@ -13,10 +13,7 @@ use windows::{
         Foundation::{HWND, LPARAM, LRESULT, WPARAM},
         System::Threading::GetCurrentThreadId,
         UI::{
-            Input::{
-                Ime::ISC_SHOWUICOMPOSITIONWINDOW,
-                KeyboardAndMouse::{GetAsyncKeyState, VK_MENU},
-            },
+            Input::Ime::ISC_SHOWUICOMPOSITIONWINDOW,
             WindowsAndMessaging::{
                 CallNextHookEx, DefWindowProcW, FindWindowW, GetWindowLongPtrW, SetWindowsHookExW, UnhookWindowsHookEx,
                 GWLP_WNDPROC, HCBT_MINMAX, HHOOK, SW_RESTORE, WA_INACTIVE, WH_CBT, WM_ACTIVATE, WM_CLOSE,
@@ -137,12 +134,12 @@ extern "system" fn wnd_proc(hwnd: HWND, umsg: c_uint, wparam: WPARAM, lparam: LP
         _ => (),
     }
 
-    // Hold ALT to interact with plugin overlays (drag, close, collapse).
-    // When ALT is held, mouse input goes to egui instead of the game.
+    // L2 overlays (L1 modal closed): feed mouse input to egui so it can track hover
+    // and drag panels, but only *swallow* the input when the cursor is over a panel.
+    // Everywhere else the click falls through to the game. Locked panels never
+    // capture (L2_WANTS_POINTER stays false), so they are click-through.
     if !Gui::is_consuming_input_atomic() {
-        // SAFETY: Win32 API — reads async key state for ALT (VK_MENU).
-        let alt_held = unsafe { GetAsyncKeyState(VK_MENU.0 as i32) } & (1i16 << 15) != 0;
-        if alt_held && input::is_handled_msg(umsg) {
+        if input::is_mouse_msg(umsg) && crate::core::plugin::overlay::has_plugin_overlays() {
             let wp = wparam;
             let lp = lparam;
             std::thread::spawn(move || {
@@ -152,7 +149,9 @@ extern "system" fn wnd_proc(hwnd: HWND, umsg: c_uint, wparam: WPARAM, lparam: LP
                 let zoom_factor = gui.context.zoom_factor();
                 input::process(&mut gui.input, zoom_factor, umsg, wp.0, lp.0);
             });
-            return LRESULT(0);
+            if Gui::l2_wants_pointer_atomic() {
+                return LRESULT(0);
+            }
         }
         // SAFETY: FFI / raw pointer operation required by IL2CPP interop
         return unsafe { orig_fn(hwnd, umsg, wparam, lparam) };

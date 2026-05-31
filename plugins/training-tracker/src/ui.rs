@@ -29,14 +29,15 @@ const OVERLAY_ID: &str = "training_tracker_overlay";
 pub fn register_ui() {
     let sdk = Sdk::get();
 
-    sdk.register_menu_section(draw_menu_section, std::ptr::null_mut());
+    // L1 page (Plugins tab) + L2 panel (floating HUD).
+    sdk.register_page(draw_menu_section, std::ptr::null_mut());
 
-    if sdk.register_overlay(OVERLAY_ID, draw_overlay, std::ptr::null_mut()) != 0 {
-        hlog_info!(target: "training-tracker", "UI registered (menu + overlay)");
+    if sdk.register_panel(OVERLAY_ID, draw_overlay, std::ptr::null_mut()) != 0 {
+        hlog_info!(target: "training-tracker", "UI registered (L1 page + L2 panel)");
     } else {
         hlog_warn!(
             target: "training-tracker",
-            "Menu registered; overlay registration declined by host"
+            "L1 page registered; L2 panel registration declined by host"
         );
     }
 }

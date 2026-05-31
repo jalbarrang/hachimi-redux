@@ -140,6 +140,12 @@ impl Gui {
 
         self.set_consuming_input(self.is_consuming_input());
 
+        // L2 gate: while the L1 modal is closed, the cursor is "over a panel" when it
+        // hovers an egui area and overlays aren't globally locked. Used by the wnd hook
+        // to swallow mouse input for panels but let clicks fall through to the game.
+        let l2_wants = !self.menu_visible && !overlay::is_locked() && self.context.is_pointer_over_area();
+        super::L2_WANTS_POINTER.store(l2_wants, Ordering::Relaxed);
+
         self.context.end_pass()
     }
 
@@ -164,12 +170,20 @@ impl Gui {
         IS_CONSUMING_INPUT.load(atomic::Ordering::Relaxed)
     }
 
+    /// Whether the cursor is over an interactable L2 overlay panel (L1 closed).
+    pub fn l2_wants_pointer_atomic() -> bool {
+        super::L2_WANTS_POINTER.load(atomic::Ordering::Relaxed)
+    }
+
     pub fn set_consuming_input(&mut self, val: bool) {
         if !self.windows.is_empty() && !val {
             self.windows.clear();
         }
 
         self.menu_visible = val;
+        if !val {
+            self.show_menu = false;
+        }
         IS_CONSUMING_INPUT.store(val, atomic::Ordering::Relaxed);
     }
 

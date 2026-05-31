@@ -1,3 +1,9 @@
+//! L2 floating HUD render side. Each registered overlay is drawn as a draggable
+//! `egui::Window` that toggles between a compact **badge** (collapsed) and a full
+//! **panel** (expanded). A global lock makes panels non-interactive (click-through,
+//! handled by the input gate). Positions/collapse/visibility persist via the
+//! overlay registry.
+
 use std::os::raw::c_void;
 use std::panic::{self, AssertUnwindSafe};
 
@@ -18,48 +24,93 @@ impl Gui {
 
         let ctx = &self.context;
         let scale = get_scale(ctx);
+        let locked = overlay::is_locked();
+        let opacity = overlay::opacity();
 
         for ov in overlays.iter() {
-            let mut visible = overlay::is_overlay_visible(&ov.id);
-            if !visible {
+            let state = overlay::panel_state(&ov.id);
+            if !state.visible {
                 continue;
             }
 
-            let title: String = ov
-                .id
-                .split('_')
-                .map(|w| {
-                    let mut c = w.chars();
-                    match c.next() {
-                        Some(first) => first.to_uppercase().collect::<String>() + c.as_str(),
-                        None => String::new(),
-                    }
-                })
-                .collect::<Vec<_>>()
-                .join(" ");
+            let title = overlay::display_title(&ov.id);
+            let win_id = egui::Id::new("plugin_overlay").with(&ov.id);
+            let default_pos = state.pos.map_or_else(
+                || egui::pos2(ctx.input(|i| i.viewport_rect().right()) - 300.0 * scale, 8.0 * scale),
+                |p| egui::pos2(p[0], p[1]),
+            );
 
-            egui::Window::new(egui::RichText::new(&title).size(12.0 * scale))
-                .id(egui::Id::new("plugin_overlay").with(&ov.id))
-                .open(&mut visible)
-                .default_pos(egui::pos2(
-                    ctx.input(|i| i.viewport_rect().right()) - 300.0 * scale,
-                    8.0 * scale,
-                ))
+            let force_reset = overlay::take_reset(&ov.id);
+            let mut window = egui::Window::new(&title)
+                .id(win_id)
+                .title_bar(false)
                 .resizable(false)
-                .collapsible(true)
-                .show(ctx, |ui| {
-                    let _scope = crate::core::plugin::OwnerScope::enter(ov.owner);
-                    let _ = panic::catch_unwind(AssertUnwindSafe(|| {
-                        (ov.callback)(ui as *mut egui::Ui as *mut c_void, ov.userdata as *mut c_void);
-                    }))
-                    .inspect_err(|_| {
-                        error!("plugin overlay callback panicked: {}", ov.id);
-                    });
-                });
+                .movable(!locked)
+                .interactable(!locked)
+                .frame(panel_frame(ctx, opacity));
+            window = if force_reset {
+                window.current_pos(default_pos)
+            } else {
+                window.default_pos(default_pos)
+            };
+            let response = window.show(ctx, |ui| {
+                ui.set_opacity(opacity);
+                if state.collapsed {
+                    draw_badge(ui, &ov.id, &title, scale);
+                } else {
+                    draw_panel(ui, ov, &title, scale);
+                }
+            });
 
-            if !visible {
-                overlay::set_overlay_visible(&ov.id, false);
+            // Persist live position (flushed to disk on pointer release).
+            if let Some(inner) = response {
+                let pos = inner.response.rect.min;
+                overlay::set_panel_pos(&ov.id, [pos.x, pos.y]);
             }
         }
+
+        // Flush any position changes once the user releases the mouse.
+        if ctx.input(|i| i.pointer.any_released()) {
+            overlay::persist_if_dirty();
+        }
     }
+}
+
+/// Window frame with the configured opacity applied to the background.
+fn panel_frame(ctx: &egui::Context, opacity: f32) -> egui::Frame {
+    let mut frame = egui::Frame::window(&ctx.style());
+    frame.fill = frame.fill.linear_multiply(opacity);
+    frame
+}
+
+/// Collapsed state: a compact badge that expands on click.
+fn draw_badge(ui: &mut egui::Ui, id: &str, title: &str, scale: f32) {
+    let text = egui::RichText::new(format!("\u{f0c9} {title}")).size(12.0 * scale);
+    if ui.button(text).on_hover_text("Click to expand").clicked() {
+        overlay::set_panel_collapsed(id, false);
+    }
+}
+
+/// Expanded state: header row (title + collapse + close) followed by plugin content.
+fn draw_panel(ui: &mut egui::Ui, ov: &overlay::PluginOverlay, title: &str, scale: f32) {
+    ui.horizontal(|ui| {
+        ui.label(egui::RichText::new(title).size(12.0 * scale).strong());
+        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            if ui.small_button("\u{f00d}").on_hover_text("Hide").clicked() {
+                overlay::set_overlay_visible(&ov.id, false);
+            }
+            if ui.small_button("\u{f068}").on_hover_text("Collapse").clicked() {
+                overlay::set_panel_collapsed(&ov.id, true);
+            }
+        });
+    });
+    ui.separator();
+
+    let _scope = crate::core::plugin::OwnerScope::enter(ov.owner);
+    let _ = panic::catch_unwind(AssertUnwindSafe(|| {
+        (ov.callback)(ui as *mut egui::Ui as *mut c_void, ov.userdata as *mut c_void);
+    }))
+    .inspect_err(|_| {
+        error!("plugin overlay callback panicked: {}", ov.id);
+    });
 }

@@ -1,4 +1,3 @@
-mod about;
 mod config_editor;
 mod first_time_setup;
 mod license;
@@ -16,7 +15,6 @@ use crate::core::http::AsyncRequest;
 
 use super::scale::{get_scale, get_scale_salt};
 
-pub(crate) use about::AboutWindow;
 pub(crate) use config_editor::ConfigEditor;
 pub(crate) use first_time_setup::FirstTimeSetupWindow;
 pub(crate) use license::LicenseWindow;

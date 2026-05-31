@@ -1,299 +1,106 @@
-use std::{
-    borrow::Cow,
-    os::raw::c_void,
-    panic::{self, AssertUnwindSafe},
-    sync::atomic,
-    time::Instant,
-};
+//! L1 "Control Center": a hotkey-toggled `egui::Modal` with fixed top tabs
+//! (Settings · Plugins · Overlay · About). Replaces the old left `SidePanel`.
+//! Tab bodies live in `gui/tabs/`; this module owns the modal shell + tab bar
+//! plus shared combo helpers and the game-UI toggle.
+
+use std::borrow::Cow;
 
 use rust_i18n::t;
 
-use crate::core::plugin::{
-    menu::{get_plugin_menu_icon, get_plugin_menu_items, get_plugin_menu_sections},
-    notification,
-};
-use crate::core::utils::{self, SendPtr};
-use crate::core::Hachimi;
-use crate::il2cpp::{
-    hook::{
-        umamusume::{GameSystem, Localize},
-        UnityEngine_CoreModule::Application,
-    },
-    symbols::Thread,
-};
-
-#[cfg(target_os = "windows")]
-use crate::il2cpp::hook::UnityEngine_CoreModule::QualitySettings;
+use crate::core::utils::SendPtr;
 
 use super::scale::get_scale;
-use super::window::{AboutWindow, BoxedWindow, ConfigEditor, FirstTimeSetupWindow, SimpleYesNoDialog};
+use super::window::BoxedWindow;
 use super::{Gui, DISABLED_GAME_UIS};
+
+/// Fixed top-level tabs of the Control Center.
+#[derive(Clone, Copy, PartialEq, Eq, Default)]
+pub(crate) enum ControlTab {
+    #[default]
+    Settings,
+    Plugins,
+    Overlay,
+    About,
+}
 
 impl Gui {
     pub(crate) fn run_menu(&mut self) {
-        let hachimi = Hachimi::instance();
-        let localized_data = hachimi.localized_data.load();
-        let localize_dict_count = localized_data.localize_dict.len().to_string();
-        let hashed_dict_count = localized_data.hashed_dict.len().to_string();
-
-        let mut show_notification: Option<Cow<'_, str>> = None;
-        let mut show_window: Option<BoxedWindow> = None;
-        {
-            let ctx = &self.context;
-            let scale = get_scale(ctx);
-            let salt = self.finalized_scale;
-            egui::SidePanel::left(egui::Id::new("hachimi_menu").with(salt.to_bits()))
-                .min_width(96.0 * scale)
-                .default_width(200.0 * scale)
-                .show_animated(ctx, self.show_menu, |ui| {
-                    ui.with_layout(egui::Layout::top_down_justified(egui::Align::TOP), |ui| {
-                        {
-                            ui.horizontal(|ui| {
-                                ui.add(Self::icon(ctx));
-                                ui.heading(t!("hachimi"));
-                                if ui.button(" \u{f29c} ").clicked() {
-                                    show_window = Some(Box::new(AboutWindow::new()));
-                                }
-                            });
-                            ui.label(env!("HACHIMI_DISPLAY_VERSION"));
-                            if ui.button(t!("menu.close_menu")).clicked() {
-                                self.show_menu = false;
-                                self.menu_anim_time = None;
-                            }
-                        }
-                        if ui.button(t!("menu.check_for_updates")).clicked() {
-                            Hachimi::instance().updater.clone().check_for_updates(|_| {});
-                        }
-                        ui.separator();
-
-                        egui::ScrollArea::vertical().show(ui, |ui| {
-                            ui.heading(t!("menu.stats_heading"));
-                            ui.label(&self.fps_text);
-                            ui.label(t!("menu.localize_dict_entries", count = localize_dict_count));
-                            ui.label(t!("menu.hashed_dict_entries", count = hashed_dict_count));
-                            ui.separator();
-
-                            ui.heading(t!("menu.config_heading"));
-                            if ui.button(t!("menu.open_config_editor")).clicked() {
-                                show_window = Some(Box::new(ConfigEditor::new()));
-                            }
-                            if ui.button(t!("menu.reload_config")).clicked() {
-                                hachimi.reload_config();
-                                show_notification = Some(t!("notification.config_reloaded"));
-                            }
-                            if ui.button(t!("menu.open_first_time_setup")).clicked() {
-                                show_window = Some(Box::new(FirstTimeSetupWindow::new()));
-                            }
-                            ui.separator();
-
-                            ui.heading(t!("menu.graphics_heading"));
-                            ui.horizontal(|ui| {
-                                ui.label(t!("menu.fps_label"));
-                                let res = ui.add(egui::Slider::new(&mut self.menu_fps_value, 30..=1000));
-                                if res.lost_focus() || res.drag_stopped() {
-                                    hachimi.target_fps.store(self.menu_fps_value, atomic::Ordering::Relaxed);
-                                    Thread::main_thread().schedule(|| {
-                                        Application::set_targetFrameRate(30);
-                                    });
-                                }
-                            });
-                            #[cfg(target_os = "windows")]
-                            {
-                                use crate::windows::{discord, utils::set_window_topmost, wnd_hook};
-
-                                ui.horizontal(|ui| {
-                                    let prev_value = self.menu_vsync_value;
-
-                                    ui.label(t!("menu.vsync_label"));
-                                    Self::run_vsync_combo(ui, &mut self.menu_vsync_value);
-
-                                    if prev_value != self.menu_vsync_value {
-                                        hachimi
-                                            .vsync_count
-                                            .store(self.menu_vsync_value, atomic::Ordering::Relaxed);
-                                        Thread::main_thread().schedule(|| {
-                                            QualitySettings::set_vSyncCount(1);
-                                        });
-                                    }
-                                });
-                                ui.horizontal(|ui| {
-                                    let mut value = hachimi.window_always_on_top.load(atomic::Ordering::Relaxed);
-
-                                    ui.label(t!("menu.stay_on_top"));
-                                    if ui.checkbox(&mut value, "").changed() {
-                                        hachimi.window_always_on_top.store(value, atomic::Ordering::Relaxed);
-                                        Thread::main_thread().schedule(|| {
-                                            let topmost = Hachimi::instance()
-                                                .window_always_on_top
-                                                .load(atomic::Ordering::Relaxed);
-                                            // SAFETY: FFI / raw pointer operation required by IL2CPP interop
-                                            unsafe {
-                                                _ = set_window_topmost(wnd_hook::get_target_hwnd(), topmost);
-                                            }
-                                        });
-                                    }
-                                });
-                                ui.horizontal(|ui| {
-                                    let mut value = hachimi.discord_rpc.load(atomic::Ordering::Relaxed);
-
-                                    ui.label(t!("menu.discord_rpc"));
-                                    if ui.checkbox(&mut value, "").changed() {
-                                        hachimi.discord_rpc.store(value, atomic::Ordering::Relaxed);
-                                        if let Err(e) = if value {
-                                            discord::start_rpc()
-                                        } else {
-                                            discord::stop_rpc()
-                                        } {
-                                            error!("{}", e);
-                                        }
-                                    }
-                                });
-                            }
-                            ui.separator();
-
-                            ui.heading(t!("menu.translation_heading"));
-                            if ui.button(t!("menu.reload_localized_data")).clicked() {
-                                hachimi.load_localized_data();
-                                show_notification = Some(t!("notification.localized_data_reloaded"));
-                            }
-                            if ui.button(t!("menu.tl_check_for_updates")).clicked() {
-                                hachimi.tl_updater.clone().check_for_updates(false);
-                            }
-                            if ui.button(t!("menu.tl_check_for_updates_pedantic")).clicked() {
-                                hachimi.tl_updater.clone().check_for_updates(true);
-                            }
-                            if hachimi.config.load().translator_mode
-                                && ui.button(t!("menu.dump_localize_dict")).clicked()
-                            {
-                                Thread::main_thread().schedule(|| {
-                                    let data = Localize::dump_strings();
-                                    let dict_path = Hachimi::instance().get_data_path("localize_dump.json");
-                                    let mut gui = Gui::instance()
-                                        .expect("unexpected failure")
-                                        .lock()
-                                        .expect("lock poisoned");
-                                    if let Err(e) = utils::write_json_file(&data, dict_path) {
-                                        gui.show_notification(&e.to_string())
-                                    } else {
-                                        gui.show_notification(&t!("notification.saved_localize_dump"))
-                                    }
-                                })
-                            }
-                            ui.separator();
-
-                            let plugin_items = get_plugin_menu_items();
-                            if !plugin_items.is_empty() {
-                                ui.heading("Plugins");
-                                for item in plugin_items {
-                                    let icon = get_plugin_menu_icon(&item.label);
-                                    let clicked = if let Some(icon) = icon {
-                                        let size = 18.0 * scale;
-                                        ui.horizontal(|ui| {
-                                            ui.add(
-                                                egui::Image::new((icon.uri, icon.bytes))
-                                                    .fit_to_exact_size(egui::Vec2::splat(size)),
-                                            );
-                                            ui.button(&item.label).clicked()
-                                        })
-                                        .inner
-                                    } else {
-                                        ui.button(&item.label).clicked()
-                                    };
-                                    if clicked {
-                                        if let Some(callback) = item.callback {
-                                            let _ = panic::catch_unwind(AssertUnwindSafe(|| {
-                                                callback(item.userdata as *mut c_void);
-                                            }))
-                                            .inspect_err(|_| {
-                                                error!("plugin menu item callback panicked: {}", item.label);
-                                            });
-                                        }
-                                    }
-                                }
-                                ui.separator();
-                            }
-
-                            let plugin_sections = get_plugin_menu_sections();
-                            if !plugin_sections.is_empty() {
-                                for section in plugin_sections {
-                                    if let Some(title) = section.title.clone() {
-                                        let icon = section.icon.clone();
-                                        let size = 18.0 * scale;
-                                        ui.horizontal(|ui| {
-                                            if let Some(icon) = icon {
-                                                ui.add(
-                                                    egui::Image::new((icon.uri, icon.bytes))
-                                                        .fit_to_exact_size(egui::Vec2::splat(size)),
-                                                );
-                                            }
-                                            ui.heading(title);
-                                        });
-                                    }
-                                    let _scope = crate::core::plugin::OwnerScope::enter(section.owner);
-                                    let _ = panic::catch_unwind(AssertUnwindSafe(|| {
-                                        (section.callback)(
-                                            ui as *mut _ as *mut c_void,
-                                            section.userdata as *mut c_void,
-                                        );
-                                    }))
-                                    .inspect_err(|_| {
-                                        error!("plugin menu section callback panicked");
-                                    });
-                                }
-                                ui.separator();
-                            }
-
-                            ui.heading(t!("menu.danger_zone_heading"));
-                            ui.vertical(|ui| {
-                                ui.label(t!("menu.danger_zone_warning"));
-                            });
-                            if ui.button(t!("menu.soft_restart")).clicked() {
-                                show_window = Some(Box::new(SimpleYesNoDialog::new(
-                                    &t!("confirm_dialog_title"),
-                                    &t!("soft_restart_confirm_content"),
-                                    |ok| {
-                                        if !ok {
-                                            return;
-                                        }
-                                        Thread::main_thread().schedule(|| {
-                                            GameSystem::SoftwareReset(GameSystem::instance());
-                                        });
-                                    },
-                                )));
-                            }
-                            if ui.button(t!("menu.toggle_game_ui")).clicked() {
-                                Thread::main_thread().schedule(Self::toggle_game_ui);
-                            }
-                            if ui.button(t!("menu.reload_plugins")).clicked() {
-                                let (reloaded, skipped) = crate::core::plugin::reload_all();
-                                show_notification =
-                                    Some(format!("Reloaded {reloaded} plugin(s), skipped {skipped}").into());
-                            }
-                        });
-                    });
-                });
-        }
-
-        for message in notification::drain() {
+        // Notifications can be queued from anywhere; drain them every frame.
+        for message in crate::core::plugin::notification::drain() {
             self.show_notification(&message);
         }
 
+        if self.show_menu {
+            self.run_control_center();
+        }
+
+        // The modal has no slide-out animation, so release input as soon as it closes.
         if !self.show_menu {
-            if let Some(time) = self.menu_anim_time {
-                if time.elapsed().as_secs_f32() >= self.context.style().animation_time {
-                    self.menu_visible = false;
-                }
-            } else {
-                self.menu_anim_time = Some(Instant::now());
-            }
+            self.menu_visible = false;
+        }
+    }
+
+    /// Draw the modal shell with the top tab bar and dispatch to the active tab.
+    fn run_control_center(&mut self) {
+        let ctx = self.context.clone();
+        let scale = get_scale(&ctx);
+
+        let mut show_notification: Option<Cow<'_, str>> = None;
+        let mut show_window: Option<BoxedWindow> = None;
+        let mut keep_open = true;
+
+        let response = egui::Modal::new(egui::Id::new("hachimi_control_center")).show(&ctx, |ui| {
+            ui.set_width(550.0 * scale);
+            ui.set_max_height(ctx.input(|i| i.viewport_rect().height()) * 0.85);
+
+            // Header row: icon + title + version, close button on the right.
+            ui.horizontal(|ui| {
+                ui.add(Self::icon(&ctx));
+                ui.heading(t!("hachimi"));
+                ui.label(env!("HACHIMI_DISPLAY_VERSION"));
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    if ui.button("\u{f00d}").on_hover_text(t!("menu.close_menu")).clicked() {
+                        keep_open = false;
+                    }
+                });
+            });
+
+            // Fixed top tab bar.
+            ui.horizontal(|ui| {
+                self.tab_button(ui, ControlTab::Settings, "\u{f013} Settings");
+                self.tab_button(ui, ControlTab::Plugins, "\u{f12e} Plugins");
+                self.tab_button(ui, ControlTab::Overlay, "\u{f2d0} Overlay");
+                self.tab_button(ui, ControlTab::About, "\u{f129} About");
+            });
+            ui.separator();
+
+            egui::ScrollArea::vertical()
+                .auto_shrink([false, false])
+                .show(ui, |ui| match self.menu_tab {
+                    ControlTab::Settings => self.run_settings_tab(ui, &ctx, &mut show_window, &mut show_notification),
+                    ControlTab::Plugins => self.run_plugins_tab(ui, &ctx, &mut show_notification),
+                    ControlTab::Overlay => self.run_overlay_settings_tab(ui),
+                    ControlTab::About => self.run_about_tab(ui, &ctx, &mut show_window),
+                });
+        });
+
+        // Close on backdrop click / Escape, or via the header button.
+        if response.should_close() || !keep_open {
+            self.show_menu = false;
+            self.menu_anim_time = None;
         }
 
         if let Some(content) = show_notification {
             self.show_notification(content.as_ref());
         }
-
         if let Some(window) = show_window {
             self.show_window(window);
+        }
+    }
+
+    fn tab_button(&mut self, ui: &mut egui::Ui, tab: ControlTab, label: &str) {
+        if ui.selectable_label(self.menu_tab == tab, label).clicked() {
+            self.menu_tab = tab;
         }
     }
 

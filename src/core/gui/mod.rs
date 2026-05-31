@@ -7,9 +7,11 @@ mod notification;
 mod overlays;
 mod scale;
 mod splash;
+mod tabs;
 mod theme_preview;
 mod tween;
 mod update_progress;
+mod widgets;
 mod window;
 
 use std::sync::atomic::AtomicBool;
@@ -48,6 +50,9 @@ pub struct Gui {
     pub(crate) last_focused: Option<egui::Id>,
 
     pub(crate) show_menu: bool,
+    pub(crate) menu_tab: menu::ControlTab,
+    /// Currently selected plugin page handle in the Plugins tab (None = list view).
+    pub(crate) plugins_selected: Option<u64>,
 
     pub(crate) splash_visible: bool,
     pub(crate) splash_tween: TweenInOutWithDelay,
@@ -71,4 +76,8 @@ pub(crate) const PIXELS_PER_POINT_RATIO: f32 = 3.0 / 1080.0;
 
 pub(crate) static INSTANCE: OnceCell<Mutex<Gui>> = OnceCell::new();
 pub(crate) static IS_CONSUMING_INPUT: AtomicBool = AtomicBool::new(false);
+/// True when the pointer is over an interactable (unlocked) L2 overlay panel while
+/// the L1 modal is closed. The wnd hook uses this to swallow mouse input for panels
+/// while letting clicks fall through to the game everywhere else.
+pub(crate) static L2_WANTS_POINTER: AtomicBool = AtomicBool::new(false);
 pub(crate) static DISABLED_GAME_UIS: Lazy<Mutex<FnvHashSet<SendPtr>>> = Lazy::new(|| Mutex::new(FnvHashSet::default()));

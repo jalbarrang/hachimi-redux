@@ -89,6 +89,8 @@ impl Gui {
             last_focused: None,
 
             show_menu: false,
+            menu_tab: super::menu::ControlTab::default(),
+            plugins_selected: None,
 
             splash_visible: true,
             splash_tween: TweenInOutWithDelay::new(0.8, 3.0, Easing::OutQuad),

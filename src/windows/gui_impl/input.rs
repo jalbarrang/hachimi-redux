@@ -235,6 +235,25 @@ pub fn process_ime_sync(hwnd: HWND, umsg: u32, lparam: isize) -> (bool, Option<S
     (is_ime, commit, preedit)
 }
 
+/// Mouse-only subset of [`is_handled_msg`], used by the L2 overlay input gate.
+pub fn is_mouse_msg(umsg: u32) -> bool {
+    matches!(
+        umsg,
+        WM_LBUTTONDBLCLK
+            | WM_LBUTTONDOWN
+            | WM_LBUTTONUP
+            | WM_MBUTTONDBLCLK
+            | WM_MBUTTONDOWN
+            | WM_MBUTTONUP
+            | WM_MOUSEHWHEEL
+            | WM_MOUSEMOVE
+            | WM_MOUSEWHEEL
+            | WM_RBUTTONDBLCLK
+            | WM_RBUTTONDOWN
+            | WM_RBUTTONUP
+    )
+}
+
 pub fn is_handled_msg(umsg: u32) -> bool {
     matches!(
         umsg,
