@@ -21,6 +21,7 @@ mod rank_table;
 mod shop_hooks;
 mod skill_shop;
 mod skill_shop_prefs;
+mod stat_targets;
 mod tracker;
 mod ui;
 
@@ -37,6 +38,7 @@ fn init(sdk: &Sdk) -> Result<(), &'static str> {
         sdk.version().raw()
     );
 
+    stat_targets::load();
     ui::register_ui();
 
     let tracking = hooks::subscribe_events();

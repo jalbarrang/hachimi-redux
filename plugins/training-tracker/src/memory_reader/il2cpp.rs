@@ -75,6 +75,20 @@ pub(super) unsafe fn read_il2cpp_string(str_obj: *mut c_void) -> Option<String> 
     }
 }
 
+/// Read a CodeStage `ObscuredInt` field and decrypt it.
+/// Layout: the struct's first 8 bytes are `cryptoKey` (i32 LE) then `hiddenValue`
+/// (i32 LE); the plaintext is `hiddenValue ^ cryptoKey`.
+pub(super) unsafe fn read_obscured_int_field(obj: *mut c_void, field: *mut c_void) -> i32 {
+    let mut buf = [0u8; 16];
+    // SAFETY: IL2CPP object and field pointers from resolved metadata.
+    unsafe {
+        Sdk::get().get_field_value(obj.cast(), field.cast(), buf.as_mut_ptr() as *mut c_void);
+    }
+    let key = i32::from_le_bytes([buf[0], buf[1], buf[2], buf[3]]);
+    let hidden = i32::from_le_bytes([buf[4], buf[5], buf[6], buf[7]]);
+    hidden ^ key
+}
+
 /// Read an IL2CPP `List<T>` field from an object.
 /// Returns (list_ptr, count, get_Item method) or None.
 pub unsafe fn read_list_field(

@@ -17,6 +17,7 @@ use crate::overlay_cache;
 use crate::rank_table;
 use crate::skill_shop;
 use crate::skill_shop_prefs::{cycle_sort_mode, prefs, set_prefs, sort_mode_label, DistanceFilter, StyleFilter};
+use crate::stat_targets;
 use crate::tracker::{Facility, TRACKER};
 
 /// Default overlay font size.
@@ -89,6 +90,7 @@ fn draw_menu_section_inner(ui: &mut egui::Ui) {
 
     draw_tracking_controls(ui);
     draw_hook_status(ui);
+    draw_stat_targets(ui);
 
     if ui.button("\u{1f4ca} Show Training Overlay").clicked() {
         if sdk.overlay_set_visible(OVERLAY_ID, true) {
@@ -140,6 +142,42 @@ fn draw_tracking_controls(ui: &mut egui::Ui) {
         None => "\u{26a0} Waiting for data…".to_owned(),
     };
     ui.small(status);
+}
+
+/// Per-stat target editor. 0 = use the game cap; a positive value warns earlier.
+fn draw_stat_targets(ui: &mut egui::Ui) {
+    ui.separator();
+    ui.small("\u{1f3af} Stat targets (0 = game cap)");
+    let mut t = stat_targets::targets();
+    let mut changed = false;
+    let mut commit = false;
+    egui::Grid::new("tt_targets")
+        .num_columns(2)
+        .striped(true)
+        .show(ui, |ui| {
+            for (i, name) in stat_targets::LABELS.iter().enumerate() {
+                ui.label(*name);
+                let resp = ui.add(
+                    egui::DragValue::new(&mut t[i])
+                        .speed(10.0)
+                        .range(0..=stat_targets::MAX_TARGET),
+                );
+                changed |= resp.changed();
+                // Persist only when the edit settles (not every drag tick).
+                commit |= resp.drag_stopped() || resp.lost_focus();
+                ui.end_row();
+            }
+        });
+    if changed {
+        stat_targets::set_targets(t);
+    }
+    if commit {
+        stat_targets::persist();
+    }
+    if ui.small_button("Clear targets").clicked() {
+        stat_targets::set_targets([0; 5]);
+        stat_targets::persist();
+    }
 }
 
 /// Draw a compact hook-counts status line with a reset button.
@@ -273,26 +311,44 @@ fn draw_training_tab(ui: &mut egui::Ui) {
     ui.add_space(4.0);
 
     let lv = &snap.training_levels;
+    let caps = &snap.stat_caps;
+    let tgt = stat_targets::targets();
+    let thr = |i: usize, cap: i32| stat_targets::effective_threshold(tgt[i], cap);
     let stats = [
-        ("Speed", snap.speed, lv[0]),
-        ("Stamina", snap.stamina, lv[1]),
-        ("Power", snap.power, lv[2]),
-        ("Guts", snap.guts, lv[3]),
-        ("Wit", snap.wiz, lv[4]),
+        ("Speed", snap.speed, lv[0], thr(0, caps[0])),
+        ("Stamina", snap.stamina, lv[1], thr(1, caps[1])),
+        ("Power", snap.power, lv[2], thr(2, caps[2])),
+        ("Guts", snap.guts, lv[3], thr(3, caps[3])),
+        ("Wit", snap.wiz, lv[4], thr(4, caps[4])),
     ];
+    let mut any_capped = false;
     egui::Grid::new("tt_stats")
         .num_columns(stats.len())
         .striped(true)
         .show(ui, |ui| {
-            for (name, _, level) in &stats {
+            for (name, _, level, _) in &stats {
                 ui.label(format!("{} (L{})", name, level));
             }
             ui.end_row();
-            for (_, value, _) in &stats {
-                ui.strong(value.to_string());
+            for (_, value, _, cap) in &stats {
+                match cap_level(*value, *cap) {
+                    CapLevel::AtCap => {
+                        any_capped = true;
+                        ui.colored_label(egui::Color32::from_rgb(255, 80, 80), format!("{}\u{26a0}", value));
+                    }
+                    CapLevel::Near => {
+                        ui.colored_label(egui::Color32::from_rgb(255, 200, 50), value.to_string());
+                    }
+                    CapLevel::Normal => {
+                        ui.strong(value.to_string());
+                    }
+                };
             }
             ui.end_row();
         });
+    if any_capped {
+        ui.small("\u{26a0} target/cap reached — further training wasted");
+    }
 
     ui.add_space(4.0);
     ui.horizontal(|ui| {
@@ -495,6 +551,29 @@ fn draw_skill_shop_controls(ui: &mut egui::Ui) {
     }
 }
 
+/// Proximity of a stat to its cap.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum CapLevel {
+    Normal,
+    Near,
+    AtCap,
+}
+
+/// Classify a stat value against its cap. Unknown cap (`<= 0`) is always `Normal`.
+/// `Near` triggers at ≥ 90% of cap; `AtCap` at ≥ cap.
+fn cap_level(value: i32, cap: i32) -> CapLevel {
+    if cap <= 0 {
+        return CapLevel::Normal;
+    }
+    if value >= cap {
+        CapLevel::AtCap
+    } else if value * 100 >= cap * 90 {
+        CapLevel::Near
+    } else {
+        CapLevel::Normal
+    }
+}
+
 /// Color for bond/friendship value: blue → green → orange → gold (max).
 pub fn bond_color(value: i32) -> (u8, u8, u8) {
     if value >= 100 {
@@ -573,6 +652,22 @@ mod tests {
     use super::*;
 
     // ---- bond_color ----
+
+    #[test]
+    fn cap_level_thresholds() {
+        // Unknown cap → always normal.
+        assert_eq!(cap_level(1200, 0), CapLevel::Normal);
+        assert_eq!(cap_level(0, 0), CapLevel::Normal);
+        // Below 90%.
+        assert_eq!(cap_level(1000, 1200), CapLevel::Normal); // 83%
+        assert_eq!(cap_level(1079, 1200), CapLevel::Normal); // 89.9%
+                                                             // Near: 90%..<100%.
+        assert_eq!(cap_level(1080, 1200), CapLevel::Near); // exactly 90%
+        assert_eq!(cap_level(1199, 1200), CapLevel::Near);
+        // At/over cap.
+        assert_eq!(cap_level(1200, 1200), CapLevel::AtCap);
+        assert_eq!(cap_level(1300, 1200), CapLevel::AtCap);
+    }
 
     #[test]
     fn bond_color_thresholds() {

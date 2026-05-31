@@ -6,7 +6,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use hachimi_plugin_sdk::Sdk;
 
 use super::chain::{ResolvedChain, CHAIN};
-use super::il2cpp::{call_bool, call_i32, call_i32_with_i32, call_obj};
+use super::il2cpp::{call_bool, call_i32, call_i32_with_i32, call_obj, read_obscured_int_field};
 use crate::evaluation::Aptitudes;
 
 /// Snapshot of career state read from game memory.
@@ -39,6 +39,10 @@ pub struct CareerSnapshot {
     /// Training facility levels [Speed, Stamina, Power, Guts, Wisdom].
     /// Read via `GetTrainingLevel(commandId)`. 0 means not available.
     pub training_levels: [i32; 5],
+
+    /// Per-stat caps [Speed, Stamina, Power, Guts, Wisdom] (live MaxSpeed/etc.,
+    /// including scenario raises). 0 means unknown. Decrypted from ObscuredInt.
+    pub stat_caps: [i32; 5],
 
     /// Race aptitude grades (ProperGrade ints) — for the evaluation estimate.
     pub aptitudes: Aptitudes,
@@ -151,6 +155,10 @@ fn read_snapshot_inner() -> Option<CareerSnapshot> {
     let aptitudes = read_aptitudes(chara, chain);
     let star = read_star(chara, chain);
 
+    // Step 9: Per-stat caps (live MaxSpeed/etc., ObscuredInt)
+    hlog_trace!("snapshot: step 9 — stat caps");
+    let stat_caps = read_stat_caps(chara);
+
     hlog_trace!("snapshot: complete (turn={}, total={})", current_turn, total_stats);
     Some(CareerSnapshot {
         is_playing: true,
@@ -170,11 +178,35 @@ fn read_snapshot_inner() -> Option<CareerSnapshot> {
         total_races,
         win_count,
         training_levels,
+        stat_caps,
         aptitudes,
         star,
         // Filled by overlay_cache (self-computed via crate::evaluation).
         evaluation_value: None,
     })
+}
+
+/// Read the 5 per-stat caps (live MaxSpeed/etc.) from ObscuredInt backing fields.
+/// Returns [0; 5] for any cap that can't be resolved.
+fn read_stat_caps(chara: *mut c_void) -> [i32; 5] {
+    let sdk = Sdk::get();
+    // SAFETY: IL2CPP object header — klass pointer at offset 0.
+    let klass = unsafe { *(chara as *const *mut c_void) };
+    let names = [
+        "<MaxSpeed>k__BackingField",
+        "<MaxStamina>k__BackingField",
+        "<MaxPower>k__BackingField",
+        "<MaxGuts>k__BackingField",
+        "<MaxWiz>k__BackingField",
+    ];
+    let mut caps = [0i32; 5];
+    for (i, name) in names.iter().enumerate() {
+        if let Some(field) = sdk.get_field_from_name(klass.cast(), name) {
+            // SAFETY: ObscuredInt field on a valid IL2CPP chara object.
+            caps[i] = unsafe { read_obscured_int_field(chara, field.cast()) };
+        }
+    }
+    caps
 }
 
 /// Read all 10 aptitude grades from the chara object.
