@@ -46,3 +46,38 @@ The script copies `hachimi.dll` → `cri_mana_vpx.dll` and `hachimi_training_tra
 - **Deploy core**: Copy `target/release/hachimi.dll` as `C:/Program Files (x86)/Steam/steamapps/common/UmamusumePrettyDerby/cri_mana_vpx.dll`
 - **Deploy plugin**: Copy `target/release/hachimi_training_tracker.dll` to the game directory root
 - **Config**: `config.json` in the game data directory. `menu_open_key: 68` (D key). Plugins listed in `windows.load_libraries`.
+
+## Versioning & Releases
+
+The release tag is derived from the `[package] version` in `apps/hachimi/Cargo.toml`
+(see `.github/workflows/create_release.yml`). The release itself is **manual**: you
+trigger the `Create Release` workflow via `workflow_dispatch` on GitHub.
+
+### Bumping the version (script)
+
+`scripts/bump-version.sh` computes the next version from conventional-commit history
+since the last `v*` tag and writes it into `apps/hachimi/Cargo.toml` (also refreshing
+`Cargo.lock`). It uses standard semver — breaking→major, `feat`→minor, `fix`/other→patch
+(configured in `cliff.toml`).
+
+Prerequisites (one-time):
+
+```bash
+cargo install git-cliff
+cargo install cargo-edit
+```
+
+Run it from anywhere in the repo:
+
+```bash
+./scripts/bump-version.sh
+```
+
+The script only edits files — it does **not** commit, tag, or push. After running:
+
+1. Review the diff and commit (e.g. `chore(release): vX.Y.Z`), then push to `main`.
+2. Trigger the `Create Release` workflow on GitHub (it reads the version from
+   `main`, tags `vX.Y.Z`, builds, and publishes).
+
+If only non-bumping commits exist since the last tag, the script reports that no
+bump is warranted and makes no changes.

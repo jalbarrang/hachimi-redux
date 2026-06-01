@@ -1,0 +1,52 @@
+# git-cliff configuration
+# Used by scripts/bump-version.sh to compute the next release version from
+# conventional-commit history (`git cliff --bumped-version`).
+#
+# Versioning policy: STANDARD semver, even though the project is pre-1.0.
+#   - breaking change  -> major
+#   - feat             -> minor
+#   - fix / other      -> patch
+# (git-cliff defaults to 0.x-aware bumping; the [bump] block below overrides it.)
+
+[bump]
+# Force standard semver regardless of the current 0.x major version.
+features_always_bump_minor = true
+breaking_always_bump_major = true
+
+[changelog]
+# Minimal — bumping doesn't need a changelog template, but keep header/body sane
+# in case `git cliff` is invoked directly.
+header = "# Changelog\n\n"
+body = """
+{% for group, commits in commits | group_by(attribute="group") %}
+### {{ group | upper_first }}
+{% for commit in commits %}
+- {{ commit.message | upper_first }}
+{% endfor %}
+{% endfor %}
+"""
+trim = true
+
+[git]
+# Parse commits as conventional commits so feat/fix/breaking are recognized.
+conventional_commits = true
+filter_unconventional = false
+# Determines commit groups (and, with the [bump] rules above, the bump level).
+commit_parsers = [
+  { message = "^feat", group = "Features" },
+  { message = "^fix", group = "Bug Fixes" },
+  { message = "^docs", group = "Documentation" },
+  { message = "^perf", group = "Performance" },
+  { message = "^refactor", group = "Refactor" },
+  { message = "^style", group = "Styling" },
+  { message = "^test", group = "Testing" },
+  { message = "^chore\\(release\\):", skip = true },
+  { message = "^chore|^ci|^build", group = "Miscellaneous Tasks" },
+  { body = ".*security", group = "Security" },
+  { message = "^revert", group = "Revert" },
+]
+# Process tags matching the release tag scheme (vX.Y.Z).
+tag_pattern = "v[0-9]*"
+filter_commits = false
+topo_order = false
+sort_commits = "oldest"
