@@ -8,3 +8,6 @@ dump.cs
 .dolt/
 *.db
 .beads-credential-key
+
+# Plan-mode artifacts (documented elsewhere)
+.plans/

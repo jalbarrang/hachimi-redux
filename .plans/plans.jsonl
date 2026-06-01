@@ -1,5 +1,0 @@
-{"_type":"plan","name":"drop-android-support","status":"in-progress","title":"Drop Android Support and Keep Windows-Only Code Paths","created_at":"2026-05-30T06:37:04.426Z","completed_at":null}
-{"_type":"plan","name":"plugin-sdk-redesign","status":"in-progress","title":"Plugin SDK redesign: events, manifest, capabilities, egui-share, proc-macro","created_at":"2026-05-30T17:52:28.086Z","completed_at":null}
-{"_type":"plan","name":"plugin-events-and-unload","status":"in-progress","title":"Expand host event set + plugin unload/reload (Hachimi-Edge-6yd)","created_at":"2026-05-30T20:01:38.847Z","completed_at":null}
-{"_type":"plan","name":"overlay-ux-l1-l2","status":"in-progress","title":"Overlay UX overhaul — L1 Control Center modal + L2 floating HUD + SDK","created_at":"2026-05-31T02:27:37.685Z","completed_at":null}
-{"_type":"plan","name":"tracker-tabbed-overlay","status":"in-progress","title":"Training Tracker overlay: tabbed layout (Training/Skills/Bonds/Skill Shop)","created_at":"2026-05-31T03:49:50.202Z","completed_at":null}
