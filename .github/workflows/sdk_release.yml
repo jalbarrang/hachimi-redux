@@ -54,7 +54,7 @@ jobs:
           echo "api_version=$API" >> "$GITHUB_OUTPUT"
 
       - name: Create release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           name: "Plugin SDK ${{ github.ref_name }}"
           tag_name: ${{ github.ref_name }}
