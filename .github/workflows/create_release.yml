@@ -140,14 +140,21 @@ jobs:
           echo "RELEASE_VERSION=v$VERSION" >> $GITHUB_ENV
 
       - name: Download all build artifacts
-        # Pinned to v7: download-artifact@v8 no longer unconditionally unzips —
-        # it inspects the Content-Type header and skipped our archived (zip)
-        # artifact, leaving artifacts/windows/ with no loose files so the
-        # gh-release `artifacts/windows/*` glob matched nothing. v7 always
-        # extracts, restoring the loose files the release upload expects.
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           path: artifacts
+
+      - name: Stage release files
+        # The current upload/download-artifact actions deliver the artifact as a
+        # zip without extracting it, so the previous `artifacts/windows/*` glob
+        # matched nothing. Unzip whatever was downloaded (and copy any already-
+        # loose files) into a flat dir so the release step is layout-agnostic.
+        run: |
+          mkdir -p release-files
+          find artifacts -type f -name '*.zip' -exec unzip -o {} -d release-files \;
+          find artifacts -type f ! -name '*.zip' -exec cp -f {} release-files/ \;
+          echo "Staged files:"
+          ls -l release-files
 
       - name: Create release notes
         run: |
@@ -203,5 +210,6 @@ jobs:
         with:
           body_path: CHANGELOG.md
           files: |
-            artifacts/windows/*
+            release-files/*
+          fail_on_unmatched_files: true
           tag_name: ${{ env.RELEASE_VERSION }}
