@@ -170,6 +170,23 @@ impl Updater {
         // SAFETY: FFI / raw pointer operation required by IL2CPP interop
         let hachimi_path_str = unsafe { widestring::Utf16Str::from_slice_unchecked(&slice[..length]) };
         let game_dir = utils::get_game_dir();
+
+        // If the training-tracker plugin is currently enabled, ask the installer to
+        // refresh it in lockstep with the core so it never goes stale/ABI-incompatible
+        // after a host API bump. The installer drops the new DLL + skill_grades.json.
+        let tracker_flag = if Hachimi::instance()
+            .config
+            .load()
+            .windows
+            .load_libraries
+            .iter()
+            .any(|lib| lib.eq_ignore_ascii_case("hachimi_training_tracker.dll"))
+        {
+            " --with-training-tracker"
+        } else {
+            ""
+        };
+
         // SAFETY: FFI / raw pointer operation required by IL2CPP interop
         unsafe {
             ShellExecuteW(
@@ -177,8 +194,8 @@ impl Updater {
                 None,
                 &HSTRING::from(installer_path.into_os_string()),
                 &HSTRING::from(format!(
-                    "install --install-dir \"{}\" --target \"{}\" --sleep 1000 --prompt-for-game-exit --launch-game -- {}",
-                    game_dir.display(), hachimi_path_str, std::env::args().skip(1).collect::<Vec<String>>().join(" ")
+                    "install --install-dir \"{}\" --target \"{}\" --sleep 1000 --prompt-for-game-exit{} --launch-game -- {}",
+                    game_dir.display(), hachimi_path_str, tracker_flag, std::env::args().skip(1).collect::<Vec<String>>().join(" ")
                 )),
                 PCWSTR::from_raw(slice.as_ptr()),
                 SW_NORMAL
