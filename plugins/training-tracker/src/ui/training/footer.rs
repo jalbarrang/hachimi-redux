@@ -5,8 +5,8 @@ use hachimi_plugin_sdk::egui;
 use crate::memory_reader;
 use crate::recommend;
 
-use super::stats_grid::StatRow;
 use super::super::util::{format_number, rank_text};
+use super::stats_grid::StatRow;
 
 pub(super) fn draw(
     ui: &mut egui::Ui,
