@@ -11,3 +11,6 @@ dump.cs
 
 # Plan-mode artifacts (documented elsewhere)
 .plans/
+
+# Game IL2CPP metadata dumps (proprietary; keep local-only)
+docs/reverse-engineering/il2cpp/
