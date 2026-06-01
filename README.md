@@ -106,7 +106,13 @@ $env:HACHIMI_GAME_DIR = "D:\path\to\UmamusumePrettyDerby"
 The script copies `hachimi.dll` → `cri_mana_vpx.dll` and the training tracker DLL into the game directory, and never modifies `cri_mana_vpx.dll.backup`.
 
 # Special thanks
-These projects have been the basis for Hachimi's development; without them, Hachimi would never have existed in its current form:
+
+HachimiRedux is a fork built on the work of:
+
+- [Hachimi](https://github.com/Hachimi-Hachimi/Hachimi) — the original project this is based on.
+- [Hachimi Edge](https://github.com/kairusds/Hachimi-Edge) — the Windows/Steam-focused fork HachimiRedux continues from.
+
+These projects have in turn been the basis for Hachimi's development; without them, Hachimi would never have existed in its current form:
 
 - [Trainers' Legend G](https://github.com/MinamiChiwa/Trainers-Legend-G)
 - [umamusume-localify-android](https://github.com/Kimjio/umamusume-localify-android)
