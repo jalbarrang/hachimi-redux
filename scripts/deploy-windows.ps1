@@ -8,7 +8,7 @@
     - Never modifies cri_mana_vpx.dll.backup
 
 .PARAMETER GameDir
-    Uma Musume install folder (contains the game exe and cri_mana_vpx.dll).
+    The Honse Game install folder (contains the game exe and cri_mana_vpx.dll).
     Defaults to $env:HACHIMI_GAME_DIR or the standard Steam path.
 
 .PARAMETER Build

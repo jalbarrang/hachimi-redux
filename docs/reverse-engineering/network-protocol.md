@@ -2,7 +2,7 @@
 
 ## Overview
 
-The game communicates with Cygames servers using **MessagePack**-encoded requests and responses over HTTPS. Each career action (training, race entry, skill learning, etc.) follows a request → response pattern. The protocol has been reverse-engineered by the [UmamusumeResponseAnalyzer](https://github.com/UmamusumeResponseAnalyzer/UmamusumeResponseAnalyzer) project.
+The game communicates with the game's servers using **MessagePack**-encoded requests and responses over HTTPS. Each career action (training, race entry, skill learning, etc.) follows a request → response pattern. The protocol has been reverse-engineered by the [UmamusumeResponseAnalyzer](https://github.com/UmamusumeResponseAnalyzer/UmamusumeResponseAnalyzer) project.
 
 Intercepting these messages requires either:
 - A network proxy (like [ura-core](https://github.com/UmamusumeResponseAnalyzer/ura-core)) that captures and forwards packets

@@ -1,6 +1,6 @@
 # Trainers-Legend-G Cross-Reference
 
-Cross-reference analysis of [Trainers-Legend-G](https://github.com/MinamiChiwa/Trainers-Legend-G) (TLG), a C++ DLL-injection mod for the DMM/Windows version of Uma Musume. TLG is primarily a localization, character model replacement, and visual enhancement tool — **not** a training tracker.
+Cross-reference analysis of [Trainers-Legend-G](https://github.com/MinamiChiwa/Trainers-Legend-G) (TLG), a C++ DLL-injection mod for the DMM/Windows version of The Honse Game. TLG is primarily a localization, character model replacement, and visual enhancement tool — **not** a training tracker.
 
 **Analysis date:** 2026-05-23  
 **TLG version:** latest main branch (shallow clone)
