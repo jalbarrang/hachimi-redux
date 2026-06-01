@@ -1,0 +1,76 @@
+name: SDK Release
+
+# Cuts a GitHub Release for the plugin SDK crates (hachimi-plugin-abi/-sdk/-macros).
+# The crates are consumed via git+tag Cargo deps, so no artifacts are published — the
+# tag itself is the release. This workflow validates the crates and the tag/version
+# consistency, then publishes release notes. See docs/plugin-sdk-release.md.
+
+on:
+  push:
+    tags:
+      - "sdk-v*"
+
+permissions:
+  contents: write
+
+jobs:
+  sdk-release:
+    name: "SDK Release"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: swatinem/rust-cache@v2
+
+      - name: Verify tag matches crate versions
+        run: |
+          TAG="${GITHUB_REF_NAME#sdk-v}"
+          echo "Release version from tag: $TAG"
+          fail=0
+          for crate in abi sdk macros; do
+            f="crates/hachimi-plugin-$crate/Cargo.toml"
+            # First `version = "..."` line is the package version.
+            ver="$(grep -m1 -E '^version[[:space:]]*=' "$f" | sed -E 's/.*"([^"]+)".*/\1/')"
+            if [ "$ver" != "$TAG" ]; then
+              echo "::error file=$f::hachimi-plugin-$crate version ($ver) does not match tag ($TAG)"
+              fail=1
+            else
+              echo "hachimi-plugin-$crate $ver OK"
+            fi
+          done
+          exit $fail
+
+      - name: Build + test SDK crates (abi_layout.rs is the ABI guard)
+        run: |
+          cargo test -p hachimi-plugin-abi
+          cargo build -p hachimi-plugin-abi -p hachimi-plugin-sdk -p hachimi-plugin-macros
+
+      - name: Extract API version
+        id: api
+        run: |
+          API="$(grep -E 'pub const API_VERSION' crates/hachimi-plugin-abi/src/version.rs | grep -oE '[0-9]+')"
+          echo "api_version=$API" >> "$GITHUB_OUTPUT"
+
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: "Plugin SDK ${{ github.ref_name }}"
+          tag_name: ${{ github.ref_name }}
+          body: |
+            HachimiRedux plugin SDK release `${{ github.ref_name }}`.
+
+            - Host plugin **API version:** ${{ steps.api.outputs.api_version }}
+            - Crates: `hachimi-plugin-abi`, `hachimi-plugin-sdk`, `hachimi-plugin-macros`
+
+            Consume via git + tag (no crates.io). See
+            [docs/plugin-sdk.md](https://github.com/${{ github.repository }}/blob/${{ github.ref_name }}/docs/plugin-sdk.md):
+
+            ```toml
+            hachimi-plugin-sdk = { git = "https://github.com/${{ github.repository }}", tag = "${{ github.ref_name }}" }
+            hachimi-plugin-abi = { git = "https://github.com/${{ github.repository }}", tag = "${{ github.ref_name }}" }
+            ```
+
+            > Plugins must use the SDK's re-exported `egui` and a host-compatible egui
+            > version — see docs/plugin-sdk-release.md.
