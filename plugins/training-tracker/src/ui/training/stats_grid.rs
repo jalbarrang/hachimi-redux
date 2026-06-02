@@ -27,13 +27,16 @@ pub(super) fn build_stats(snap: &memory_reader::CareerSnapshot) -> [StatRow; 5] 
 
 pub(super) fn score_facilities(snap: &memory_reader::CareerSnapshot) -> [recommend::FacilityScore; 5] {
     let caps = snap.stat_caps;
-    recommend::score_facilities(&recommend::Inputs {
-        current: [snap.speed, snap.stamina, snap.power, snap.guts, snap.wiz],
-        per_stat_gains: &snap.per_stat_gains,
-        caps,
-        targets: stat_targets::targets(),
-        failure_rates: snap.failure_rates,
-    })
+    recommend::score_facilities(
+        &recommend::Inputs {
+            current: [snap.speed, snap.stamina, snap.power, snap.guts, snap.wiz],
+            per_stat_gains: &snap.per_stat_gains,
+            caps,
+            targets: stat_targets::targets(),
+            failure_rates: snap.failure_rates,
+        },
+        &recommend::params(),
+    )
 }
 
 pub(super) fn draw(

@@ -21,7 +21,7 @@ pub(super) fn draw(
 
     let race_encouraged = recommend::scenario_encourages_racing(snap.scenario_command_base);
 
-    match recommend::turn_suggestion(rec, snap.failure_rates, race_encouraged) {
+    match recommend::turn_suggestion(rec, snap.failure_rates, race_encouraged, &recommend::params()) {
         recommend::TurnSuggestion::Train(best) => {
             ui.small(format!(
                 "\u{2605} best: {} — projected score {}",

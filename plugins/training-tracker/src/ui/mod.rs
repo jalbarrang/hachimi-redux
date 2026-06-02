@@ -20,7 +20,6 @@ mod scenario;
 mod skill_shop_tab;
 mod skills;
 mod snapshot;
-mod state;
 mod training;
 mod util;
 
@@ -70,10 +69,10 @@ fn draw_overlay_inner(ui: &mut egui::Ui) {
         return;
     }
 
-    match state::selected_tab() {
-        state::Tab::Training => training::draw(ui),
-        state::Tab::Skills => skills::draw(ui),
-        state::Tab::Shop => skill_shop_tab::draw(ui),
-        state::Tab::Scenario => scenario::draw(ui),
+    match crate::tabs::selected_tab() {
+        crate::tabs::Tab::Training => training::draw(ui),
+        crate::tabs::Tab::Skills => skills::draw(ui),
+        crate::tabs::Tab::Shop => skill_shop_tab::draw(ui),
+        crate::tabs::Tab::Scenario => scenario::draw(ui),
     }
 }

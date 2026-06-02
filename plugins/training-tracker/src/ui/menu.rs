@@ -5,9 +5,12 @@ use std::sync::atomic::Ordering;
 use hachimi_plugin_sdk::{egui, Sdk};
 
 use crate::class_dump;
+use crate::config;
 use crate::memory_reader;
 use crate::overlay_cache;
+use crate::recommend;
 use crate::stat_targets;
+use crate::tabs;
 
 use super::constants::OVERLAY_ID;
 
@@ -37,6 +40,16 @@ pub(super) fn draw(ui: &mut egui::Ui) {
     ui.separator();
     ui.add_space(8.0);
     draw_stat_targets(ui);
+
+    ui.add_space(12.0);
+    ui.separator();
+    ui.add_space(8.0);
+    draw_tab_visibility(ui);
+
+    ui.add_space(12.0);
+    ui.separator();
+    ui.add_space(8.0);
+    draw_recommendation(ui);
 
     ui.add_space(12.0);
     ui.separator();
@@ -94,6 +107,112 @@ fn draw_tracking_controls(ui: &mut egui::Ui) {
     ui.small(status);
 }
 
+/// Overlay tab visibility toggles. At least one tab must stay enabled, so the
+/// last remaining tab's checkbox is disabled to prevent hiding every tab.
+fn draw_tab_visibility(ui: &mut egui::Ui) {
+    heading_h3(ui, "\u{1f5c2} Overlay Tabs");
+    ui.small("Choose which tabs appear in the overlay");
+    ui.add_space(4.0);
+    let last_one = tabs::enabled_count() <= 1;
+    for (tab, label) in tabs::Tab::ALL {
+        let mut on = tabs::is_enabled(tab);
+        let lock = last_one && on; // can't disable the only remaining tab
+        let resp = ui.add_enabled(!lock, egui::Checkbox::new(&mut on, label));
+        if resp.changed() {
+            tabs::set_enabled(tab, on);
+            config::persist();
+        }
+        if lock {
+            resp.on_hover_text("At least one tab must stay enabled");
+        }
+    }
+}
+
+/// Smart-recommendation tuning. Sliders for how cautious the per-turn suggestion
+/// is; values persist on release and a button restores the defaults.
+fn draw_recommendation(ui: &mut egui::Ui) {
+    heading_h3(ui, "\u{1f9e0} Smart Recommendation");
+    ui.small("Tune how cautious the per-turn suggestion is");
+    ui.add_space(4.0);
+    let mut p = recommend::params();
+    let mut changed = false;
+    let mut commit = false;
+    egui::Grid::new("tt_recommend")
+        .num_columns(2)
+        .spacing([8.0, 4.0])
+        .show(ui, |ui| {
+            rec_row(
+                ui,
+                "Risk penalty threshold",
+                "%",
+                &mut p.risk_threshold_pct,
+                0..=100,
+                &mut changed,
+                &mut commit,
+            );
+            rec_row(
+                ui,
+                "Rest-all threshold",
+                "%",
+                &mut p.all_risky_pct,
+                0..=100,
+                &mut changed,
+                &mut commit,
+            );
+            rec_row(
+                ui,
+                "Failure penalty weight",
+                " pts",
+                &mut p.mood_drop_penalty,
+                0..=500,
+                &mut changed,
+                &mut commit,
+            );
+            rec_row(
+                ui,
+                "Failure stat loss",
+                "",
+                &mut p.failure_stat_loss,
+                0..=100,
+                &mut changed,
+                &mut commit,
+            );
+        });
+    ui.add_space(4.0);
+    if changed {
+        recommend::set_params(p);
+    }
+    if commit {
+        config::persist();
+    }
+    if ui.small_button("Reset to defaults").clicked() {
+        recommend::set_params(recommend::RecommendParams::default());
+        config::persist();
+    }
+}
+
+/// One labelled `DragValue` row for the recommendation grid. Sets `changed` while
+/// editing and `commit` when the edit is finished (drag stop / focus lost).
+fn rec_row(
+    ui: &mut egui::Ui,
+    label: &str,
+    suffix: &str,
+    value: &mut i32,
+    range: std::ops::RangeInclusive<i32>,
+    changed: &mut bool,
+    commit: &mut bool,
+) {
+    ui.label(label);
+    let mut drag = egui::DragValue::new(value).range(range);
+    if !suffix.is_empty() {
+        drag = drag.suffix(suffix);
+    }
+    let resp = ui.add(drag);
+    *changed |= resp.changed();
+    *commit |= resp.drag_stopped() || resp.lost_focus();
+    ui.end_row();
+}
+
 /// Per-stat target editor. 0 = use the game cap; a positive value warns earlier.
 fn draw_stat_targets(ui: &mut egui::Ui) {
     heading_h3(ui, "\u{1f3af} Stat Targets");
@@ -111,9 +230,9 @@ fn draw_stat_targets(ui: &mut egui::Ui) {
                 ui.label(*name);
             }
             ui.end_row();
-            for i in 0..stat_targets::LABELS.len() {
+            for value in &mut t {
                 let resp = ui.add(
-                    egui::DragValue::new(&mut t[i])
+                    egui::DragValue::new(value)
                         .speed(10.0)
                         .range(0..=stat_targets::MAX_TARGET),
                 );
@@ -127,10 +246,10 @@ fn draw_stat_targets(ui: &mut egui::Ui) {
         stat_targets::set_targets(t);
     }
     if commit {
-        stat_targets::persist();
+        config::persist();
     }
     if ui.small_button("Clear targets").clicked() {
         stat_targets::set_targets([0; 5]);
-        stat_targets::persist();
+        config::persist();
     }
 }

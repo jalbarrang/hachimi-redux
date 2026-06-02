@@ -5,7 +5,7 @@ use hachimi_plugin_sdk::{egui, Sdk};
 use crate::memory_reader;
 
 use super::constants::MIN_LIST_HEIGHT;
-use super::state::{selected_tab, set_selected_tab, Tab};
+use crate::tabs::{self, selected_tab, set_selected_tab, Tab};
 
 /// Apply overlay chrome and draw tracking toggle + tab bar when tracking is on.
 pub(super) fn draw_shell(ui: &mut egui::Ui, tracking: bool) -> bool {
@@ -17,8 +17,12 @@ pub(super) fn draw_shell(ui: &mut egui::Ui, tracking: bool) -> bool {
     }
 
     ui.separator();
-    draw_tab_bar(ui);
-    ui.separator();
+    // Hide the tab row when only one tab is enabled — the overlay becomes a single
+    // clean panel showing just that tab's body.
+    if tabs::enabled_count() > 1 {
+        draw_tab_bar(ui);
+        ui.separator();
+    }
     true
 }
 
@@ -28,15 +32,13 @@ fn draw_start_hint(ui: &mut egui::Ui) {
     ui.small("Memory tracking is off — press Start Tracking above.");
 }
 
-/// Horizontal tab bar (text labels).
+/// Horizontal tab bar (text labels) — only the user-enabled tabs are shown.
 fn draw_tab_bar(ui: &mut egui::Ui) {
     ui.horizontal(|ui| {
-        for (tab, label) in [
-            (Tab::Training, "Training"),
-            (Tab::Skills, "Skills"),
-            (Tab::Shop, "Shop"),
-            (Tab::Scenario, "Scenario"),
-        ] {
+        for (tab, label) in Tab::ALL {
+            if !tabs::is_enabled(tab) {
+                continue;
+            }
             if ui.selectable_label(selected_tab() == tab, label).clicked() {
                 set_selected_tab(tab);
             }

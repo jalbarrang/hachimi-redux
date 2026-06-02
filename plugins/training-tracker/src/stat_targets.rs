@@ -4,12 +4,10 @@
 //! target gives an earlier warning (e.g. stop Stamina at 600 even though the cap is
 //! higher).
 //!
-//! Persisted to `hachimi/training_config.json` (alongside Hachimi's own config):
-//! [`load`] on plugin init, [`persist`] when the user commits an edit.
+//! In-memory state only; persistence to `training_config.json` is owned by
+//! [`crate::config`].
 
 use std::sync::Mutex;
-
-use serde::{Deserialize, Serialize};
 
 /// Stat order: [Speed, Stamina, Power, Guts, Wit].
 pub const LABELS: [&str; 5] = ["Speed", "Stamina", "Power", "Guts", "Wit"];
@@ -39,57 +37,6 @@ pub fn effective_threshold(target: i32, cap: i32) -> i32 {
         target
     } else {
         cap
-    }
-}
-
-// ---------------------------------------------------------------------------
-// Persistence (hachimi/training_config.json, next to Hachimi's config.json)
-// ---------------------------------------------------------------------------
-
-/// On-disk plugin config. Kept as a struct so more settings can be added later.
-#[derive(Debug, Default, Serialize, Deserialize)]
-struct PersistedConfig {
-    #[serde(default)]
-    stat_targets: [i32; 5],
-}
-
-fn config_path() -> std::path::PathBuf {
-    std::env::current_exe()
-        .ok()
-        .and_then(|p| p.parent().map(|dir| dir.join("hachimi").join("training_config.json")))
-        .unwrap_or_else(|| std::path::PathBuf::from("training_config.json"))
-}
-
-/// Load persisted targets into memory. Call once on plugin init. Missing/invalid
-/// file is fine (targets stay all-zero).
-pub fn load() {
-    let path = config_path();
-    let Ok(bytes) = std::fs::read(&path) else {
-        return;
-    };
-    match serde_json::from_slice::<PersistedConfig>(&bytes) {
-        Ok(cfg) => {
-            set_targets(cfg.stat_targets);
-            hlog_info!(target: "training-tracker", "stat targets loaded: {:?}", targets());
-        }
-        Err(e) => hlog_warn!(target: "training-tracker", "stat targets config parse failed: {e}"),
-    }
-}
-
-/// Write the current targets to disk. Call when the user commits an edit.
-pub fn persist() {
-    let cfg = PersistedConfig {
-        stat_targets: targets(),
-    };
-    let Ok(bytes) = serde_json::to_vec_pretty(&cfg) else {
-        return;
-    };
-    let path = config_path();
-    if let Some(dir) = path.parent() {
-        let _ = std::fs::create_dir_all(dir);
-    }
-    if let Err(e) = std::fs::write(&path, bytes) {
-        hlog_warn!(target: "training-tracker", "stat targets persist failed: {e}");
     }
 }
 
