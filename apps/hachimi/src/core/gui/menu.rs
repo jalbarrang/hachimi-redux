@@ -26,11 +26,6 @@ pub(crate) enum ControlTab {
 
 impl Gui {
     pub(crate) fn run_menu(&mut self) {
-        // Notifications can be queued from anywhere; drain them every frame.
-        for message in crate::core::plugin::notification::drain() {
-            self.show_notification(&message);
-        }
-
         if self.show_menu {
             self.run_control_center();
         }

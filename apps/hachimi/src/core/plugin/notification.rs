@@ -12,6 +12,13 @@ pub fn enqueue(message: String) {
     PLUGIN_NOTIFICATIONS.lock().expect("lock poisoned").push(message);
 }
 
+/// Whether any plugin notifications are waiting to be drained. Lets the render
+/// hook keep painting (and thus draining) even when the GUI is otherwise empty,
+/// so notifications queued before the menu is ever opened still surface.
+pub(crate) fn has_pending() -> bool {
+    !PLUGIN_NOTIFICATIONS.lock().expect("lock poisoned").is_empty()
+}
+
 pub(crate) fn drain() -> Vec<String> {
     let mut notifications = PLUGIN_NOTIFICATIONS.lock().expect("lock poisoned");
     std::mem::take(&mut *notifications)

@@ -107,6 +107,12 @@ impl Gui {
         }
 
         self.run_windows();
+        // Plugin notifications can be enqueued from any thread at any time — including
+        // at plugin init on game start, before the Control Center is ever opened.
+        // Drain every frame, independent of `menu_visible`, so they always surface.
+        for message in crate::core::plugin::notification::drain() {
+            self.show_notification(&message);
+        }
         self.run_notifications();
         self.run_overlays();
 
@@ -160,6 +166,7 @@ impl Gui {
             && self.notifications.is_empty()
             && self.windows.is_empty()
             && !overlay::has_plugin_overlays()
+            && !crate::core::plugin::notification::has_pending()
     }
 
     pub fn is_consuming_input(&self) -> bool {
