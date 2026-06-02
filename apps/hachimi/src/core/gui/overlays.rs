@@ -44,10 +44,26 @@ impl Gui {
             let mut window = egui::Window::new(&title)
                 .id(win_id)
                 .title_bar(false)
-                .resizable(false)
                 .movable(!locked)
                 .interactable(!locked)
                 .frame(panel_frame(ctx, opacity));
+
+            // The collapsed badge hugs its content and never resizes. The expanded
+            // panel is freely resizable between a sensible minimum and the viewport,
+            // with its size persisted. `force_reset` snaps size back to the default.
+            if state.collapsed {
+                window = window.resizable(false);
+            } else if force_reset {
+                window = window.fixed_size(default_panel_size(scale));
+            } else {
+                let viewport = ctx.input(egui::InputState::viewport_rect);
+                window = window
+                    .resizable(!locked)
+                    .min_size(min_panel_size(scale))
+                    .max_size(egui::vec2(viewport.width() * 0.95, viewport.height() * 0.95))
+                    .default_size(state.size.map_or_else(|| default_panel_size(scale), egui::Vec2::from));
+            }
+
             window = if force_reset {
                 window.current_pos(default_pos)
             } else {
@@ -62,10 +78,13 @@ impl Gui {
                 }
             });
 
-            // Persist live position (flushed to disk on pointer release).
+            // Persist live geometry (flushed to disk on pointer release).
             if let Some(inner) = response {
-                let pos = inner.response.rect.min;
-                overlay::set_panel_pos(&ov.id, [pos.x, pos.y]);
+                let rect = inner.response.rect;
+                overlay::set_panel_pos(&ov.id, [rect.min.x, rect.min.y]);
+                if !state.collapsed && !force_reset {
+                    overlay::set_panel_size(&ov.id, [rect.width(), rect.height()]);
+                }
             }
         }
 
@@ -74,6 +93,16 @@ impl Gui {
             overlay::persist_if_dirty();
         }
     }
+}
+
+/// Smallest size an expanded panel can be resized to, in points.
+fn min_panel_size(scale: f32) -> egui::Vec2 {
+    egui::vec2(300.0 * scale, 120.0 * scale)
+}
+
+/// Default expanded-panel size for fresh panels and after a reset, in points.
+fn default_panel_size(scale: f32) -> egui::Vec2 {
+    egui::vec2(360.0 * scale, 420.0 * scale)
 }
 
 /// Window frame with the configured opacity applied to the background.

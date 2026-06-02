@@ -45,8 +45,12 @@ impl Gui {
                 }
                 ui.label(&title);
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    if ui.small_button("Reset pos").clicked() {
-                        overlay::reset_panel_pos(&ov.id);
+                    if ui
+                        .small_button("Reset")
+                        .on_hover_text("Reset position and size")
+                        .clicked()
+                    {
+                        overlay::reset_panel(&ov.id);
                     }
                 });
             });

@@ -4,9 +4,9 @@
 //! from plugin init. The render side clones a snapshot via `get_plugin_overlays()`
 //! before invoking callbacks, keeping lock scope short on the render thread.
 //!
-//! Per-panel UI state (visibility, collapsed/badge, position) and the global lock +
-//! opacity live in [`OverlayUiState`], persisted to `overlay_state.json` so panel
-//! placement survives restarts. The visibility map is keyed by overlay ID so the
+//! Per-panel UI state (visibility, collapsed/badge, position, size) and the global
+//! lock + opacity live in [`OverlayUiState`], persisted to `overlay_state.json` so
+//! panel placement and size survive restarts. The visibility map is keyed by overlay ID so the
 //! render thread can toggle it without holding the registration lock.
 
 use std::{
@@ -38,6 +38,9 @@ pub(crate) struct PanelState {
     pub(crate) collapsed: bool,
     #[serde(default)]
     pub(crate) pos: Option<[f32; 2]>,
+    /// User-chosen panel size (expanded only). `None` = use the default size.
+    #[serde(default)]
+    pub(crate) size: Option<[f32; 2]>,
 }
 
 impl Default for PanelState {
@@ -46,6 +49,7 @@ impl Default for PanelState {
             visible: true,
             collapsed: false,
             pos: None,
+            size: None,
         }
     }
 }
@@ -181,10 +185,12 @@ pub(crate) fn panel_state(id: &str) -> PanelState {
         .unwrap_or_default()
 }
 
-/// Forget a panel's saved position so it returns to its default spot next frame.
-pub(crate) fn reset_panel_pos(id: &str) {
+/// Forget a panel's saved position and size so it snaps back to defaults next frame.
+pub(crate) fn reset_panel(id: &str) {
     let mut state = OVERLAY_UI.lock().expect("lock poisoned");
-    state.panels.entry(id.to_owned()).or_default().pos = None;
+    let entry = state.panels.entry(id.to_owned()).or_default();
+    entry.pos = None;
+    entry.size = None;
     save_state(&state);
     drop(state);
     RESET_QUEUE.lock().expect("lock poisoned").insert(id.to_owned());
@@ -201,12 +207,22 @@ pub(crate) fn set_panel_collapsed(id: &str, collapsed: bool) {
     save_state(&state);
 }
 
-/// Update a panel's position in memory (cheap; call [`persist`] to flush on drag-stop).
+/// Update a panel's position in memory (cheap; flushed to disk on pointer release).
 pub(crate) fn set_panel_pos(id: &str, pos: [f32; 2]) {
     let mut state = OVERLAY_UI.lock().expect("lock poisoned");
     let entry = state.panels.entry(id.to_owned()).or_default();
     if entry.pos != Some(pos) {
         entry.pos = Some(pos);
+        POS_DIRTY.store(true, Ordering::Relaxed);
+    }
+}
+
+/// Update a panel's size in memory (cheap; flushed to disk on pointer release).
+pub(crate) fn set_panel_size(id: &str, size: [f32; 2]) {
+    let mut state = OVERLAY_UI.lock().expect("lock poisoned");
+    let entry = state.panels.entry(id.to_owned()).or_default();
+    if entry.size != Some(size) {
+        entry.size = Some(size);
         POS_DIRTY.store(true, Ordering::Relaxed);
     }
 }

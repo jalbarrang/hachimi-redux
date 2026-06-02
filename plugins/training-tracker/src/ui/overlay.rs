@@ -4,7 +4,7 @@ use hachimi_plugin_sdk::{egui, Sdk};
 
 use crate::memory_reader;
 
-use super::constants::LIST_MAX_HEIGHT;
+use super::constants::MIN_LIST_HEIGHT;
 use super::state::{selected_tab, set_selected_tab, Tab};
 
 /// Apply overlay chrome and draw tracking toggle + tab bar when tracking is on.
@@ -66,8 +66,11 @@ fn draw_tracking_toggle(ui: &mut egui::Ui, tracking: bool) {
 }
 
 pub(super) fn scroll_list(ui: &mut egui::Ui, body: impl FnOnce(&mut egui::Ui)) {
+    // Fill the remaining height of the (resizable) panel so vertical resizing is
+    // meaningful; fall back to a small minimum when the panel is tiny.
+    let max_height = ui.available_height().max(MIN_LIST_HEIGHT);
     egui::ScrollArea::vertical()
-        .max_height(LIST_MAX_HEIGHT)
-        .auto_shrink([false, true])
+        .max_height(max_height)
+        .auto_shrink([false, false])
         .show(ui, body);
 }
