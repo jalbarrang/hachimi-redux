@@ -14,10 +14,15 @@ pub(super) fn draw(ui: &mut egui::Ui) {
     };
 
     overview::draw(ui, &snap);
+    ui.add_space(16.0);
+
     let stats = stats_grid::build_stats(&snap);
     let rec = stats_grid::score_facilities(&snap);
     let any_capped = stats_grid::draw(ui, &snap, &stats, &rec);
+    ui.add_space(16.0);
+
     footer::draw(ui, &snap, &stats, &rec, any_capped);
+    ui.add_space(16.0);
 
     super::bonds::draw_section(ui);
 }

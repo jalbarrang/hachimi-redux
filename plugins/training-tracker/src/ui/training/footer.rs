@@ -5,7 +5,6 @@ use hachimi_plugin_sdk::egui;
 use crate::memory_reader;
 use crate::recommend;
 
-use super::super::util::{format_number, rank_text};
 use super::stats_grid::StatRow;
 
 pub(super) fn draw(
@@ -35,17 +34,4 @@ pub(super) fn draw(
             ui.colored_label(egui::Color32::from_rgb(255, 200, 50), "\u{1f3c1} Race");
         }
     }
-
-    ui.add_space(4.0);
-    ui.horizontal(|ui| {
-        ui.strong(format!("Total {}", snap.total_stats));
-        ui.separator();
-        ui.label(rank_text(snap));
-    });
-    ui.small(format!(
-        "Fans {}  Races {}/{}W",
-        format_number(snap.fan_count),
-        snap.total_races,
-        snap.win_count
-    ));
 }

@@ -29,13 +29,16 @@ pub struct CareerSnapshot {
     pub hp: i32,
     pub max_hp: i32,
     pub motivation: i32, // RaceDefine.Motivation enum (1-5)
+    #[allow(dead_code)] // read from memory; no longer shown in the redesigned UI
     pub fan_count: i32,
     // NOTE: get_SkillPoint returns ObscuredInt (struct), not i32.
     // Needs special decryption handling — skipped for now.
     #[allow(dead_code)]
     pub skill_point: i32,
 
+    #[allow(dead_code)] // read from memory; no longer shown in the redesigned UI
     pub total_races: i32,
+    #[allow(dead_code)] // read from memory; no longer shown in the redesigned UI
     pub win_count: i32,
 
     /// Training facility levels [Speed, Stamina, Power, Guts, Wisdom].

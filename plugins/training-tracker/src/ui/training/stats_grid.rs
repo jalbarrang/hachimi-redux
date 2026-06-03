@@ -47,13 +47,17 @@ pub(super) fn draw(
 ) -> bool {
     let mut any_capped = false;
     egui::Grid::new("tt_stats")
-        .num_columns(stats.len())
+        .num_columns(stats.len() + 1)
         .striped(true)
         .show(ui, |ui| {
+            // Top-left corner is blank; stat names act as the column header.
+            ui.label("");
             for (name, _, level, _) in stats {
                 ui.label(format!("{} (L{})", name, level));
             }
             ui.end_row();
+
+            ui.strong("Stat");
             for (_, value, _, cap) in stats {
                 match cap_level(*value, *cap) {
                     CapLevel::AtCap => {
@@ -70,6 +74,20 @@ pub(super) fn draw(
             }
             ui.end_row();
 
+            // Single: gain to the trained (own) stat only.
+            ui.strong("Single");
+            for (i, _) in stats.iter().enumerate() {
+                let single = snap.per_stat_gains[i][i];
+                if single > 0 {
+                    ui.colored_label(egui::Color32::from_rgb(120, 200, 255), format!("+{}", single));
+                } else {
+                    ui.weak("—");
+                }
+            }
+            ui.end_row();
+
+            // Total: sum of all stat gains from that facility.
+            ui.strong("Total");
             for gain in &snap.stat_gains {
                 if *gain > 0 {
                     ui.colored_label(egui::Color32::from_rgb(120, 200, 255), format!("+{}", gain));
@@ -79,6 +97,7 @@ pub(super) fn draw(
             }
             ui.end_row();
 
+            ui.strong("Failure");
             for fail in &snap.failure_rates {
                 if *fail >= 0 {
                     let (r, g, b) = failure_rate_color(*fail);
@@ -89,6 +108,7 @@ pub(super) fn draw(
             }
             ui.end_row();
 
+            ui.strong("Score");
             for fs in rec {
                 if fs.known {
                     if fs.is_best {

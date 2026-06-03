@@ -3,7 +3,6 @@
 use hachimi_plugin_sdk::egui;
 
 use crate::memory_reader;
-use crate::rank_table;
 
 /// Proximity of a stat to its cap.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -78,21 +77,6 @@ pub(super) fn format_number(n: i32) -> String {
         result.push(c);
     }
     result.chars().rev().collect()
-}
-
-/// Format the Rank cell from the self-computed evaluation: "A • 12,345" when known,
-/// otherwise the em-dash placeholder (skill-grade resource missing). The value is
-/// exact for skills present in the resource — validated to the point against real
-/// careers (see docs/reverse-engineering/career-evaluation.md).
-pub(super) fn rank_text(snap: &memory_reader::CareerSnapshot) -> String {
-    match snap.evaluation_value {
-        Some(value) => format!(
-            "Rank: {} \u{2022} {}",
-            rank_table::rank_label(value),
-            format_number(value)
-        ),
-        None => "Rank: \u{2014}".to_owned(),
-    }
 }
 
 #[cfg(test)]
