@@ -19,7 +19,6 @@ impl Gui {
     ) {
         let hachimi = Hachimi::instance();
 
-        widgets::section_header(ui, t!("config_editor.general_tab").into_owned());
         ui.horizontal_wrapped(|ui| {
             if widgets::primary_button(ui, t!("menu.reload_config").into_owned()).clicked() {
                 hachimi.reload_config();
