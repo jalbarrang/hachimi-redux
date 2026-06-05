@@ -31,8 +31,10 @@ pub fn register_ui() {
         // SAFETY-free: the slot index is carried as the userdata "pointer".
         register_panel(sdk, &id, draw_uma_overlay, slot as *mut c_void);
     }
-    // Nothing is owned yet: keep every uma widget hidden until a race is decoded.
-    sync_uma_visibility(0);
+    // NOTE: the plugin never writes overlay visibility — show/hide is entirely the
+    // user's choice (persisted by the host's Overlay tab). Visible slots always
+    // render a card (placeholder when idle), so there are no invisible ghosts and
+    // race start never overrides a hidden widget.
 }
 
 fn register_panel(sdk: &Sdk, id: &str, callback: extern "C" fn(*mut c_void, *mut c_void), userdata: *mut c_void) {
@@ -46,16 +48,6 @@ fn register_panel(sdk: &Sdk, id: &str, callback: extern "C" fn(*mut c_void, *mut
     }
 }
 
-/// Show widgets `0..owned_count` and hide the rest. Called when a race is decoded
-/// (and with `0` on teardown), so the visible widget count tracks the player team.
-pub fn sync_uma_visibility(owned_count: usize) {
-    let sdk = Sdk::get();
-    let shown = owned_count.min(MAX_UMA_WIDGETS);
-    for slot in 0..MAX_UMA_WIDGETS {
-        sdk.set_overlay_visible(&uma_overlay_id(slot), slot < shown);
-    }
-}
-
 extern "C" fn draw_control_page(ui: *mut c_void, _userdata: *mut c_void) {
     // SAFETY: host passes its live `&mut egui::Ui` for this callback.
     let ui = unsafe { ui_from_ptr(ui) };
@@ -66,7 +58,7 @@ extern "C" fn draw_control_page(ui: *mut c_void, _userdata: *mut c_void) {
 
 fn draw_control_page_inner(ui: &mut egui::Ui) {
     ui.heading("Race HUD");
-    ui.label("One draggable widget spawns per uma you control. Choose which metrics each widget shows:");
+    ui.label("There is one draggable widget per uma slot. Choose which metrics each widget shows:");
     ui.add_space(8.0);
     for (metric, label) in Metric::ALL {
         let mut on = settings::is_shown(metric);
@@ -77,9 +69,12 @@ fn draw_control_page_inner(ui: &mut egui::Ui) {
     }
     ui.add_space(8.0);
     ui.label(
-        egui::RichText::new("Tip: drag each widget where you want it; positions are saved per uma slot.")
-            .small()
-            .color(faint_text(ui)),
+        egui::RichText::new(
+            "Show/hide each uma widget from the Overlay tab (Race Hud Uma 1\u{2026}9). \
+             The HUD never changes a widget's visibility on its own, and your choices are saved.",
+        )
+        .small()
+        .color(faint_text(ui)),
     );
 }
 
@@ -111,8 +106,24 @@ fn draw_uma_inner(ui: &mut egui::Ui, slot: usize) {
     // Force bright, dark-theme text regardless of the host's configured override.
     ui.visuals_mut().override_text_color = Some(text_primary());
     ui.set_min_width(UMA_WIDTH);
-    if let Some(row) = crate::state::uma_row(slot) {
-        draw_uma_card(ui, &row);
+    // Always render a card for a visible slot (placeholder when no race data), so a
+    // user-enabled widget is never an invisible ghost.
+    let row = crate::state::uma_row(slot).unwrap_or_else(|| placeholder_row(slot));
+    draw_uma_card(ui, &row);
+}
+
+/// Idle placeholder shown when a visible slot has no uma assigned yet.
+fn placeholder_row(slot: usize) -> UmaRow {
+    UmaRow {
+        name: String::new(),
+        post: (slot + 1) as u8,
+        hp: 0,
+        initial_hp: 0,
+        speed: 0,
+        accel: 0.0,
+        kakari: false,
+        blocked: false,
+        live: false,
     }
 }
 
@@ -129,15 +140,21 @@ fn draw_uma_card(ui: &mut egui::Ui, row: &UmaRow) {
         // Name (explicit light color: `.strong()` ignores the text override).
         ui.label(egui::RichText::new(name).size(14.0).color(text_primary()));
 
-        // Each metric row is independently toggled from the control page.
+        // Each metric row is independently toggled from the control page. When the
+        // slot has no live data, values show dashes (idle placeholder).
         if settings::is_shown(Metric::Hp) {
             ui.add_space(3.0);
-            let hp_ratio = if row.initial_hp > 0 {
+            let hp_ratio = if row.live && row.initial_hp > 0 {
                 (f32::from(row.hp) / f32::from(row.initial_hp)).clamp(0.0, 1.0)
             } else {
                 0.0
             };
-            bar_row(ui, "HP", hp_ratio, hp_color(ui, hp_ratio), row.hp.to_string());
+            let hp_value = if row.live {
+                row.hp.to_string()
+            } else {
+                "\u{2014}".to_owned()
+            };
+            bar_row(ui, "HP", hp_ratio, hp_color(ui, hp_ratio), hp_value);
         }
 
         let show_vel = settings::is_shown(Metric::Velocity);
@@ -147,14 +164,23 @@ fn draw_uma_card(ui: &mut egui::Ui, row: &UmaRow) {
             ui.horizontal(|ui| {
                 if show_vel {
                     ui.label(egui::RichText::new("VEL").small().strong().color(faint_text(ui)));
-                    ui.monospace(format!("{:.1}", velocity_mps(row.speed)));
+                    let v = if row.live {
+                        format!("{:.1}", velocity_mps(row.speed))
+                    } else {
+                        "\u{2014}".to_owned()
+                    };
+                    ui.monospace(v);
                 }
                 if show_vel && show_acc {
                     ui.add_space(14.0);
                 }
                 if show_acc {
                     ui.label(egui::RichText::new("ACC").small().strong().color(faint_text(ui)));
-                    ui.monospace(egui::RichText::new(format!("{:+.1}", row.accel)).color(accel_color(row.accel)));
+                    if row.live {
+                        ui.monospace(egui::RichText::new(format!("{:+.1}", row.accel)).color(accel_color(row.accel)));
+                    } else {
+                        ui.monospace("\u{2014}");
+                    }
                 }
             });
         }

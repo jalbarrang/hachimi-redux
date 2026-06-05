@@ -115,11 +115,8 @@ fn capture_simdata(race_info: *mut Il2CppObject) {
 
     let count = decoded.as_ref().map_or(0, |d| d.summary.horse_num.max(0) as usize);
     let (names, mine) = read_horse_meta(race_info, count);
-    let owned = mine.iter().filter(|&&m| m).count();
 
     crate::state::set_decoded(race_info as usize, len, decoded, names, mine);
-    // Spawn one widget per uma the player controls; hide the unused slots.
-    crate::ui::sync_uma_visibility(owned);
     *LAST_SAMPLE.lock().expect("race-hud sample lock poisoned") = None;
     FIRST_SAMPLE_LOGGED.store(false, Ordering::Release);
 }
@@ -392,6 +389,5 @@ pub fn uninstall() {
     ORIG_GET_ELAPSED.store(0, Ordering::Release);
 
     crate::state::clear_all();
-    crate::ui::sync_uma_visibility(0);
     hlog_info!(target: "race-hud", "Hooks removed");
 }
