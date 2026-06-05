@@ -27,6 +27,8 @@ pub(crate) struct PluginOverlay {
     pub(crate) id: String,
     pub(crate) callback: GuiMenuSectionCallback,
     pub(crate) userdata: usize,
+    /// Render bare (no host title/collapse/close header, no window frame).
+    pub(crate) chromeless: bool,
 }
 
 /// Persisted per-panel state.
@@ -117,6 +119,16 @@ fn save_state(state: &OverlayUiState) {
 }
 
 pub fn register_plugin_overlay(id: String, callback: GuiMenuSectionCallback, userdata: *mut c_void) -> u64 {
+    register_plugin_overlay_ex(id, 0, callback, userdata)
+}
+
+/// Register an overlay with presentation `flags` (see `overlay_flags` in the ABI).
+pub fn register_plugin_overlay_ex(
+    id: String,
+    flags: u64,
+    callback: GuiMenuSectionCallback,
+    userdata: *mut c_void,
+) -> u64 {
     OVERLAY_UI
         .lock()
         .expect("lock poisoned")
@@ -130,6 +142,7 @@ pub fn register_plugin_overlay(id: String, callback: GuiMenuSectionCallback, use
         id,
         callback,
         userdata: userdata as usize,
+        chromeless: flags & hachimi_plugin_abi::overlay_flags::CHROMELESS != 0,
     });
     handle
 }

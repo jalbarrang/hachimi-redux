@@ -101,6 +101,15 @@ pub mod capability {
     pub const UNLOADABLE: u64 = 1 << 8;
 }
 
+/// Presentation flags for [`Vtable::gui_register_overlay_ex`] (host API v12+).
+pub mod overlay_flags {
+    /// Render the overlay without the host window chrome (no title/collapse/close
+    /// header, no window background frame). The plugin's own drawing is the entire
+    /// visual; the panel stays draggable when overlays are unlocked and is still
+    /// managed (show/hide/reset) from the L1 Overlay tab.
+    pub const CHROMELESS: u64 = 1 << 0;
+}
+
 /// Plugin metadata read by the host before/at init for introspection and validation.
 /// `name` and `version` are NUL-terminated, `'static`, UTF-8 C strings.
 #[repr(C)]
@@ -258,6 +267,16 @@ pub struct Vtable {
     /// `'static` UTF-8 label owned by the host, or null if the id is uncatalogued.
     /// Documentation/diagnostics only — it does not classify gameplay state.
     pub host_view_name: unsafe extern "C" fn(view_id: i32) -> *const c_char,
+
+    // ── Overlay presentation flags (API v12) ──
+    /// Like `gui_register_overlay`, but `flags` selects the presentation (see
+    /// [`overlay_flags`]). `flags == 0` is identical to `gui_register_overlay`.
+    pub gui_register_overlay_ex: unsafe extern "C" fn(
+        id: *const c_char,
+        flags: u64,
+        callback: Option<GuiMenuSectionCallback>,
+        userdata: *mut c_void,
+    ) -> u64,
 }
 
 /// Subdirectory (under the game data dir) where the host caches GameTora data

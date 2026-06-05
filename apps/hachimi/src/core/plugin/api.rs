@@ -465,6 +465,27 @@ unsafe extern "C" fn gui_register_overlay(
     }
 }
 
+unsafe extern "C" fn gui_register_overlay_ex(
+    id: *const c_char,
+    flags: u64,
+    callback: Option<GuiMenuSectionCallback>,
+    userdata: *mut c_void,
+) -> u64 {
+    // SAFETY: FFI / raw pointer operation required by IL2CPP interop
+    unsafe {
+        let Some(callback) = callback else {
+            return 0;
+        };
+        if id.is_null() {
+            return 0;
+        }
+        let Ok(id) = CStr::from_ptr(id).to_str() else {
+            return 0;
+        };
+        super::overlay::register_plugin_overlay_ex(id.to_owned(), flags, callback, userdata)
+    }
+}
+
 unsafe extern "C" fn gui_show_notification(message: *const c_char) -> bool {
     // SAFETY: FFI / raw pointer operation required by IL2CPP interop
     unsafe {
@@ -534,6 +555,7 @@ fn build_host_vtable() -> Vtable {
         gui_register_menu_item_icon,
         gui_register_menu_section_with_icon,
         gui_register_overlay,
+        gui_register_overlay_ex,
         gui_unregister,
         gui_show_notification,
         gui_overlay_set_visible,

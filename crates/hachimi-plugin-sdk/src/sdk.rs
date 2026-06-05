@@ -202,6 +202,41 @@ impl Sdk {
         unsafe { (vt().gui_register_overlay)(id_c.as_ptr(), Some(callback), userdata) }
     }
 
+    /// Register a **chromeless L2 panel**: the host draws no title/collapse/close
+    /// header and no window frame, so the plugin's own visuals float bare. The
+    /// panel is still draggable (when overlays are unlocked) and managed from the
+    /// host's Overlay tab. Returns a handle (0 = fail).
+    ///
+    /// Falls back to a normal [`Self::register_panel`] when the host is older than
+    /// API v12 (the chrome is kept rather than failing).
+    pub fn register_panel_chromeless(&self, id: &str, callback: GuiMenuSectionCallback, userdata: *mut c_void) -> u64 {
+        if !self.version.at_least(12) {
+            return self.register_overlay(id, callback, userdata);
+        }
+        let Ok(id_c) = CString::new(id) else {
+            return 0;
+        };
+        // SAFETY: host vtable slot valid after init (v12+); callback lifetime managed by plugin.
+        unsafe {
+            (vt().gui_register_overlay_ex)(
+                id_c.as_ptr(),
+                hachimi_plugin_abi::overlay_flags::CHROMELESS,
+                Some(callback),
+                userdata,
+            )
+        }
+    }
+
+    /// Show or hide a registered overlay panel by `id`. The host persists the
+    /// choice (and reflects it in its Overlay tab). Returns `false` on bad input.
+    pub fn set_overlay_visible(&self, id: &str, visible: bool) -> bool {
+        let Ok(id_c) = CString::new(id) else {
+            return false;
+        };
+        // SAFETY: base vtable slot (host API v9+); host copies the id.
+        unsafe { (vt().gui_overlay_set_visible)(id_c.as_ptr(), visible) }
+    }
+
     /// Remove a menu item/section/overlay registration by its handle.
     pub fn unregister(&self, handle: u64) -> bool {
         // SAFETY: handle was issued by a `gui_register_*` slot.

@@ -13,7 +13,11 @@
 ///
 /// v11: added `host_view_name` (resolve a `Gallop.SceneDefine.ViewId` to a
 /// host-owned label), letting plugins display view names without their own catalog.
-pub const API_VERSION: i32 = 11;
+///
+/// v12: added `gui_register_overlay_ex` (register an L2 panel with presentation
+/// flags, e.g. [`crate::overlay_flags::CHROMELESS`] to drop the host window chrome
+/// so the plugin's own visuals float bare).
+pub const API_VERSION: i32 = 12;
 
 /// Number of function pointers in `Vtable`.
-pub const VTABLE_SLOT_COUNT: usize = 44;
+pub const VTABLE_SLOT_COUNT: usize = 45;

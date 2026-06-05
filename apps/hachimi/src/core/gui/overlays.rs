@@ -27,7 +27,7 @@ impl Gui {
         let locked = overlay::is_locked();
         let opacity = overlay::opacity();
 
-        for ov in overlays.iter() {
+        for (index, ov) in overlays.iter().enumerate() {
             let state = overlay::panel_state(&ov.id);
             if !state.visible {
                 continue;
@@ -35,12 +35,29 @@ impl Gui {
 
             let title = overlay::display_title(&ov.id);
             let win_id = egui::Id::new("plugin_overlay").with(&ov.id);
+            // Fresh panels (no saved position) cascade down the right edge by
+            // registration order so multiple overlays don't stack on one spot.
             let default_pos = state.pos.map_or_else(
-                || egui::pos2(ctx.input(|i| i.viewport_rect().right()) - 300.0 * scale, 8.0 * scale),
+                || {
+                    let stagger = (index as f32) * 38.0 * scale;
+                    egui::pos2(
+                        ctx.input(|i| i.viewport_rect().right()) - 300.0 * scale,
+                        (8.0 * scale) + stagger,
+                    )
+                },
                 |p| egui::pos2(p[0], p[1]),
             );
 
             let force_reset = overlay::take_reset(&ov.id);
+
+            // Chromeless overlays drop the host header/frame entirely: the plugin's
+            // own drawing is the whole visual. They auto-size to content, stay
+            // draggable when unlocked, and are managed from the L1 Overlay tab.
+            if ov.chromeless {
+                self.run_chromeless_overlay(ov, &title, default_pos, locked, opacity, force_reset);
+                continue;
+            }
+
             let mut window = egui::Window::new(&title)
                 .id(win_id)
                 .title_bar(false)
@@ -91,6 +108,51 @@ impl Gui {
         // Flush any position changes once the user releases the mouse.
         if ctx.input(|i| i.pointer.any_released()) {
             overlay::persist_if_dirty();
+        }
+    }
+
+    /// Render a chromeless overlay: a transparent, auto-sized window with no header
+    /// and no background frame, so only the plugin's own visuals show.
+    #[allow(clippy::too_many_arguments)]
+    fn run_chromeless_overlay(
+        &self,
+        ov: &overlay::PluginOverlay,
+        title: &str,
+        default_pos: egui::Pos2,
+        locked: bool,
+        opacity: f32,
+        force_reset: bool,
+    ) {
+        let ctx = &self.context;
+        let win_id = egui::Id::new("plugin_overlay").with(&ov.id);
+        let mut window = egui::Window::new(title)
+            .id(win_id)
+            .title_bar(false)
+            .resizable(false)
+            .movable(!locked)
+            .interactable(!locked)
+            .frame(egui::Frame::NONE);
+
+        window = if force_reset {
+            window.current_pos(default_pos)
+        } else {
+            window.default_pos(default_pos)
+        };
+
+        let response = window.show(ctx, |ui| {
+            ui.set_opacity(opacity);
+            let _scope = crate::core::plugin::OwnerScope::enter(ov.owner);
+            let _ = panic::catch_unwind(AssertUnwindSafe(|| {
+                (ov.callback)(ui as *mut egui::Ui as *mut c_void, ov.userdata as *mut c_void);
+            }))
+            .inspect_err(|_| {
+                error!("plugin overlay callback panicked: {}", ov.id);
+            });
+        });
+
+        if let Some(inner) = response {
+            let rect = inner.response.rect;
+            overlay::set_panel_pos(&ov.id, [rect.min.x, rect.min.y]);
         }
     }
 }
