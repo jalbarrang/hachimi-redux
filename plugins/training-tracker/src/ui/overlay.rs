@@ -39,15 +39,24 @@ pub(super) fn space(ui: &mut egui::Ui, base: f32) {
 }
 
 /// Compact zoom slider so the user can scale the whole panel up or down.
+///
+/// The slider edits a *pending* value; the live zoom (and thus the panel + the
+/// slider's own size) only changes when the drag ends. This stops the slider from
+/// rescaling under the cursor mid-drag, which made it jitter/overshoot.
 fn draw_zoom_control(ui: &mut egui::Ui) {
     ui.horizontal(|ui| {
         ui.label("\u{1f50d} Zoom");
-        let mut z = overlay_prefs::zoom();
+        let mut z = overlay_prefs::pending_zoom();
         let slider = egui::Slider::new(&mut z, overlay_prefs::MIN_ZOOM..=overlay_prefs::MAX_ZOOM)
             .fixed_decimals(2)
             .show_value(true);
-        if ui.add(slider).changed() {
-            overlay_prefs::set_zoom(z);
+        let resp = ui.add(slider);
+        if resp.changed() {
+            overlay_prefs::set_pending_zoom(z);
+        }
+        // Commit on release (drag) or on a discrete change (click / keyboard).
+        if resp.drag_stopped() || (resp.changed() && !resp.dragged()) {
+            overlay_prefs::commit_zoom();
             crate::config::persist();
         }
     });
