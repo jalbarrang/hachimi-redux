@@ -16,6 +16,8 @@ pub(crate) struct ThemeTokens {
     pub surface_hi: egui::Color32,
     pub line: egui::Color32,
     pub text: egui::Color32,
+    /// Brighter than `text`; used for emphasized/strong text and headings.
+    pub text_strong: egui::Color32,
     pub text_dim: egui::Color32,
     pub text_faint: egui::Color32,
     pub accent: egui::Color32,
@@ -41,6 +43,7 @@ impl ThemeTokens {
             surface_hi: egui::Color32::from_rgba_premultiplied(50, 56, 64, config.ui_panel_fill.a()),
             line: egui::Color32::from_rgba_premultiplied(58, 64, 70, 210),
             text: config.ui_text_color,
+            text_strong: brighten_toward_white(config.ui_text_color, 0.6),
             text_dim: egui::Color32::from_rgb(154, 163, 171),
             text_faint: egui::Color32::from_rgb(107, 116, 124),
             accent,
@@ -73,6 +76,12 @@ impl ThemeTokens {
             text: visuals
                 .override_text_color
                 .unwrap_or(visuals.widgets.noninteractive.fg_stroke.color),
+            text_strong: brighten_toward_white(
+                visuals
+                    .override_text_color
+                    .unwrap_or(visuals.widgets.noninteractive.fg_stroke.color),
+                0.6,
+            ),
             text_dim: visuals.widgets.inactive.fg_stroke.color,
             text_faint: visuals.widgets.noninteractive.fg_stroke.color.linear_multiply(0.65),
             accent,
@@ -88,6 +97,13 @@ impl ThemeTokens {
             pill_radius: 255.0.into(),
         }
     }
+}
+
+/// Lerp a color toward white by `t` (0 = unchanged, 1 = white).
+fn brighten_toward_white(c: egui::Color32, t: f32) -> egui::Color32 {
+    let t = t.clamp(0.0, 1.0);
+    let lerp = |x: u8| (f32::from(x) + (255.0 - f32::from(x)) * t).round() as u8;
+    egui::Color32::from_rgb(lerp(c.r()), lerp(c.g()), lerp(c.b()))
 }
 
 pub(crate) fn apply_style(style: &mut egui::Style, config: &hachimi::Config) {
@@ -122,7 +138,11 @@ pub(crate) fn apply_style(style: &mut egui::Style, config: &hachimi::Config) {
     style.visuals.widgets.active.weak_bg_fill = tokens.accent_2;
     style.visuals.widgets.active.bg_fill = tokens.accent;
     style.visuals.widgets.active.bg_stroke = egui::Stroke::new(1.0, tokens.accent);
-    style.visuals.widgets.active.fg_stroke = egui::Stroke::new(1.0, tokens.accent_ink);
+    // egui derives `strong_text_color()` (every `.strong()` / heading) from
+    // `widgets.active.fg_stroke`. Keep it a bright text color so emphasized text
+    // stays readable on the dark theme. Accent buttons draw their own dark ink
+    // explicitly (see `widgets.rs`), so they are unaffected.
+    style.visuals.widgets.active.fg_stroke = egui::Stroke::new(1.0, tokens.text_strong);
     style.visuals.widgets.active.corner_radius = tokens.small_radius;
 
     style.visuals.widgets.open = style.visuals.widgets.hovered;
