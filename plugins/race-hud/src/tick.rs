@@ -1,6 +1,6 @@
 //! Host event subscriptions: teardown on shutdown.
 //!
-//! The 500ms live cadence lives in the RaceManager hook (see `capture.rs`).
+//! The 100ms live cadence lives in the RaceManager hook (see `capture.rs`).
 //! Resetting the overlay is manual (the Reset button); there is no auto-reset.
 
 use std::ffi::c_void;

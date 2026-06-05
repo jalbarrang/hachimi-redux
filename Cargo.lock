@@ -960,6 +960,8 @@ dependencies = [
  "flate2",
  "hachimi-plugin-abi",
  "hachimi-plugin-sdk",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

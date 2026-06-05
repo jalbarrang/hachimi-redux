@@ -10,6 +10,7 @@
 extern crate hachimi_plugin_abi;
 
 mod capture;
+mod settings;
 mod sim;
 mod state;
 mod tick;
@@ -28,6 +29,7 @@ fn init(sdk: &Sdk) -> Result<(), &'static str> {
     );
 
     state::init();
+    settings::load();
     ui::register_ui();
 
     if !tick::subscribe_events() {

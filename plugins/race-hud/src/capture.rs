@@ -4,7 +4,7 @@
 //! - `Gallop.RaceManager.get_ElapsedTime()` is read by the race UI every frame, so
 //!   we hook it as a per-frame trigger. It returns 0 (not the playback clock), so
 //!   for the actual time we call `get_AccumulateTimeSinceStart(this)` and sample
-//!   the decoded frames on a ~500ms cadence.
+//!   the decoded frames on a ~100ms cadence.
 //!
 //! The overlay never touches IL2CPP; it only reads the snapshot in `state`.
 
@@ -18,7 +18,7 @@ use hachimi_plugin_abi::{FieldInfo, Il2CppImage, Il2CppObject, MethodInfo};
 use hachimi_plugin_sdk::Sdk;
 
 const SIMDATA_FIELD: &str = "<SimDataBase64>k__BackingField";
-const SAMPLE_CADENCE: Duration = Duration::from_millis(500);
+const SAMPLE_CADENCE: Duration = Duration::from_millis(100);
 
 // ── RaceInfo SimData hook ──
 static ORIG_GET_RACE_TRACK_ID: AtomicUsize = AtomicUsize::new(0);
@@ -30,6 +30,10 @@ static RACE_HORSE_FN: AtomicUsize = AtomicUsize::new(0);
 static RACE_HORSE_MI: AtomicUsize = AtomicUsize::new(0);
 static CHARANAME_FN: AtomicUsize = AtomicUsize::new(0);
 static CHARANAME_MI: AtomicUsize = AtomicUsize::new(0);
+// `HorseData.get_IsUser` → true for the umas the player controls (their team in
+// team races, their trainee in single mode).
+static ISUSER_FN: AtomicUsize = AtomicUsize::new(0);
+static ISUSER_MI: AtomicUsize = AtomicUsize::new(0);
 
 // ── RaceManager live hook ──
 static ORIG_GET_ELAPSED: AtomicUsize = AtomicUsize::new(0);
@@ -43,6 +47,7 @@ static FIRST_SAMPLE_LOGGED: AtomicBool = AtomicBool::new(false);
 type GetRaceTrackIdFn = extern "C" fn(this: *mut Il2CppObject, method: *const MethodInfo) -> i32;
 type GetSingleFn = extern "C" fn(this: *mut Il2CppObject, method: *const MethodInfo) -> f32;
 type GetObjFn = extern "C" fn(this: *mut Il2CppObject, method: *const MethodInfo) -> *mut c_void;
+type GetBoolFn = extern "C" fn(this: *mut Il2CppObject, method: *const MethodInfo) -> u8;
 
 // ─────────────────────────── RaceInfo / SimData ───────────────────────────
 
@@ -109,27 +114,32 @@ fn capture_simdata(race_info: *mut Il2CppObject) {
     }
 
     let count = decoded.as_ref().map_or(0, |d| d.summary.horse_num.max(0) as usize);
-    let names = read_chara_names(race_info, count);
+    let (names, mine) = read_horse_meta(race_info, count);
+    let owned = mine.iter().filter(|&&m| m).count();
 
-    crate::state::set_decoded(race_info as usize, len, decoded, names);
+    crate::state::set_decoded(race_info as usize, len, decoded, names, mine);
+    // Spawn one widget per uma the player controls; hide the unused slots.
+    crate::ui::sync_uma_visibility(owned);
     *LAST_SAMPLE.lock().expect("race-hud sample lock poisoned") = None;
     FIRST_SAMPLE_LOGGED.store(false, Ordering::Release);
 }
 
-/// Read the `charaName` of each runner via `RaceInfo.get_RaceHorse()` (HorseData[]
-/// in horse-index order). Returns an empty vec if accessors are unavailable.
-fn read_chara_names(race_info: *mut Il2CppObject, count: usize) -> Vec<String> {
+/// Read per-runner metadata via `RaceInfo.get_RaceHorse()` (HorseData[] in
+/// horse-index order): the `charaName` and whether the horse belongs to the
+/// player (`HorseData.get_IsUser`). Either vec is empty if its accessor is
+/// unavailable; the `mine` vec is empty when the player flag can't be read.
+fn read_horse_meta(race_info: *mut Il2CppObject, count: usize) -> (Vec<String>, Vec<bool>) {
     let arr_fn = RACE_HORSE_FN.load(Ordering::Acquire);
     let name_fn = CHARANAME_FN.load(Ordering::Acquire);
-    if arr_fn == 0 || name_fn == 0 || count == 0 {
-        return Vec::new();
+    if arr_fn == 0 || count == 0 {
+        return (Vec::new(), Vec::new());
     }
 
     // SAFETY: resolved 0-arg getter on the live RaceInfo; returns a HorseData[].
     let get_race_horse: GetObjFn = unsafe { std::mem::transmute(arr_fn) };
     let arr = get_race_horse(race_info, RACE_HORSE_MI.load(Ordering::Acquire) as *const MethodInfo);
     if arr.is_null() {
-        return Vec::new();
+        return (Vec::new(), Vec::new());
     }
 
     // SZ array layout (64-bit): [klass][monitor][bounds][usize max_length][elems...]
@@ -140,23 +150,38 @@ fn read_chara_names(race_info: *mut Il2CppObject, count: usize) -> Vec<String> {
     // SAFETY: SZ-array element pointers begin at the fixed 32-byte header offset.
     let base = unsafe { arr.cast::<u8>().add(32).cast::<*mut c_void>() };
 
+    let isuser_fn = ISUSER_FN.load(Ordering::Acquire);
+    let isuser_mi = ISUSER_MI.load(Ordering::Acquire) as *const MethodInfo;
     // SAFETY: resolved 0-arg `HorseData.get_charaName` returning an Il2CppString.
     let get_chara_name: GetObjFn = unsafe { std::mem::transmute(name_fn) };
     let name_mi = CHARANAME_MI.load(Ordering::Acquire) as *const MethodInfo;
+    // SAFETY: resolved 0-arg `HorseData.get_IsUser` returning a Boolean.
+    let get_is_user: Option<GetBoolFn> = (isuser_fn != 0).then(|| unsafe { std::mem::transmute(isuser_fn) });
 
     let mut names = Vec::with_capacity(n);
+    let mut mine = if get_is_user.is_some() {
+        Vec::with_capacity(n)
+    } else {
+        Vec::new()
+    };
     for i in 0..n {
         // SAFETY: `i < max_len`; each element is an 8-byte object pointer.
         let horse = unsafe { *base.add(i) };
-        let name = if horse.is_null() {
-            String::new()
-        } else {
-            let s = get_chara_name(horse, name_mi);
-            read_il2cpp_string(s).unwrap_or_default()
-        };
-        names.push(name);
+        if name_fn != 0 {
+            let name = if horse.is_null() {
+                String::new()
+            } else {
+                let s = get_chara_name(horse, name_mi);
+                read_il2cpp_string(s).unwrap_or_default()
+            };
+            names.push(name);
+        }
+        if let Some(is_user) = get_is_user {
+            let owned = !horse.is_null() && is_user(horse, isuser_mi) != 0;
+            mine.push(owned);
+        }
     }
-    names
+    (names, mine)
 }
 
 /// Read the length field of an `Il2CppString`. Layout on 64-bit:
@@ -286,6 +311,12 @@ fn install_race_info(sdk: &Sdk, image: *const Il2CppImage) -> bool {
         if let Some(mi) = sdk.get_method(hd, "get_charaName", 0) {
             CHARANAME_MI.store(mi as usize, Ordering::Release);
         }
+        if let Some(addr) = sdk.get_method_addr(hd, "get_IsUser", 0) {
+            ISUSER_FN.store(addr as usize, Ordering::Release);
+        }
+        if let Some(mi) = sdk.get_method(hd, "get_IsUser", 0) {
+            ISUSER_MI.store(mi as usize, Ordering::Release);
+        }
     }
 
     let Some(method_addr) = sdk.get_method_addr(class, "get_RaceTrackId", 0) else {
@@ -361,5 +392,6 @@ pub fn uninstall() {
     ORIG_GET_ELAPSED.store(0, Ordering::Release);
 
     crate::state::clear_all();
+    crate::ui::sync_uma_visibility(0);
     hlog_info!(target: "race-hud", "Hooks removed");
 }

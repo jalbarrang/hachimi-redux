@@ -1,28 +1,44 @@
-//! Minimal race overlays: HP/velocity cards + standalone timer.
+//! Race overlays: a standalone timer plus one independent widget per player-owned
+//! uma (HP + velocity), each its own draggable chromeless panel.
 
 use std::ffi::c_void;
 use std::panic::{self, AssertUnwindSafe};
 
 use hachimi_plugin_sdk::{egui, ui_from_ptr, Sdk};
 
-use crate::state::{RunnerRow, UiState};
+use crate::settings::{self, Metric};
+use crate::state::UmaRow;
 
-const OVERLAY_ID: &str = "race_hud";
 const TIMER_OVERLAY_ID: &str = "race_hud_timer";
-const SOLO_WIDTH: f32 = 210.0;
-const TEAM_WIDTH: f32 = 236.0;
-const TIMER_WIDTH: f32 = 112.0;
-const MAX_VELOCITY_MPS: f32 = 22.0;
+/// Pool of pre-registered per-uma widget slots. Hidden until a race assigns them.
+const MAX_UMA_WIDGETS: usize = 3;
+const TIMER_WIDTH: f32 = 120.0;
+const UMA_WIDTH: f32 = 120.0;
 
-/// Register the race-hud overlay panels with Hachimi's GUI.
-pub fn register_ui() {
-    let sdk = Sdk::get();
-    register_panel(sdk, OVERLAY_ID, draw_overlay);
-    register_panel(sdk, TIMER_OVERLAY_ID, draw_timer_overlay);
+/// Overlay id for the `slot`-th uma widget (0-based; 1-based in the id/title).
+fn uma_overlay_id(slot: usize) -> String {
+    format!("race_hud_uma_{}", slot + 1)
 }
 
-fn register_panel(sdk: &Sdk, id: &str, callback: extern "C" fn(*mut c_void, *mut c_void)) {
-    let handle = sdk.register_panel(id, callback, std::ptr::null_mut());
+/// Register the race-hud overlays: the timer plus the per-uma widget pool, and
+/// the L1 control page for toggling which metrics each widget shows.
+pub fn register_ui() {
+    let sdk = Sdk::get();
+    sdk.register_page(draw_control_page, std::ptr::null_mut());
+    register_panel(sdk, TIMER_OVERLAY_ID, draw_timer_overlay, std::ptr::null_mut());
+    for slot in 0..MAX_UMA_WIDGETS {
+        let id = uma_overlay_id(slot);
+        // SAFETY-free: the slot index is carried as the userdata "pointer".
+        register_panel(sdk, &id, draw_uma_overlay, slot as *mut c_void);
+    }
+    // Nothing is owned yet: keep every uma widget hidden until a race is decoded.
+    sync_uma_visibility(0);
+}
+
+fn register_panel(sdk: &Sdk, id: &str, callback: extern "C" fn(*mut c_void, *mut c_void), userdata: *mut c_void) {
+    // Chromeless: the overlays draw their own card/chip visuals, so the host must
+    // not wrap them in a titled window with a frame and close/collapse buttons.
+    let handle = sdk.register_panel_chromeless(id, callback, userdata);
     if handle == 0 {
         hlog_warn!(target: "race-hud", "Overlay panel registration declined: {id}");
     } else {
@@ -30,12 +46,41 @@ fn register_panel(sdk: &Sdk, id: &str, callback: extern "C" fn(*mut c_void, *mut
     }
 }
 
-extern "C" fn draw_overlay(ui: *mut c_void, _userdata: *mut c_void) {
+/// Show widgets `0..owned_count` and hide the rest. Called when a race is decoded
+/// (and with `0` on teardown), so the visible widget count tracks the player team.
+pub fn sync_uma_visibility(owned_count: usize) {
+    let sdk = Sdk::get();
+    let shown = owned_count.min(MAX_UMA_WIDGETS);
+    for slot in 0..MAX_UMA_WIDGETS {
+        sdk.set_overlay_visible(&uma_overlay_id(slot), slot < shown);
+    }
+}
+
+extern "C" fn draw_control_page(ui: *mut c_void, _userdata: *mut c_void) {
     // SAFETY: host passes its live `&mut egui::Ui` for this callback.
     let ui = unsafe { ui_from_ptr(ui) };
-    if panic::catch_unwind(AssertUnwindSafe(|| draw_overlay_inner(ui))).is_err() {
-        hlog_error!(target: "race-hud", "draw_overlay panicked");
+    if panic::catch_unwind(AssertUnwindSafe(|| draw_control_page_inner(ui))).is_err() {
+        hlog_error!(target: "race-hud", "draw_control_page panicked");
     }
+}
+
+fn draw_control_page_inner(ui: &mut egui::Ui) {
+    ui.heading("Race HUD");
+    ui.label("One draggable widget spawns per uma you control. Choose which metrics each widget shows:");
+    ui.add_space(8.0);
+    for (metric, label) in Metric::ALL {
+        let mut on = settings::is_shown(metric);
+        if ui.checkbox(&mut on, label).changed() {
+            settings::set_shown(metric, on);
+            settings::persist();
+        }
+    }
+    ui.add_space(8.0);
+    ui.label(
+        egui::RichText::new("Tip: drag each widget where you want it; positions are saved per uma slot.")
+            .small()
+            .color(faint_text(ui)),
+    );
 }
 
 extern "C" fn draw_timer_overlay(ui: *mut c_void, _userdata: *mut c_void) {
@@ -46,119 +91,145 @@ extern "C" fn draw_timer_overlay(ui: *mut c_void, _userdata: *mut c_void) {
     }
 }
 
-fn draw_overlay_inner(ui: &mut egui::Ui) {
-    let st = crate::state::ui_state();
-
-    if let Some(live) = &st.live {
-        let rows: Vec<_> = live.rows.iter().take(3).collect();
-        if rows.len() <= 1 {
-            ui.set_min_width(SOLO_WIDTH);
-        } else {
-            ui.set_min_width(TEAM_WIDTH);
-        }
-        draw_live_cards(ui, &rows);
-        draw_watch_picker(ui, &st);
-    } else {
-        ui.set_min_width(SOLO_WIDTH);
-        draw_facts(ui, &st);
+extern "C" fn draw_uma_overlay(ui: *mut c_void, userdata: *mut c_void) {
+    let slot = userdata as usize;
+    // SAFETY: host passes its live `&mut egui::Ui` for this callback.
+    let ui = unsafe { ui_from_ptr(ui) };
+    if panic::catch_unwind(AssertUnwindSafe(|| draw_uma_inner(ui, slot))).is_err() {
+        hlog_error!(target: "race-hud", "draw_uma_overlay panicked (slot {slot})");
     }
 }
 
 fn draw_timer_inner(ui: &mut egui::Ui) {
-    let st = crate::state::ui_state();
+    ui.visuals_mut().override_text_color = Some(text_primary());
     ui.set_min_width(TIMER_WIDTH);
-    if let Some(live) = &st.live {
-        draw_timer(ui, Some(live.elapsed));
+    let st = crate::state::ui_state();
+    draw_timer(ui, st.live.as_ref().map(|l| l.elapsed));
+}
+
+fn draw_uma_inner(ui: &mut egui::Ui, slot: usize) {
+    // Force bright, dark-theme text regardless of the host's configured override.
+    ui.visuals_mut().override_text_color = Some(text_primary());
+    ui.set_min_width(UMA_WIDTH);
+    if let Some(row) = crate::state::uma_row(slot) {
+        draw_uma_card(ui, &row);
+    }
+}
+
+fn draw_uma_card(ui: &mut egui::Ui, row: &UmaRow) {
+    let name = if row.name.is_empty() {
+        format!("Uma {}", row.post)
     } else {
-        draw_timer(ui, None);
-    }
-}
+        row.name.clone()
+    };
 
-fn draw_live_cards(ui: &mut egui::Ui, rows: &[&RunnerRow]) {
-    if rows.is_empty() {
-        draw_idle(ui, "Waiting for runners…", "Live frame has no rows.");
-        return;
-    }
-
-    let max_hp = rows.iter().map(|r| r.hp).max().unwrap_or(1).max(1);
-    if rows.len() == 1 {
-        draw_solo_card(ui, rows[0], max_hp);
-    } else {
-        draw_team_card(ui, rows, max_hp);
-    }
-}
-
-fn draw_solo_card(ui: &mut egui::Ui, row: &RunnerRow, max_hp: u16) {
     panel_frame(ui).show(ui, |ui| {
-        metric_row(ui, "HP", row.hp, hp_ratio(row.hp, max_hp), hp_color(ui, row.hp, max_hp));
-        ui.add_space(8.0);
-        velocity_row(ui, row.speed);
-    });
-}
+        ui.spacing_mut().item_spacing.y = 3.0;
+        ui.set_min_width(UMA_WIDTH - 16.0);
+        // Name (explicit light color: `.strong()` ignores the text override).
+        ui.label(egui::RichText::new(name).size(14.0).color(text_primary()));
 
-fn draw_team_card(ui: &mut egui::Ui, rows: &[&RunnerRow], max_hp: u16) {
-    panel_frame(ui).show(ui, |ui| {
-        for (i, row) in rows.iter().enumerate() {
-            if i > 0 {
-                ui.painter().hline(
-                    ui.available_rect_before_wrap().x_range(),
-                    ui.cursor().top() - 4.0,
-                    egui::Stroke::new(1.0, line_color(ui)),
-                );
-                ui.add_space(8.0);
-            }
-            team_row(ui, i + 1, row, max_hp);
+        // Each metric row is independently toggled from the control page.
+        if settings::is_shown(Metric::Hp) {
+            ui.add_space(3.0);
+            let hp_ratio = if row.initial_hp > 0 {
+                (f32::from(row.hp) / f32::from(row.initial_hp)).clamp(0.0, 1.0)
+            } else {
+                0.0
+            };
+            bar_row(ui, "HP", hp_ratio, hp_color(ui, hp_ratio), row.hp.to_string());
+        }
+
+        let show_vel = settings::is_shown(Metric::Velocity);
+        let show_acc = settings::is_shown(Metric::Acceleration);
+        if show_vel || show_acc {
+            ui.add_space(3.0);
+            ui.horizontal(|ui| {
+                if show_vel {
+                    ui.label(egui::RichText::new("VEL").small().strong().color(faint_text(ui)));
+                    ui.monospace(format!("{:.1}", velocity_mps(row.speed)));
+                }
+                if show_vel && show_acc {
+                    ui.add_space(14.0);
+                }
+                if show_acc {
+                    ui.label(egui::RichText::new("ACC").small().strong().color(faint_text(ui)));
+                    ui.monospace(egui::RichText::new(format!("{:+.1}", row.accel)).color(accel_color(row.accel)));
+                }
+            });
+        }
+
+        if settings::is_shown(Metric::States) {
+            ui.add_space(3.0);
+            states_row(ui, row);
         }
     });
 }
 
-fn metric_row(ui: &mut egui::Ui, label: &str, value: u16, ratio: f32, color: egui::Color32) {
+fn accel_color(accel: f32) -> egui::Color32 {
+    if accel > 0.05 {
+        velocity_color()
+    } else if accel < -0.05 {
+        crit_color()
+    } else {
+        text_primary()
+    }
+}
+
+/// Active-state badges (kakari / blocked); a faint "OK" when nothing is active.
+fn states_row(ui: &mut egui::Ui, row: &UmaRow) {
+    ui.horizontal(|ui| {
+        ui.label(egui::RichText::new("ST").small().strong().color(faint_text(ui)));
+        let mut any = false;
+
+        if row.kakari {
+            badge(ui, "Rushed", kakari_color());
+            any = true;
+        }
+
+        if row.blocked {
+            badge(ui, "Blocked", crit_color());
+            any = true;
+        }
+
+        if !any {
+            let label = if row.live { "OK" } else { "\u{2014}" };
+            ui.label(egui::RichText::new(label).small().color(faint_text(ui)));
+        }
+    });
+}
+
+fn badge(ui: &mut egui::Ui, text: &str, color: egui::Color32) {
+    ui.add(
+        egui::Label::new(
+            egui::RichText::new(text)
+                .small()
+                .strong()
+                .color(egui::Color32::from_gray(20))
+                .background_color(color),
+        )
+        .selectable(false),
+    );
+    ui.add_space(2.0);
+}
+
+fn bar_row(ui: &mut egui::Ui, label: &str, ratio: f32, color: egui::Color32, value: String) {
     ui.horizontal(|ui| {
         ui.label(egui::RichText::new(label).small().strong().color(faint_text(ui)));
         draw_bar(
             ui,
             ratio,
             color,
-            egui::vec2((ui.available_width() - 66.0).max(24.0), 6.0),
+            egui::vec2((ui.available_width() - 62.0).max(24.0), 6.0),
         );
-        ui.monospace(value.to_string());
-    });
-}
-
-fn velocity_row(ui: &mut egui::Ui, speed_raw: u16) {
-    let velocity = velocity_mps(speed_raw);
-    ui.horizontal(|ui| {
-        ui.label(egui::RichText::new("VEL").small().strong().color(faint_text(ui)));
-        draw_bar(
-            ui,
-            (velocity / MAX_VELOCITY_MPS).clamp(0.0, 1.0),
-            velocity_color(),
-            egui::vec2((ui.available_width() - 58.0).max(24.0), 6.0),
-        );
-        ui.monospace(format!("{velocity:.1}"));
-    });
-}
-
-fn team_row(ui: &mut egui::Ui, index: usize, row: &RunnerRow, max_hp: u16) {
-    ui.horizontal(|ui| {
-        ui.monospace(index.to_string());
-        draw_bar(
-            ui,
-            hp_ratio(row.hp, max_hp),
-            hp_color(ui, row.hp, max_hp),
-            egui::vec2((ui.available_width() - 54.0).max(24.0), 5.0),
-        );
-        ui.monospace(format!("{:.1}", velocity_mps(row.speed)));
+        ui.monospace(value);
     });
 }
 
 fn draw_timer(ui: &mut egui::Ui, elapsed: Option<f32>) {
     let fill = surface_color(ui);
     let line = line_color(ui);
-    let text = ui
-        .visuals()
-        .override_text_color
-        .unwrap_or(ui.visuals().strong_text_color());
+    let text = text_primary();
     let live = elapsed.is_some();
     let label = elapsed.map(format_elapsed).unwrap_or_else(|| "--:--.-".to_owned());
 
@@ -196,75 +267,15 @@ fn draw_bar(ui: &mut egui::Ui, ratio: f32, color: egui::Color32, size: egui::Vec
     }
 }
 
-/// Collapsible source selector. This is temporary: until the plugin can identify
-/// the player's actual team, the watch list is the solo/team source.
-fn draw_watch_picker(ui: &mut egui::Ui, st: &UiState) {
-    if st.watch.is_empty() {
-        return;
-    }
-
-    ui.add_space(6.0);
-    egui::CollapsingHeader::new("Source")
-        .default_open(false)
-        .show(ui, |ui| {
-            ui.horizontal(|ui| {
-                if ui.small_button("All").clicked() {
-                    crate::state::set_all_watched(true);
-                }
-                if ui.small_button("None").clicked() {
-                    crate::state::set_all_watched(false);
-                }
-            });
-            for entry in &st.watch {
-                let mut checked = entry.watched;
-                let label = format!("Runner {}", entry.post);
-                if ui.checkbox(&mut checked, label).changed() {
-                    crate::state::toggle_watch(entry.post);
-                }
-            }
-        });
-}
-
-fn draw_facts(ui: &mut egui::Ui, st: &UiState) {
-    match st.summary {
-        Some(s) => {
-            draw_idle(
-                ui,
-                "Race decoded",
-                &format!(
-                    "{} runners · {} captures · waiting for start",
-                    s.horse_num, st.capture_count
-                ),
-            );
-        }
-        None if st.captured => draw_idle(ui, "Decode failed", "Captured SimData was not recognized."),
-        None => draw_idle(ui, "Waiting for race…", "Enter a race to capture SimData."),
-    }
-}
-
-fn draw_idle(ui: &mut egui::Ui, title: &str, hint: &str) {
-    panel_frame(ui).show(ui, |ui| {
-        ui.vertical_centered(|ui| {
-            ui.label(egui::RichText::new(title).strong());
-            ui.label(egui::RichText::new(hint).small().color(faint_text(ui)));
-        });
-    });
-}
-
 fn panel_frame(ui: &egui::Ui) -> egui::Frame {
     egui::Frame::new()
         .fill(surface_color(ui))
         .stroke(egui::Stroke::new(1.0, line_color(ui)))
-        .corner_radius(10.0)
-        .inner_margin(egui::Margin::symmetric(12, 10))
+        .corner_radius(8.0)
+        .inner_margin(egui::Margin::symmetric(8, 6))
 }
 
-fn hp_ratio(hp: u16, max_hp: u16) -> f32 {
-    (f32::from(hp) / f32::from(max_hp.max(1))).clamp(0.0, 1.0)
-}
-
-fn hp_color(ui: &egui::Ui, hp: u16, max_hp: u16) -> egui::Color32 {
-    let ratio = hp_ratio(hp, max_hp);
+fn hp_color(ui: &egui::Ui, ratio: f32) -> egui::Color32 {
     if ratio <= 0.2 {
         crit_color()
     } else if ratio <= 0.4 {
@@ -285,16 +296,26 @@ fn format_elapsed(seconds: f32) -> String {
     format!("{minutes}:{seconds:04.1}")
 }
 
+/// Solid (fully opaque) chip background so widgets stay readable over busy race
+/// backdrops. Derived from the theme surface but forced opaque.
 fn surface_color(ui: &egui::Ui) -> egui::Color32 {
-    ui.visuals().widgets.inactive.weak_bg_fill.linear_multiply(0.92)
+    let c = ui.visuals().widgets.inactive.weak_bg_fill;
+    egui::Color32::from_rgb(c.r(), c.g(), c.b())
 }
 
 fn line_color(ui: &egui::Ui) -> egui::Color32 {
-    ui.visuals().window_stroke.color
+    let c = ui.visuals().window_stroke.color;
+    egui::Color32::from_rgb(c.r(), c.g(), c.b())
 }
 
-fn faint_text(ui: &egui::Ui) -> egui::Color32 {
-    ui.visuals().widgets.inactive.fg_stroke.color.linear_multiply(0.75)
+/// Primary HUD text: a fixed near-white so the overlay always reads as a dark-theme
+/// element regardless of the host's configured (possibly dim) text override.
+fn text_primary() -> egui::Color32 {
+    egui::Color32::from_gray(236)
+}
+
+fn faint_text(_ui: &egui::Ui) -> egui::Color32 {
+    egui::Color32::from_gray(170)
 }
 
 fn velocity_color() -> egui::Color32 {
@@ -303,4 +324,8 @@ fn velocity_color() -> egui::Color32 {
 
 fn crit_color() -> egui::Color32 {
     egui::Color32::from_rgb(214, 81, 81)
+}
+
+fn kakari_color() -> egui::Color32 {
+    egui::Color32::from_rgb(255, 140, 46)
 }
