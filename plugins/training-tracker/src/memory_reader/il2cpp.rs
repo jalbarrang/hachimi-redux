@@ -178,6 +178,33 @@ pub(super) unsafe fn read_obj_array(array: *mut c_void) -> Option<(*const *mut c
     Some((base, len))
 }
 
+/// Read an IL2CPP value-type `ObscuredInt[]` array and decrypt each element.
+/// Layout (64-bit): element count at offset `0x18`, inline element buffer at
+/// `0x20`; each `ObscuredInt` is 8 bytes (`cryptoKey` i32 LE, `hiddenValue` i32
+/// LE), plaintext = `hiddenValue ^ cryptoKey`. Returns an empty vec if null or
+/// implausibly large.
+pub(super) unsafe fn read_obscured_int_array(array: *mut c_void) -> Vec<i32> {
+    if array.is_null() {
+        return Vec::new();
+    }
+    // SAFETY: IL2CPP array header — element count at offset 0x18.
+    let len = unsafe { *(array.byte_add(0x18) as *const usize) };
+    if len > 4096 {
+        return Vec::new();
+    }
+    // SAFETY: inline value-type elements begin at offset 0x20, 8 bytes each.
+    let base = unsafe { array.byte_add(0x20) as *const u8 };
+    let mut out = Vec::with_capacity(len);
+    for i in 0..len {
+        // SAFETY: i < len, each element is 8 bytes within the array buffer.
+        let key = unsafe { *(base.add(i * 8) as *const i32) };
+        // SAFETY: hiddenValue immediately follows the key.
+        let hidden = unsafe { *(base.add(i * 8 + 4) as *const i32) };
+        out.push(hidden ^ key);
+    }
+    out
+}
+
 /// Read a plain `System.Int32` instance field by name from an object.
 /// Returns `0` if the object is null or the field cannot be resolved.
 pub(super) unsafe fn read_i32_field(obj: *mut c_void, field_name: &str) -> i32 {

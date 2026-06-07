@@ -40,6 +40,8 @@ pub(super) struct ResolvedChain {
     pub(super) m_get_fan_count: *const c_void,
     pub(super) m_get_training_level: *const c_void, // GetTrainingLevel(1 arg: commandId)
     pub(super) m_get_scenario_id: *const c_void,    // get_ScenarioId(0 args)
+    /// get_CharaEffectIdArray() -> ObscuredInt[] (active career conditions/状態).
+    pub(super) m_get_chara_effect_id_array: *const c_void,
 
     // Aptitudes (RaceDefine.ProperGrade getters, 0 args) — for evaluation estimate.
     pub(super) m_apt_dist_short: *const c_void,
@@ -139,6 +141,7 @@ fn try_resolve() -> Result<ResolvedChain, &'static str> {
         m_get_fan_count: resolve_method(wsmcd, c"get_FanCount", 0)?,
         m_get_training_level: resolve_method(wsmcd, c"GetTrainingLevel", 1)?,
         m_get_scenario_id: resolve_method(wsmcd, c"get_ScenarioId", 0)?,
+        m_get_chara_effect_id_array: resolve_method(wsmcd, c"get_CharaEffectIdArray", 0)?,
 
         m_apt_dist_short: resolve_method(wsmcd, c"get_ProperDistanceShort", 0)?,
         m_apt_dist_mile: resolve_method(wsmcd, c"get_ProperDistanceMile", 0)?,
@@ -153,7 +156,7 @@ fn try_resolve() -> Result<ResolvedChain, &'static str> {
         m_get_card_rarity_data: resolve_method(wsmcd, c"get_CardRarityData", 0)?,
     };
 
-    hlog_info!("All 32 methods resolved for memory-read chain");
+    hlog_info!("All 33 methods resolved for memory-read chain");
     Ok(chain)
 }
 

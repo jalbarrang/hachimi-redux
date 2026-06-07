@@ -7,7 +7,9 @@ use hachimi_plugin_sdk::Sdk;
 
 use super::chain::{ResolvedChain, CHAIN};
 use super::command_info::{read_command_infos, CommandInfo};
-use super::il2cpp::{call_bool, call_i32, call_i32_with_i32, call_obj, read_obscured_int_field};
+use super::il2cpp::{
+    call_bool, call_i32, call_i32_with_i32, call_obj, read_obscured_int_array, read_obscured_int_field,
+};
 use super::scenario::{read_scenario_state, ScenarioState};
 use crate::evaluation::Aptitudes;
 
@@ -81,6 +83,11 @@ pub struct CareerSnapshot {
     /// Live scenario-specific state (e.g. Trackblazer shop). `None` for the base
     /// URA Finale scenario or when not yet read.
     pub scenario_state: Option<ScenarioState>,
+
+    /// Active career conditions/状態 as raw chara-effect ids (decrypted from the
+    /// `CharaEffectIdArray` ObscuredInt[]). Mapped to display names via
+    /// `crate::chara_effects`. Empty when none are active or unread.
+    pub chara_effect_ids: Vec<i32>,
 }
 
 /// Read a snapshot of the current career state from game memory.
@@ -196,6 +203,28 @@ fn read_snapshot_inner() -> Option<CareerSnapshot> {
     // Step 11: Active scenario id (logged) + command base (rest-vs-race suggestion)
     // SAFETY: Reading a getter on a non-null IL2CPP chara object.
     let scenario_id = unsafe { call_i32(chara, chain.m_get_scenario_id) };
+
+    // Step 11b: Active career conditions/状態 (CharaEffectIdArray).
+    // SAFETY: getter on a valid chara object returns an ObscuredInt[] (or null).
+    let effect_array = unsafe { call_obj(chara, chain.m_get_chara_effect_id_array) };
+    // SAFETY: value-type ObscuredInt[] with the standard IL2CPP array layout.
+    let chara_effect_ids = unsafe { read_obscured_int_array(effect_array) };
+    {
+        // One-shot diagnostic: capture the live effect ids so we can map them
+        // to display names (see crate::chara_effects).
+        static EFFECTS_LOGGED: AtomicBool = AtomicBool::new(false);
+        if !chara_effect_ids.is_empty() && !EFFECTS_LOGGED.swap(true, Ordering::Relaxed) {
+            hlog_info!("Active chara effect ids (状態): {:?}", chara_effect_ids);
+            let unknown: Vec<i32> = chara_effect_ids
+                .iter()
+                .copied()
+                .filter(|&id| !crate::chara_effects::is_known(id))
+                .collect();
+            if !unknown.is_empty() {
+                hlog_warn!("Unmapped chara effect ids (add to chara_effects table): {:?}", unknown);
+            }
+        }
+    }
     {
         // One-shot diagnostic so the live values land in hachimi.log for verification.
         static CMD_LOGGED: AtomicBool = AtomicBool::new(false);
@@ -241,6 +270,7 @@ fn read_snapshot_inner() -> Option<CareerSnapshot> {
         scenario_id,
         // SAFETY: `chara` is a valid non-null IL2CPP object from the resolved chain.
         scenario_state: read_scenario_state(chara),
+        chara_effect_ids,
     })
 }
 

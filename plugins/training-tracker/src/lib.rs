@@ -10,6 +10,7 @@
 extern crate hachimi_plugin_abi;
 
 mod bond_progress;
+mod chara_effects;
 mod class_dump;
 mod config;
 mod deck_bonuses;

@@ -1,13 +1,23 @@
-//! Training tab: turn/energy overview grid.
+//! Training tab: turn/energy overview grid + active conditions side panel.
 
 use hachimi_plugin_sdk::egui;
 
+use crate::chara_effects::{self, Polarity};
 use crate::memory_reader;
 use crate::rank_table;
 
 use super::super::util::format_number;
 
 pub(super) fn draw(ui: &mut egui::Ui, snap: &memory_reader::CareerSnapshot) {
+    // Overview grid on the left, active conditions table on the right.
+    ui.horizontal_top(|ui| {
+        draw_overview_grid(ui, snap);
+        ui.add_space(20.0);
+        draw_conditions(ui, snap);
+    });
+}
+
+fn draw_overview_grid(ui: &mut egui::Ui, snap: &memory_reader::CareerSnapshot) {
     egui::Grid::new("tt_overview")
         .num_columns(2)
         .striped(true)
@@ -37,4 +47,30 @@ pub(super) fn draw(ui: &mut egui::Ui, snap: &memory_reader::CareerSnapshot) {
             };
             ui.end_row();
         });
+}
+
+/// Active career conditions (状態), colored by polarity: positive = orange,
+/// negative = blue (matching the in-game full-stats screen).
+fn draw_conditions(ui: &mut egui::Ui, snap: &memory_reader::CareerSnapshot) {
+    ui.vertical(|ui| {
+        ui.strong("Conditions");
+        if snap.chara_effect_ids.is_empty() {
+            ui.weak("None");
+            return;
+        }
+        egui::Grid::new("tt_conditions")
+            .num_columns(1)
+            .striped(true)
+            .show(ui, |ui| {
+                for &id in &snap.chara_effect_ids {
+                    let (name, polarity) = chara_effects::lookup(id);
+                    let color = match polarity {
+                        Polarity::Positive => egui::Color32::from_rgb(255, 160, 40), // orange
+                        Polarity::Negative => egui::Color32::from_rgb(100, 150, 255), // blue
+                    };
+                    ui.colored_label(color, name);
+                    ui.end_row();
+                }
+            });
+    });
 }
