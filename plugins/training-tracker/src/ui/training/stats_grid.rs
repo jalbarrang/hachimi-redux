@@ -2,6 +2,8 @@
 
 use hachimi_plugin_sdk::egui;
 
+use crate::build_profile;
+use crate::course_data;
 use crate::memory_reader;
 use crate::recommend;
 use crate::stat_targets;
@@ -27,6 +29,20 @@ pub(super) fn build_stats(snap: &memory_reader::CareerSnapshot) -> [StatRow; 5] 
 
 pub(super) fn score_facilities(snap: &memory_reader::CareerSnapshot) -> [recommend::FacilityScore; 5] {
     let caps = snap.stat_caps;
+    // Build the objective/CM context from the active build profile + target course
+    // data. Missing course params degrade gracefully to the Rank objective.
+    let profile = build_profile::active();
+    let course = course_data::course_params(profile.target_course_id);
+    let aptitudes = course
+        .map(|c| recommend::cm_aptitudes_for_course(&snap.aptitudes, c))
+        .unwrap_or_default();
+    let ctx = recommend::ScoringContext {
+        objective: profile.objective,
+        stat_weights: profile.stat_weights,
+        course,
+        aptitudes,
+        strategy: profile.strategy,
+    };
     recommend::score_facilities(
         &recommend::Inputs {
             current: [snap.speed, snap.stamina, snap.power, snap.guts, snap.wiz],
@@ -34,6 +50,7 @@ pub(super) fn score_facilities(snap: &memory_reader::CareerSnapshot) -> [recomme
             caps,
             targets: stat_targets::targets(),
             failure_rates: snap.failure_rates,
+            ctx,
         },
         &recommend::params(),
     )
