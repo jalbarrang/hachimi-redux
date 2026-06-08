@@ -27,9 +27,11 @@
 // Value objects
 // ---------------------------------------------------------------------------
 
+use serde::{Deserialize, Serialize};
+
 /// Race surface. Discriminants match the master.mdb `ground` column
 /// (1 = Turf, 2 = Dirt); the `cm-course-data` tool fills these.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Surface {
     Turf,
     Dirt,
@@ -87,7 +89,7 @@ impl Strategy {
 }
 
 /// The five core stats, in the plugin's canonical order.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum StatKind {
     Speed,
     Stamina,
@@ -112,7 +114,7 @@ impl StatKind {
 /// Per-course parameters the CM math needs. Owned here (the canonical shape);
 /// the `cm-course-data` maintainer tool fills these from master.mdb. Fields the
 /// model does not read (turn, finish times) are carried for the data layer / UI.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct CourseParams {
     /// Course distance in meters.
     pub distance: f64,
@@ -121,11 +123,15 @@ pub struct CourseParams {
     /// Track orientation (master.mdb `turn`); unused by the math, kept for UI.
     pub turn: i32,
     /// Course "set status" stat thresholds: crossing each by multiples of 300
-    /// (up to 900) grants a +5% speed bonus per step.
+    /// (up to 900) grants a +5% speed bonus per step. Serialized as `thresholds`
+    /// to match the `course-data` tool's asset.
+    #[serde(rename = "thresholds", default)]
     pub set_status_thresholds: Vec<StatKind>,
     /// Reference finish-time window (master.mdb), carried for the data layer.
+    #[serde(default)]
     pub finish_time_min: f64,
     /// Reference finish-time window (master.mdb), carried for the data layer.
+    #[serde(default)]
     pub finish_time_max: f64,
 }
 

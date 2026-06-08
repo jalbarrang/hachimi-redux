@@ -269,6 +269,15 @@ if (Test-Path -LiteralPath $SkillGradesSrc) {
   Write-Host "  (skill_grades.json missing; run: cargo run -p fetch-master-db; cargo run -p skill-grades)" -ForegroundColor Yellow
 }
 
+# CM course-parameter resource (read at runtime by the training-tracker CM scorer).
+$CourseParamsSrc = Join-Path $PSScriptRoot "..\plugins\training-tracker\assets\course_params.json"
+if (Test-Path -LiteralPath $CourseParamsSrc) {
+  Copy-Item -LiteralPath $CourseParamsSrc -Destination (Join-Path $GameDir "course_params.json") -Force
+  Write-Host "  course_params.json  ->  course_params.json"
+} else {
+  Write-Host "  (course_params.json missing; run: cargo run -p fetch-master-db; cargo run -p course-data)" -ForegroundColor Yellow
+}
+
 Write-Host ""
 Write-Host "Done. Ensure config.json lists the plugins under windows.load_libraries:" -ForegroundColor Cyan
 Write-Host '  "load_libraries": ["hachimi_training_tracker.dll", "hachimi_debug_viewer.dll", "hachimi_race_hud.dll"]'

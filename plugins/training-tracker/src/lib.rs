@@ -17,6 +17,10 @@ mod class_dump;
 #[allow(dead_code)]
 mod cm_model;
 mod config;
+// Foundation loader: consumed by the CM-objective scorer (cm-scoring-refactor)
+// and UI; until then only the lazy table machinery exists.
+#[allow(dead_code)]
+mod course_data;
 mod deck_bonuses;
 mod diagnostics;
 mod eval_data;
