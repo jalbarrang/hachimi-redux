@@ -5,6 +5,7 @@ use hachimi_plugin_sdk::egui;
 use crate::build_profile;
 use crate::course_data;
 use crate::memory_reader;
+use crate::planner;
 use crate::recommend;
 use crate::stat_targets;
 
@@ -25,6 +26,22 @@ pub(super) fn build_stats(snap: &memory_reader::CareerSnapshot) -> [StatRow; 5] 
         ("Guts", snap.guts, lv[3], thr(3, caps[3])),
         ("Wit", snap.wiz, lv[4], thr(4, caps[4])),
     ]
+}
+
+/// Build the multi-turn planner context from the live snapshot + active targets.
+/// `bond_pressure` is left `None` (per-facility support placement is not read
+/// live), so the bond term degrades to greedy until that signal is wired.
+pub(super) fn plan_context(snap: &memory_reader::CareerSnapshot) -> planner::PlannerContext {
+    let current = [snap.speed, snap.stamina, snap.power, snap.guts, snap.wiz];
+    planner::PlannerContext {
+        hp: snap.hp,
+        max_hp: snap.max_hp,
+        motivation: snap.motivation,
+        current_turn: snap.current_turn,
+        failure_rates: snap.failure_rates,
+        stat_deficit: planner::stat_deficits(current, stat_targets::targets(), snap.stat_caps),
+        bond_pressure: None,
+    }
 }
 
 pub(super) fn score_facilities(snap: &memory_reader::CareerSnapshot) -> [recommend::FacilityScore; 5] {

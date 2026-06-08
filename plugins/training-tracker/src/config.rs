@@ -16,7 +16,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::{build_profile, overlay_prefs, recommend, tabs};
+use crate::{build_profile, overlay_prefs, planner, recommend, tabs};
 use build_profile::BuildProfile;
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -29,6 +29,8 @@ struct PersistedConfig {
     enabled_tabs: u8,
     #[serde(default)]
     recommend: recommend::RecommendParams,
+    #[serde(default)]
+    planner: planner::PlannerParams,
     #[serde(default = "overlay_prefs::default_zoom")]
     overlay_zoom: f32,
     /// The active build profile (objective + targets + weights + course/strategy).
@@ -45,6 +47,7 @@ impl Default for PersistedConfig {
             stat_targets: [0; 5],
             enabled_tabs: default_enabled_tabs(),
             recommend: recommend::RecommendParams::default(),
+            planner: planner::PlannerParams::default(),
             overlay_zoom: overlay_prefs::default_zoom(),
             build_profile: None,
             saved_profiles: Vec::new(),
@@ -88,6 +91,7 @@ pub fn load() {
     build_profile::set_saved(cfg.saved_profiles);
     tabs::set_enabled_mask(cfg.enabled_tabs);
     recommend::set_params(cfg.recommend);
+    planner::set_params(cfg.planner);
     overlay_prefs::set_zoom(cfg.overlay_zoom);
     let p = build_profile::active();
     hlog_info!(
@@ -109,6 +113,7 @@ pub fn persist() {
         stat_targets: active.per_stat_target,
         enabled_tabs: tabs::enabled_mask(),
         recommend: recommend::params(),
+        planner: planner::params(),
         overlay_zoom: overlay_prefs::zoom(),
         build_profile: Some(active),
         saved_profiles: build_profile::saved(),

@@ -3,6 +3,7 @@
 use hachimi_plugin_sdk::egui;
 
 use crate::memory_reader;
+use crate::planner;
 use crate::recommend;
 
 use super::stats_grid::StatRow;
@@ -13,6 +14,7 @@ pub(super) fn draw(
     stats: &[StatRow; 5],
     rec: &[recommend::FacilityScore; 5],
     any_capped: bool,
+    ctx: &planner::PlannerContext,
 ) {
     if any_capped {
         ui.small("\u{26a0} target/cap reached — further training wasted");
@@ -20,7 +22,14 @@ pub(super) fn draw(
 
     let race_encouraged = recommend::scenario_encourages_racing(snap.scenario_command_base);
 
-    match recommend::turn_suggestion(rec, snap.failure_rates, race_encouraged, &recommend::params()) {
+    match planner::plan_suggestion(
+        rec,
+        snap.failure_rates,
+        race_encouraged,
+        ctx,
+        &recommend::params(),
+        &planner::params(),
+    ) {
         recommend::TurnSuggestion::Train(best) => {
             ui.small(format!(
                 "\u{2605} best: {} — projected score {}",
