@@ -1,34 +1,32 @@
-//! User-configurable per-stat training targets for the cap/target warning.
+//! Per-stat training targets for the cap/target warning.
 //!
 //! A target of `0` means "no target" — fall back to the live game cap. A positive
-//! target gives an earlier warning (e.g. stop Stamina at 600 even though the cap is
-//! higher).
+//! target gives an earlier warning (e.g. stop Stamina at 600 even though the cap
+//! is higher).
 //!
-//! In-memory state only; persistence to `training_config.json` is owned by
-//! [`crate::config`].
+//! This module is now a thin **façade** over the active build profile
+//! ([`crate::build_profile`]), which owns the per-stat targets so they switch
+//! together with the objective/weights when the user changes profiles. The
+//! public API is unchanged so existing call sites (the scorer, the overlay, the
+//! settings editor) keep working; persistence is owned by [`crate::config`].
 
-use std::sync::Mutex;
+use crate::build_profile;
 
 /// Stat order: [Speed, Stamina, Power, Guts, Wit].
-pub const LABELS: [&str; 5] = ["Speed", "Stamina", "Power", "Guts", "Wit"];
+pub const LABELS: [&str; 5] = build_profile::STAT_LABELS;
 
 /// Upper bound for a target (matches the highest reachable stat cap).
-pub const MAX_TARGET: i32 = 2000;
+pub const MAX_TARGET: i32 = build_profile::MAX_TARGET;
 
-static TARGETS: Mutex<[i32; 5]> = Mutex::new([0; 5]);
-
-/// Current per-stat targets (`0` = use game cap).
+/// Current per-stat targets (`0` = use game cap) — the active profile's targets.
 pub fn targets() -> [i32; 5] {
-    TARGETS.lock().ok().map(|g| *g).unwrap_or([0; 5])
+    build_profile::per_stat_target()
 }
 
-/// Replace all targets (values are clamped to `0..=MAX_TARGET`).
+/// Replace all targets (values are clamped to `0..=MAX_TARGET`) on the active
+/// profile.
 pub fn set_targets(new: [i32; 5]) {
-    if let Ok(mut g) = TARGETS.lock() {
-        for (slot, v) in g.iter_mut().zip(new) {
-            *slot = v.clamp(0, MAX_TARGET);
-        }
-    }
+    build_profile::set_per_stat_target(new);
 }
 
 /// Effective warning threshold for a stat: the target when set, else the game cap.
@@ -53,7 +51,7 @@ mod tests {
     }
 
     #[test]
-    fn set_targets_clamps() {
+    fn set_targets_clamps_via_active_profile() {
         set_targets([5000, -10, 1200, 0, 600]);
         let t = targets();
         assert_eq!(t[0], MAX_TARGET); // clamped down

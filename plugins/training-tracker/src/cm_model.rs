@@ -39,7 +39,7 @@ pub enum Surface {
 
 /// Running style. Discriminant follows the game / uma-sim convention
 /// (FrontRunner = 1 … Runaway = 5) so HP-coefficient lookups index directly.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Strategy {
     /// 逃げ (nige).
     FrontRunner,
