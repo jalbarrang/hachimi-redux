@@ -12,6 +12,10 @@ extern crate hachimi_plugin_abi;
 mod bond_progress;
 mod chara_effects;
 mod class_dump;
+// Foundation module: the public API is consumed by the CM-objective scorer
+// (cm-scoring-refactor) and UI; until then it is only exercised by its tests.
+#[allow(dead_code)]
+mod cm_model;
 mod config;
 mod deck_bonuses;
 mod diagnostics;
