@@ -40,6 +40,7 @@ menu:
   open_config_editor: "\uf040 Open config editor"
   reload_config: "\uf021 Reload config"
   open_first_time_setup: "\uf135 Open first time setup"
+  save_diagnostics: "\uf02d Save diagnostics report"
   graphics_heading: "\uf03e Graphics"
   fps_label: "FPS"
   vsync_label: "VSync"
@@ -58,6 +59,8 @@ menu:
 notification:
   saved_localize_dump: "Saved to localize_dump.json"
   config_reloaded: "Config reloaded."
+  diagnostics_saved: "Diagnostics report saved to %{path}"
+  diagnostics_failed: "Failed to save diagnostics report: %{error}"
   config_saved: "Config saved."
   config_error: "The config has been corrupted. Using defaults instead..."
   localized_data_reloaded: "Localized data reloaded."
@@ -102,6 +105,13 @@ first_time_setup:
     Click on Done to save the configuration.
     If you chose a translation repo, an update check will be performed,
     which will prompt you to download the new translation data.
+  tips_heading: "Good to know"
+  menu_key_tip: "Press %{open_key_str} at any time to open the HachimiRedux menu."
+  conflicts_tip: >-
+    Use only HachimiRedux. If the game crashes or behaves oddly, remove other game mods,
+    overlays, or DLL injectors (e.g. version.dll / winhttp.dll / dxgi.dll proxies, or
+    other overlay DLLs) from the game folder. Only plugins built from HachimiRedux belong
+    in load_libraries.
 
 about:
   title: "About"

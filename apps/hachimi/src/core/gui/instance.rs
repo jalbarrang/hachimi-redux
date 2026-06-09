@@ -101,6 +101,17 @@ impl Gui {
         unsafe {
             INSTANCE.set(Mutex::new(instance)).unwrap_unchecked();
 
+            // Surface any conflicting-injector warning recorded by the startup scan
+            // now that the GUI exists to show a notification.
+            if let Some(summary) = crate::core::conflicts::startup_summary() {
+                INSTANCE
+                    .get()
+                    .unwrap_unchecked()
+                    .lock()
+                    .expect("lock poisoned")
+                    .show_notification(&summary);
+            }
+
             hachimi.run_auto_update_check();
 
             INSTANCE.get().unwrap_unchecked()

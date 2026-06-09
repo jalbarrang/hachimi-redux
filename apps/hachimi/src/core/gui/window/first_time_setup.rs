@@ -178,6 +178,24 @@ impl Window for FirstTimeSetupWindow {
                             ui.heading(t!("first_time_setup.complete_heading"));
                             ui.separator();
                             ui.label(t!("first_time_setup.complete_content"));
+                            ui.add_space(8.0);
+                            ui.heading(t!("first_time_setup.tips_heading"));
+                            ui.separator();
+                            let key_label = {
+                                #[cfg(target_os = "windows")]
+                                {
+                                    crate::windows::utils::vk_to_display_label(
+                                        Hachimi::instance().config.load().windows.menu_open_key,
+                                    )
+                                }
+                                #[cfg(not(target_os = "windows"))]
+                                {
+                                    "the menu key".to_string()
+                                }
+                            };
+                            ui.label(t!("first_time_setup.menu_key_tip", open_key_str = key_label));
+                            ui.add_space(4.0);
+                            ui.label(t!("first_time_setup.conflicts_tip"));
                         }
                         _ => {}
                     }

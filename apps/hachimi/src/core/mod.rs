@@ -4,6 +4,7 @@ pub use hachimi::Hachimi;
 mod error;
 pub use error::Error;
 
+pub mod conflicts;
 pub mod ext;
 pub mod game;
 pub mod template;

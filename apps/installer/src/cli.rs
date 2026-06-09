@@ -5,7 +5,9 @@ use windows::{
     core::{w, HSTRING},
     Win32::UI::{
         Shell::ShellExecuteW,
-        WindowsAndMessaging::{MessageBoxW, IDCANCEL, MB_ICONERROR, MB_ICONINFORMATION, MB_OK, MB_OKCANCEL, SW_NORMAL},
+        WindowsAndMessaging::{
+            MessageBoxW, IDCANCEL, MB_ICONERROR, MB_ICONINFORMATION, MB_ICONWARNING, MB_OK, MB_OKCANCEL, SW_NORMAL,
+        },
     },
 };
 
@@ -33,6 +35,7 @@ struct Args {
 enum Command {
     Install,
     Uninstall,
+    CollectLogs,
 }
 
 #[inline]
@@ -61,6 +64,7 @@ impl Args {
             match arg.as_str() {
                 "install" => args.command = Some(Command::Install),
                 "uninstall" => args.command = Some(Command::Uninstall),
+                "collect-logs" => args.command = Some(Command::CollectLogs),
 
                 "--install-dir" => args.install_dir = Some(require_next_arg(&mut iter).into()),
                 "--target" => args.target = Some(require_next_arg(&mut iter)),
@@ -170,6 +174,17 @@ pub fn run() -> Result<bool, installer::Error> {
         let installer = Installer::custom(args.install_dir, explicit_target, args.target);
         let res = match command {
             Command::Install => {
+                let conflicts = installer.scan_conflicts();
+                if !conflicts.is_empty() {
+                    unsafe {
+                        MessageBoxW(
+                            None,
+                            &HSTRING::from(t!("gui.warning_conflicts", files = conflicts.join("\n"))),
+                            w!("Hachimi Installer"),
+                            MB_ICONWARNING | MB_OK,
+                        );
+                    }
+                }
                 let mut res = Ok(());
                 if args.pre_install {
                     res = res.and_then(|_| installer.pre_install());
@@ -193,6 +208,20 @@ pub fn run() -> Result<bool, installer::Error> {
             Command::Uninstall => installer
                 .uninstall()
                 .and_then(|_| installer.uninstall_training_tracker()),
+            Command::CollectLogs => match installer.collect_logs() {
+                Ok(out_dir) => {
+                    unsafe {
+                        MessageBoxW(
+                            None,
+                            &HSTRING::from(t!("cli.logs_collected", path = out_dir.display().to_string())),
+                            w!("Hachimi Installer"),
+                            MB_ICONINFORMATION | MB_OK,
+                        );
+                    }
+                    Ok(())
+                }
+                Err(e) => Err(e),
+            },
         };
         if let Err(e) = res {
             unsafe {

@@ -88,17 +88,17 @@ The game loads the mod through the renderer DLL `cri_mana_vpx.dll`.
 
 1. In the game directory, back up the original `cri_mana_vpx.dll` to `cri_mana_vpx.dll.backup` (do this once — never overwrite the backup afterwards).
 2. Copy `target/release/hachimi.dll` into the game directory and rename it to `cri_mana_vpx.dll`.
-3. Launch the game. Press the menu key (default **D**, keycode `68`) to open the in-game UI.
+3. Launch the game. Press the menu key — the default is the **Right Arrow** key — to open the in-game UI. The launch splash screen shows the current key, and you can rebind it from the in-game GUI.
 
-Mod settings live in `config.json` inside the game data directory; everything else is configured from the in-game GUI.
+Mod settings live in `config.json` inside the game data directory, which is the **`hachimi` subfolder of the game directory** (e.g. `…\UmamusumePrettyDerby\hachimi\config.json`). It is created automatically by the installer / on first launch; everything else is configured from the in-game GUI.
 
 ## Install the Training Tracker plugin
 
 Plugins are native DLLs the core mod loads at startup from the game directory root.
 
 1. Install the HachimiRedux core first (above).
-2. Copy `target/release/hachimi_training_tracker.dll` into the game directory root (the same folder as `cri_mana_vpx.dll` / `config.json`).
-3. Add the DLL to the `load_libraries` list in `config.json`:
+2. Copy `target/release/hachimi_training_tracker.dll` into the game directory root (the same folder as `cri_mana_vpx.dll`). Note: the plugin DLL goes in the game **root**, while `config.json` lives in the `hachimi` subfolder.
+3. Add the DLL to the `load_libraries` list in `config.json` (`<game_dir>\hachimi\config.json`):
 
    ```json
    {
@@ -125,6 +125,28 @@ $env:HACHIMI_GAME_DIR = "D:\path\to\UmamusumePrettyDerby"
 ```
 
 The script copies `hachimi.dll` → `cri_mana_vpx.dll` and the training tracker DLL into the game directory, and never modifies `cri_mana_vpx.dll.backup`.
+
+# Troubleshooting
+
+## The game crashes on launch / behaves oddly
+
+By far the most common cause is **stacking multiple game mods or DLL injectors** in the game folder. Each one hooks the game's rendering/runtime, and they fight each other. HachimiRedux warns about this in-game (a notification + the `hachimi.log`) and the installer warns before installing, but you must remove the others yourself:
+
+- Keep **only** HachimiRedux: `cri_mana_vpx.dll` and any HachimiRedux-built plugins (e.g. `hachimi_training_tracker.dll`).
+- Remove other overlays/injectors from the game folder, such as proxy-loader DLLs that shouldn't be there (`version.dll`, `winhttp.dll`, `dxgi.dll`, `d3d11.dll`, `dinput8.dll`, …) and named overlays (`horseACT.dll`, `heaven_overlay.dll`, …).
+- **Only plugins built from HachimiRedux** belong in `load_libraries`. Do not add third-party overlays there — they are not HachimiRedux plugins and will be rejected (with an in-game notice) or can crash the game.
+
+## Where things live
+
+- `cri_mana_vpx.dll` and plugin DLLs: the game **root** directory.
+- `config.json` and other mod data: the **`hachimi` subfolder** of the game directory (`<game_dir>\hachimi\config.json`).
+- Mod log: `hachimi.log` in the game root (enable `enable_file_logging` in `config.json`).
+- Game log: `%USERPROFILE%\AppData\LocalLow\Cygames\Umamusume\Player.log`.
+
+## Collecting diagnostics
+
+- In-game: open the menu (Right Arrow by default) → **Config** → **Save diagnostics report**. This writes `hachimi_diagnostics.txt` to the game folder.
+- Installer: run `installer collect-logs` to gather `config.json`, `hachimi.log`, and a conflict report into `%TEMP%\hachimi_diagnostics`.
 
 # Special thanks
 

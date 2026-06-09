@@ -11,6 +11,7 @@ gui:
   warning_no_dir:       "Failed to detect the game's install location.\nPlease select it manually."
   warning_multi-installation:        "Multiple installations of Hachimi detected! \nPlease uninstall one of them, otherwise the game will not work correctly."
   warning_no_backup: "Failed to back up game EXE.\nUse caution when uninstalling."
+  warning_conflicts: "Other game mods / DLL injectors were found in the game folder:\n\n%{files}\n\nStacking injectors commonly crashes the game. For best results, keep only HachimiRedux and remove the files above. Continuing the install anyway."
   error: "Error"
   already_installed: "Hachimi is already installed as %{dll}"
   replace_confirm: "Replace %{dll}?"
@@ -37,6 +38,7 @@ installer:
 cli:
   game_running: "The game is currently running. Please close the game and press OK to install."
   installer_title: "Hachimi Installer"
+  logs_collected: "Diagnostics collected to:\n%{path}\n\nPlease share that folder with support."
   failed_determine_target: "Failed to determine target type. Please make sure that the path is correct or explicitly specify a target name."
 
 util:

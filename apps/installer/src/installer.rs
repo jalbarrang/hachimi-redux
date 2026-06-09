@@ -35,6 +35,31 @@ pub const JP_STEAM_ID: u32 = 3564400;
 
 pub const TRACKING_TRACKER_DLL: &str = "hachimi_training_tracker.dll";
 
+/// Other game mods / DLL injectors that commonly conflict with HachimiRedux.
+/// Stacking injectors in the game folder is the top cause of launch crashes, so
+/// the installer warns when it sees any. Lowercase basenames.
+///
+/// NOTE: the core crate keeps its own copy of this list
+/// (`apps/hachimi/src/core/conflicts.rs`). Keep the two in sync.
+const CONFLICT_DLLS: &[&str] = &[
+    // Named third-party overlays / mods.
+    "horseact.dll",
+    "heaven_overlay.dll",
+    "heaven_version.dll",
+    // Generic proxy-loader DLLs: legitimate system DLLs, but a local copy in the
+    // game folder is almost always another injector hijacking import resolution.
+    "version.dll",
+    "winhttp.dll",
+    "dxgi.dll",
+    "d3d11.dll",
+    "d3d9.dll",
+    "dinput8.dll",
+    "xinput1_3.dll",
+    "xinput1_4.dll",
+    "opengl32.dll",
+    "dsound.dll",
+];
+
 const DEVOVERRIDE_KEY: &str = r"SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File Execution Options";
 
 // separate out read check cus it doesnt require admin privileges
@@ -564,6 +589,69 @@ impl Installer {
         let serialized = root.format().map_err(|_| Error::ConfigWriteFailed)?;
         std::fs::write(config_path, serialized)?;
         Ok(())
+    }
+
+    /// Scan the install directory for other game mods / DLL injectors that
+    /// commonly conflict with HachimiRedux. Returns the matching file names
+    /// (original casing). Empty if the directory is unknown or unreadable.
+    pub fn scan_conflicts(&self) -> Vec<String> {
+        let Some(dir) = self.install_dir.as_ref() else {
+            return Vec::new();
+        };
+        let Ok(entries) = std::fs::read_dir(dir) else {
+            return Vec::new();
+        };
+        let mut out = Vec::new();
+        for entry in entries.flatten() {
+            if let Ok(name) = entry.file_name().into_string() {
+                if CONFLICT_DLLS.contains(&name.to_ascii_lowercase().as_str()) {
+                    out.push(name);
+                }
+            }
+        }
+        out.sort_unstable();
+        out
+    }
+
+    /// Gather support diagnostics into `%TEMP%\hachimi_diagnostics`: a copy of
+    /// `config.json` and `hachimi.log` (if present) plus a `README.txt` that
+    /// records the detected conflicts and where the game's own `Player.log` lives.
+    /// Returns the output folder path.
+    pub fn collect_logs(&self) -> Result<PathBuf, Error> {
+        let install_dir = self.install_dir.as_ref().ok_or(Error::NoInstallDir)?;
+        let out_dir = env::temp_dir().join("hachimi_diagnostics");
+        std::fs::create_dir_all(&out_dir)?;
+
+        // config.json lives in the game data dir (<game_dir>/hachimi/config.json).
+        if let Some(config_path) = self.get_config_path() {
+            if config_path.exists() {
+                _ = std::fs::copy(&config_path, out_dir.join("config.json"));
+            }
+        }
+        // hachimi.log lives in the game root.
+        let log_path = install_dir.join("hachimi.log");
+        if log_path.exists() {
+            _ = std::fs::copy(&log_path, out_dir.join("hachimi.log"));
+        }
+
+        let conflicts = self.scan_conflicts();
+        let mut readme = String::new();
+        readme.push_str("HachimiRedux diagnostics\n========================\n\n");
+        readme.push_str(&format!("Game directory: {}\n\n", install_dir.display()));
+        if conflicts.is_empty() {
+            readme.push_str("Conflicting mods/injectors: none detected\n\n");
+        } else {
+            readme.push_str("Conflicting mods/injectors detected (remove these for best results):\n");
+            for name in &conflicts {
+                readme.push_str(&format!("  - {}\n", name));
+            }
+            readme.push('\n');
+        }
+        readme.push_str("The game's own log (Player.log) is usually at:\n");
+        readme.push_str("  %USERPROFILE%\\AppData\\LocalLow\\Cygames\\Umamusume\\Player.log\n");
+        std::fs::write(out_dir.join("README.txt"), readme)?;
+
+        Ok(out_dir)
     }
 
     pub fn get_backup_exe_path(&self) -> Option<PathBuf> {

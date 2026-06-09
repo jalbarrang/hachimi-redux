@@ -413,6 +413,17 @@ unsafe extern "system" fn dlg_proc(dialog: HWND, message: u32, wparam: WPARAM, l
                             return 0;
                         }
                     }
+                    // Warn about other mods / DLL injectors in the game folder
+                    // (stacking injectors is the top cause of launch crashes).
+                    let conflicts = installer.scan_conflicts();
+                    if !conflicts.is_empty() {
+                        MessageBoxW(
+                            dialog,
+                            &HSTRING::from(t!("gui.warning_conflicts", files = conflicts.join("\n"))),
+                            &HSTRING::from(t!("gui.warning")),
+                            MB_ICONWARNING | MB_OK,
+                        );
+                    }
                     // failed pre install no longer catastrophic, just warn
                     if installer.pre_install().is_err() {
                         MessageBoxW(

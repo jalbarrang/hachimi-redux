@@ -1,3 +1,4 @@
+pub mod diagnostics;
 pub mod discord;
 mod ffi;
 pub mod game_impl;

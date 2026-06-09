@@ -27,6 +27,18 @@ impl Gui {
             if widgets::secondary_button(ui, t!("menu.open_first_time_setup").into_owned()).clicked() {
                 self.show_window(Box::new(FirstTimeSetupWindow::new()));
             }
+            #[cfg(target_os = "windows")]
+            if widgets::secondary_button(ui, t!("menu.save_diagnostics").into_owned()).clicked() {
+                match crate::windows::diagnostics::write_report() {
+                    Ok(path) => {
+                        *show_notification =
+                            Some(t!("notification.diagnostics_saved", path = path.display().to_string()));
+                    }
+                    Err(e) => {
+                        *show_notification = Some(t!("notification.diagnostics_failed", error = e.to_string()));
+                    }
+                }
+            }
         });
         ui.add_space(8.0);
 

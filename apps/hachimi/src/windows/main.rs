@@ -58,6 +58,19 @@ fn load_plugin_library(name: &str, id: u32, legacy: bool) -> Option<Plugin> {
 
     let hachimi_init_addr = utils::get_proc_address(handle, c"hachimi_init");
     if hachimi_init_addr == 0 {
+        // The DLL loaded but isn't a HachimiRedux plugin (no `hachimi_init`). This
+        // is almost always a stray entry in `load_libraries` — e.g. a third-party
+        // overlay the user added by mistake. Tell them instead of failing silently.
+        let extra = if crate::core::conflicts::is_known_conflict(name) {
+            " It is a known third-party overlay/injector and may crash the game."
+        } else {
+            ""
+        };
+        crate::core::utils::notify_error(format!(
+            "'{}' is listed in load_libraries but is not a HachimiRedux plugin; remove it from \
+             config.json → windows.load_libraries.{}",
+            name, extra
+        ));
         return None;
     }
     if legacy {
@@ -206,6 +219,10 @@ pub extern "C" fn DllMain(hmodule: HMODULE, call_reason: c_ulong, _reserved: *mu
 
         let hachimi = Hachimi::instance();
         *hachimi.plugins.lock().expect("lock poisoned") = load_libraries();
+
+        // Warn about other game mods / DLL injectors sitting next to us — stacking
+        // injectors is the most common cause of "the game crashes on launch".
+        crate::core::conflicts::run_startup_scan(&utils::get_game_dir());
 
         hook::init();
         info!("Attach completed");
