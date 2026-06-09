@@ -6,7 +6,7 @@ use crate::chara_effects::{self, Polarity};
 use crate::memory_reader;
 use crate::rank_table;
 
-use super::super::util::format_number;
+use super::super::util::{format_number, rank_badge_segments};
 
 pub(super) fn draw(ui: &mut egui::Ui, snap: &memory_reader::CareerSnapshot) {
     // Overview grid on the left, active conditions table on the right.
@@ -38,11 +38,35 @@ fn draw_overview_grid(ui: &mut egui::Ui, snap: &memory_reader::CareerSnapshot) {
 
             ui.strong("Rank");
             match snap.evaluation_value {
-                Some(value) => ui.strong(format!(
-                    "{} \u{2022} {}",
-                    rank_table::rank_label(value),
-                    format_number(value)
-                )),
+                Some(value) => {
+                    let label = rank_table::rank_label(value);
+                    let text_color = ui.style().visuals.text_color();
+                    let font = egui::TextStyle::Body.resolve(ui.style());
+                    let mut job = egui::text::LayoutJob::default();
+                    // Two-tone badge: U/L prefix in its family color, base
+                    // letter in its Table 1 color (single segment for G..SS+).
+                    for (text, color) in rank_badge_segments(label) {
+                        job.append(
+                            &text,
+                            0.0,
+                            egui::TextFormat {
+                                font_id: font.clone(),
+                                color,
+                                ..Default::default()
+                            },
+                        );
+                    }
+                    job.append(
+                        &format!(" \u{2022} {}", format_number(value)),
+                        0.0,
+                        egui::TextFormat {
+                            font_id: font,
+                            color: text_color,
+                            ..Default::default()
+                        },
+                    );
+                    ui.label(job)
+                }
                 None => ui.weak("\u{2014}"),
             };
             ui.end_row();
