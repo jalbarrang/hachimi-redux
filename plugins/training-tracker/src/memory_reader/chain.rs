@@ -38,6 +38,8 @@ pub(super) struct ResolvedChain {
     pub(super) m_get_max_hp: *const c_void,
     pub(super) m_get_motivation: *const c_void,
     pub(super) m_get_fan_count: *const c_void,
+    /// get_CardId() -> Int32 (the trained outfit/card id; matches gametora card_id).
+    pub(super) m_get_card_id: *const c_void,
     pub(super) m_get_training_level: *const c_void, // GetTrainingLevel(1 arg: commandId)
     pub(super) m_get_scenario_id: *const c_void,    // get_ScenarioId(0 args)
     /// get_CharaEffectIdArray() -> ObscuredInt[] (active career conditions/状態).
@@ -139,6 +141,7 @@ fn try_resolve() -> Result<ResolvedChain, &'static str> {
         m_get_max_hp: resolve_method(wsmcd, c"get_MaxHp", 0)?,
         m_get_motivation: resolve_method(wsmcd, c"get_Motivation", 0)?,
         m_get_fan_count: resolve_method(wsmcd, c"get_FanCount", 0)?,
+        m_get_card_id: resolve_method(wsmcd, c"get_CardId", 0)?,
         m_get_training_level: resolve_method(wsmcd, c"GetTrainingLevel", 1)?,
         m_get_scenario_id: resolve_method(wsmcd, c"get_ScenarioId", 0)?,
         m_get_chara_effect_id_array: resolve_method(wsmcd, c"get_CharaEffectIdArray", 0)?,
@@ -156,7 +159,7 @@ fn try_resolve() -> Result<ResolvedChain, &'static str> {
         m_get_card_rarity_data: resolve_method(wsmcd, c"get_CardRarityData", 0)?,
     };
 
-    hlog_info!("All 33 methods resolved for memory-read chain");
+    hlog_info!("All 34 methods resolved for memory-read chain");
     Ok(chain)
 }
 

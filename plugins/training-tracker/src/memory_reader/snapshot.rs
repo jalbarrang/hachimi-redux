@@ -33,6 +33,9 @@ pub struct CareerSnapshot {
     pub motivation: i32, // RaceDefine.Motivation enum (1-5)
     #[allow(dead_code)] // read from memory; no longer shown in the redesigned UI
     pub fan_count: i32,
+    /// Trained outfit/card id (matches gametora `card_id`); `0` if unknown.
+    /// Used to detect the trainee's built-in (unique/innate/awakening) recoveries.
+    pub card_id: i32,
     // NOTE: get_SkillPoint returns ObscuredInt (struct), not i32.
     // Needs special decryption handling — skipped for now.
     #[allow(dead_code)]
@@ -186,6 +189,9 @@ fn read_snapshot_inner() -> Option<CareerSnapshot> {
     let motivation = unsafe { call_i32(chara, chain.m_get_motivation) };
     // SAFETY: Reading field or calling method on non-null IL2CPP object pointer.
     let fan_count = unsafe { call_i32(chara, chain.m_get_fan_count) };
+    // Trained outfit/card id (matches gametora `card_id`; drives built-in skill
+    // lookup). SAFETY: getter on a non-null IL2CPP chara object.
+    let card_id = unsafe { call_i32(chara, chain.m_get_card_id) };
 
     // Step 7: Read training levels per facility
     hlog_trace!("snapshot: step 7 — training levels");
@@ -260,6 +266,7 @@ fn read_snapshot_inner() -> Option<CareerSnapshot> {
         max_hp,
         motivation,
         fan_count,
+        card_id,
         skill_point: 0, // ObscuredInt — needs decryption, not yet implemented
         total_races,
         win_count,

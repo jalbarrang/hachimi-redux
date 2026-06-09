@@ -16,7 +16,7 @@
 //! every accessor has a call site, unused entries are allowed here.
 #![allow(dead_code)]
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::OnceLock;
 
@@ -70,6 +70,21 @@ pub struct Skill {
     /// Server-specific overrides (`loc.en` = Global).
     #[serde(default)]
     pub loc: Value,
+    /// Inherited (`9xxxxx`) variant of a unique skill, with its own (usually
+    /// reduced) effects — the value the skill runs at when inherited by a Uma
+    /// other than its owner.
+    #[serde(default)]
+    pub gene_version: Option<GeneVersion>,
+}
+
+/// The inherited form of a unique skill (a `gene_version` block): a distinct id
+/// (`9xxxxx`) and its own effect groups (reduced vs the owner's full unique).
+#[derive(Debug, Clone, Deserialize)]
+pub struct GeneVersion {
+    #[serde(default)]
+    pub id: i64,
+    #[serde(default)]
+    pub condition_groups: Value,
 }
 
 /// A support card entry (`support-cards.json`).
@@ -92,6 +107,9 @@ pub struct SupportCard {
     pub title_ja: Option<String>,
     #[serde(default)]
     pub url_name: Option<String>,
+    /// Global release date (`YYYY-MM-DD`); `None` ⇒ not on Global yet.
+    #[serde(default)]
+    pub release_en: Option<String>,
     /// Skill ids granted via this card's training events.
     #[serde(default, deserialize_with = "de_flexible_id_vec")]
     pub event_skills: Vec<i64>,
@@ -123,6 +141,9 @@ pub struct CharacterCard {
     pub title_en_gl: Option<String>,
     #[serde(default)]
     pub title_jp: Option<String>,
+    /// Global release date (`YYYY-MM-DD`); `None` ⇒ not on Global yet.
+    #[serde(default)]
+    pub release_en: Option<String>,
     #[serde(default, deserialize_with = "de_flexible_id_vec")]
     pub skills_unique: Vec<i64>,
     #[serde(default, deserialize_with = "de_flexible_id_vec")]
@@ -131,6 +152,21 @@ pub struct CharacterCard {
     pub skills_event: Vec<i64>,
     #[serde(default, deserialize_with = "de_flexible_id_vec")]
     pub skills_awakening: Vec<i64>,
+    /// Global-specific awakening skill ids (when they differ from JP).
+    #[serde(default, deserialize_with = "de_flexible_id_vec")]
+    pub skills_awakening_en: Vec<i64>,
+    /// Evolved-skill mappings (`{ new, old }`); the `new` id is the evolved form.
+    #[serde(default)]
+    pub skills_evo: Vec<SkillEvo>,
+}
+
+/// An evolved-skill mapping on a character card: `old` evolves into `new`.
+#[derive(Debug, Clone, Deserialize)]
+pub struct SkillEvo {
+    #[serde(default)]
+    pub new: i64,
+    #[serde(default)]
+    pub old: i64,
 }
 
 /// Which support-card rarity bucket a training-event file covers.
@@ -347,8 +383,8 @@ fn max_recovery_bp(groups: &Value) -> i32 {
     best
 }
 
-/// Heal basis points for one skill, checking the JP top-level and the Global
-/// (`loc.en`) condition groups, taking the larger.
+/// Heal basis points for one skill's **base** (owner) effect, checking the JP
+/// top-level and the Global (`loc.en`) condition groups, taking the larger.
 fn skill_recovery_bp(s: &Skill) -> i32 {
     let top = max_recovery_bp(&s.condition_groups);
     let en = s
@@ -360,35 +396,165 @@ fn skill_recovery_bp(s: &Skill) -> i32 {
     top.max(en)
 }
 
-/// All positive-recovery skills, sorted by heal (desc) then name. Empty when the
-/// catalog is unavailable.
+/// Skill ids that are released on Global, derived from cards that carry a
+/// `release_en` date. Mirrors uma-sim: a skill is on Global if it is reachable
+/// from a Global-released character or support card. Pure (testable) form.
+fn collect_released_ids(chars: &[CharacterCard], support: &[SupportCard]) -> HashSet<i64> {
+    let mut set = HashSet::new();
+    for c in chars {
+        if c.release_en.is_none() {
+            continue;
+        }
+        for id in c
+            .skills_unique
+            .iter()
+            .chain(&c.skills_innate)
+            .chain(&c.skills_awakening)
+            .chain(&c.skills_awakening_en)
+            .chain(&c.skills_event)
+        {
+            set.insert(*id);
+        }
+        for evo in &c.skills_evo {
+            if evo.new != 0 {
+                set.insert(evo.new);
+            }
+        }
+    }
+    for c in support {
+        if c.release_en.is_none() {
+            continue;
+        }
+        for id in &c.event_skills {
+            set.insert(*id);
+        }
+        if let Some(hint_skills) = c.hints.get("hint_skills").and_then(|h| h.as_array()) {
+            for v in hint_skills {
+                if let Some(id) = v.as_i64() {
+                    set.insert(id);
+                }
+            }
+        }
+    }
+    set
+}
+
+/// Lazily-built set of Global-released skill ids.
+fn released_skill_ids() -> &'static HashSet<i64> {
+    static S: OnceLock<HashSet<i64>> = OnceLock::new();
+    S.get_or_init(|| {
+        let c = catalog();
+        let chars: Vec<CharacterCard> = c.character_cards.values().cloned().collect();
+        let support: Vec<SupportCard> = c.support_cards.values().cloned().collect();
+        collect_released_ids(&chars, &support)
+    })
+}
+
+/// Build the recovery entry for a skill, applying the inherited-unique rule:
+/// a unique with a `gene_version` is offered as its **inherited** variant (the
+/// reduced `gene_version` heal + id, labelled `(inherited)`) — that is the value
+/// it runs at when inherited by a Uma other than its owner. The inherited entry
+/// is included iff the owner skill is Global-released. Generic (non-unique)
+/// skills use their own id/heal and must themselves be released. Returns `None`
+/// for non-recovery or unreleased skills.
+fn recovery_entry(s: &Skill, released: &HashSet<i64>) -> Option<RecoverySkill> {
+    if skill_recovery_bp(s) <= 0 {
+        return None;
+    }
+    // Owner release gates both the base skill and its inheritable variant.
+    if !released.contains(&s.id) {
+        return None;
+    }
+    let name = s.name_en.clone().or_else(|| s.jpname.clone())?;
+    match &s.gene_version {
+        Some(gv) if max_recovery_bp(&gv.condition_groups) > 0 => Some(RecoverySkill {
+            id: gv.id,
+            name: format!("{name} (inherited)"),
+            heal_bp: max_recovery_bp(&gv.condition_groups),
+        }),
+        _ => Some(RecoverySkill {
+            id: s.id,
+            name,
+            heal_bp: skill_recovery_bp(s),
+        }),
+    }
+}
+
+/// All Global-released positive-recovery skills, sorted by heal (desc) then name.
+/// Unique recoveries are listed at their **inherited** (reduced) value. Empty
+/// when the catalog is unavailable.
 #[must_use]
 pub fn recovery_skills() -> Vec<RecoverySkill> {
+    let released = released_skill_ids();
     let mut out: Vec<RecoverySkill> = catalog()
         .skills
         .values()
-        .filter_map(|s| {
-            let heal_bp = skill_recovery_bp(s);
-            if heal_bp <= 0 {
-                return None;
-            }
-            let name = s.name_en.clone().or_else(|| s.jpname.clone())?;
-            Some(RecoverySkill {
-                id: s.id,
-                name,
-                heal_bp,
-            })
-        })
+        .filter_map(|s| recovery_entry(s, released))
         .collect();
     out.sort_by(|a, b| b.heal_bp.cmp(&a.heal_bp).then_with(|| a.name.cmp(&b.name)));
     out
 }
 
-/// Total heal basis points for a set of skill ids (unknown / non-recovery ids
-/// contribute 0).
+/// Total heal basis points for a set of (possibly inherited `9xxxxx`) recovery
+/// ids. Resolved against [`recovery_skills`] so inherited variants — which are
+/// not always top-level skills — still map. Unknown ids contribute 0.
 #[must_use]
 pub fn recovery_heal_bp_total(ids: &[i64]) -> i32 {
-    ids.iter().filter_map(|id| skill(*id)).map(skill_recovery_bp).sum()
+    if ids.is_empty() {
+        return 0;
+    }
+    let by_id: HashMap<i64, i32> = recovery_skills().into_iter().map(|r| (r.id, r.heal_bp)).collect();
+    ids.iter().filter_map(|id| by_id.get(id)).sum()
+}
+
+/// The recovery skills **built into** a trained outfit (`card_id`): the card's
+/// unique / innate / awakening skills that are recoveries. These run at their
+/// **full** (owner) value — the trainee owns them, so no inherited reduction.
+/// Empty when the catalog or card is unavailable.
+#[must_use]
+pub fn card_recovery_skills(card_id: i64) -> Vec<RecoverySkill> {
+    let Some(card) = character_card(card_id) else {
+        return Vec::new();
+    };
+    // Dedup by skill name (a card can list the same recovery across its
+    // unique/innate/awakening sets, or as base+evolved); keep one at its highest
+    // value so the same recovery is never counted twice.
+    let mut by_name: HashMap<String, RecoverySkill> = HashMap::new();
+    for id in card
+        .skills_unique
+        .iter()
+        .chain(&card.skills_innate)
+        .chain(&card.skills_awakening)
+        .chain(&card.skills_awakening_en)
+    {
+        let Some(s) = skill(*id) else { continue };
+        let heal_bp = skill_recovery_bp(s);
+        if heal_bp <= 0 {
+            continue;
+        }
+        let Some(name) = s.name_en.clone().or_else(|| s.jpname.clone()) else {
+            continue;
+        };
+        let entry = by_name.entry(name.clone()).or_insert(RecoverySkill {
+            id: *id,
+            name,
+            heal_bp: 0,
+        });
+        if heal_bp > entry.heal_bp {
+            entry.heal_bp = heal_bp;
+            entry.id = *id;
+        }
+    }
+    let mut out: Vec<RecoverySkill> = by_name.into_values().collect();
+    out.sort_by(|a, b| b.heal_bp.cmp(&a.heal_bp).then_with(|| a.name.cmp(&b.name)));
+    out
+}
+
+/// Total built-in recovery heal (basis points) for a trained outfit's own
+/// unique / innate / awakening recoveries.
+#[must_use]
+pub fn card_recovery_bp_total(card_id: i64) -> i32 {
+    card_recovery_skills(card_id).iter().map(|r| r.heal_bp).sum()
 }
 
 /// Max event-chain / outing steps for a support card (the `Y` in `X/Y`).
@@ -491,5 +657,75 @@ mod tests {
         let groups = parse(r#"[{ "effects": [ { "type": 2, "value": 100 } ] }]"#);
         assert_eq!(max_recovery_bp(&groups), 0);
         assert_eq!(max_recovery_bp(&serde_json::Value::Null), 0);
+    }
+
+    fn char_card(json: &str) -> CharacterCard {
+        serde_json::from_str(json).expect("character card json")
+    }
+    fn sup_card(json: &str) -> SupportCard {
+        serde_json::from_str(json).expect("support card json")
+    }
+    fn mk_skill(json: &str) -> Skill {
+        serde_json::from_str(json).expect("skill json")
+    }
+
+    #[test]
+    fn collect_released_ids_only_counts_released_cards() {
+        let chars = vec![
+            char_card(
+                r#"{ "card_id": 1, "release_en": "2025-06-26", "skills_unique": [10451],
+                     "skills_evo": [{ "new": 700, "old": 600 }] }"#,
+            ),
+            // No release_en ⇒ its skills are NOT on Global.
+            char_card(r#"{ "card_id": 2, "skills_unique": [99999] }"#),
+        ];
+        let support = vec![sup_card(
+            r#"{ "support_id": 5, "release_en": "2025-06-26", "event_skills": [200762],
+                 "hints": { "hint_skills": [200162, 200232] } }"#,
+        )];
+        let set = collect_released_ids(&chars, &support);
+        assert!(set.contains(&10451)); // released char unique
+        assert!(set.contains(&700)); // evolved skill `new` id
+        assert!(set.contains(&200762)); // support event skill
+        assert!(set.contains(&200162)); // support hint skill
+        assert!(!set.contains(&99999)); // unreleased char's skill excluded
+    }
+
+    #[test]
+    fn recovery_entry_uses_inherited_value_for_uniques() {
+        // Unique recovery: base 550 bp, gene_version (inherited) 350 bp.
+        let s = mk_skill(
+            r#"{ "id": 10451, "name_en": "Clear Heart",
+                 "condition_groups": [{ "effects": [{ "type": 9, "value": 550 }] }],
+                 "gene_version": { "id": 900451,
+                     "condition_groups": [{ "effects": [{ "type": 9, "value": 350 }] }] } }"#,
+        );
+        let released: HashSet<i64> = [10451].into_iter().collect();
+        let entry = recovery_entry(&s, &released).expect("released unique recovery");
+        assert_eq!(entry.id, 900451, "uses the inherited gene_version id");
+        assert_eq!(entry.heal_bp, 350, "uses the reduced inherited heal");
+        assert!(entry.name.contains("(inherited)"));
+    }
+
+    #[test]
+    fn recovery_entry_generic_and_release_gating() {
+        let generic = mk_skill(
+            r#"{ "id": 200352, "name_en": "Corner Recovery",
+                 "condition_groups": [{ "effects": [{ "type": 9, "value": 150 }] }] }"#,
+        );
+        let released: HashSet<i64> = [200352].into_iter().collect();
+        let entry = recovery_entry(&generic, &released).expect("released generic recovery");
+        assert_eq!(entry.id, 200352);
+        assert_eq!(entry.heal_bp, 150);
+
+        // Unreleased ⇒ excluded.
+        assert!(recovery_entry(&generic, &HashSet::new()).is_none());
+
+        // Non-recovery ⇒ excluded.
+        let non = mk_skill(
+            r#"{ "id": 1, "name_en": "Speedster",
+            "condition_groups": [{ "effects": [{ "type": 1, "value": 500 }] }] }"#,
+        );
+        assert!(recovery_entry(&non, &[1].into_iter().collect()).is_none());
     }
 }

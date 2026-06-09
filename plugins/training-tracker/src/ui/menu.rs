@@ -402,6 +402,18 @@ fn draw_recovery_picker(ui: &mut egui::Ui, prof: &mut build_profile::BuildProfil
     egui::CollapsingHeader::new(format!("\u{1fa79} Planned recoveries ({count})"))
         .id_salt("tt_recovery_picker")
         .show(ui, |ui| {
+            // The trained outfit's own built-in recoveries (full value) are
+            // detected from the live snapshot and counted automatically.
+            let card_id = overlay_cache::snapshot()
+                .filter(|s| s.is_playing)
+                .map(|s| s.card_id)
+                .unwrap_or(0);
+            let built_in = gametora_data::card_recovery_skills(card_id as i64);
+            if !built_in.is_empty() {
+                let names = built_in.iter().map(|r| r.name.as_str()).collect::<Vec<_>>().join(", ");
+                ui.small(format!("\u{2713} Built-in (this outfit, auto-counted): {names}"));
+            }
+            ui.small("Global-released only • unique recoveries shown at inherited (reduced) value");
             let mut filter = RECOVERY_FILTER.lock().map(|g| g.clone()).unwrap_or_default();
             if ui
                 .add(
@@ -469,7 +481,9 @@ fn draw_survival_advisory(ui: &mut egui::Ui, prof: &build_profile::BuildProfile)
         .map(|s| recommend::cm_aptitudes_for_course(&s.aptitudes, course))
         .unwrap_or_default();
     let cond = prof.ground_condition;
-    let heal_bp = gametora_data::recovery_heal_bp_total(&prof.recovery_skill_ids) as f64;
+    let card_id = snap.as_ref().map(|s| s.card_id).unwrap_or(0);
+    let heal_bp = (gametora_data::recovery_heal_bp_total(&prof.recovery_skill_ids)
+        + gametora_data::card_recovery_bp_total(card_id as i64)) as f64;
     let raw = cm_model::stamina_survival_threshold(course, prof.strategy, guts, speed, apt.distance_grade, cond);
     let need = cm_model::effective_stamina_need(course, prof.strategy, guts, speed, apt.distance_grade, cond, heal_bp);
     // Soft/heavy/dirt lowers the effective speed/power, so the *raw* targets the

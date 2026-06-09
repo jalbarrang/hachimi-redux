@@ -59,7 +59,11 @@ pub(super) fn scoring_context(snap: &memory_reader::CareerSnapshot) -> recommend
         aptitudes,
         strategy: profile.strategy,
         ground_condition: profile.ground_condition,
-        recovery_heal_bp: crate::gametora_data::recovery_heal_bp_total(&profile.recovery_skill_ids) as f64,
+        // Planned (inherited/acquired) recoveries + the trained outfit's own
+        // built-in recoveries (full value), so the model never asks you to train
+        // stamina the Uma already covers.
+        recovery_heal_bp: (crate::gametora_data::recovery_heal_bp_total(&profile.recovery_skill_ids)
+            + crate::gametora_data::card_recovery_bp_total(snap.card_id as i64)) as f64,
     }
 }
 
