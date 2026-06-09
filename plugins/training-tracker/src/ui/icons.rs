@@ -3,7 +3,7 @@
 //! icon renders **grayscale**, and a selected (or hovered) icon renders in full
 //! **color**.
 //!
-//! The PNGs are vendored under `assets/icons/` and embedded with `include_bytes!`
+//! The PNG files are vendored under `assets/icons/` and embedded with `include_bytes!`
 //! so the DLL is self-contained (no runtime file dependency). Each icon is
 //! decoded once into two cached [`egui::TextureHandle`]s — color + grayscale —
 //! keyed by its basename (see [`crate::race_context`]).
