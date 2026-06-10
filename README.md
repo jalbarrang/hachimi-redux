@@ -2,9 +2,7 @@
 
 # HachimiRedux
 
-English | [简体中文](README-zh_cn.md) | [繁體中文](README-zh_tw.md)
-
-[![Discord server](https://dcbadge.limes.pink/api/server/https://discord.gg/YjBgmuqqYr)](https://discord.gg/YjBgmuqqYr)
+English | [简体中文](README-zh_cn.md) | [繁體中文](README-zh_tw.md) | [Español (España)](README-es_es.md) | [Español (Latinoamérica)](README-es_419.md) | [Français](README-fr_fr.md) | [Português (Brasil)](README-pt_br.md) | [Português (Portugal)](README-pt_pt.md)
 
 Game enhancement and translation mod for UM:PD. HachimiRedux is a fork of Hachimi with an in-game training tracker plugin and a reworked native plugin SDK.
 
@@ -152,7 +150,7 @@ By far the most common cause is **stacking multiple game mods or DLL injectors**
 
 HachimiRedux is a fork built on the work of:
 
-- [Hachimi](https://github.com/Hachimi-Hachimi/Hachimi) — the original project this is based on.
+- [Hachimi](https://github.com/Hachimi-Hachimi/Hachimi) — the original project this is based on. If you're interested in the original project, join [its Discord server](https://discord.gg/YjBgmuqqYr).
 - [Hachimi Edge](https://github.com/kairusds/Hachimi-Edge) — the Windows/Steam-focused fork HachimiRedux continues from.
 
 These projects have in turn been the basis for Hachimi's development; without them, Hachimi would never have existed in its current form:
