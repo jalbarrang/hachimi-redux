@@ -8,6 +8,18 @@
 
 <img height="400" src="apps/hachimi/assets/screenshot-2.png">
 
+## 目录
+
+- [请不要链接到本仓库或 Hachimi 的网站](#️-请不要链接到本仓库或-hachimi-的网站)
+- [与上游 Hachimi 插件不兼容](#️-与上游-hachimi-插件不兼容)
+- [特性](#特性)
+- [安装](#安装)
+  - [使用安装器安装（推荐）](#使用安装器安装推荐)
+  - [从源码构建（进阶）](#从源码构建进阶)
+- [故障排查](#故障排查)
+- [特别鸣谢](#特别鸣谢)
+- [许可证](#许可证)
+
 # ⚠️ 请不要链接到本仓库或 Hachimi 的网站
 我们理解你想帮助大家安装 Hachimi 并获得更好的游戏体验。然而，本项目本质上违反了游戏的服务条款，游戏开发者一旦知道它的存在，几乎肯定会希望将其铲除。
 
@@ -64,12 +76,24 @@
 
 # 安装
 
-HachimiRedux 是核心 Mod（以 `cri_mana_vpx.dll` 的形式加载）；**Training Tracker（养成追踪器）** 是由核心 Mod 加载的可选插件 DLL。两者都从本仓库构建，并且必须来自同一次构建。
+安装 HachimiRedux 最简单的方式是使用 [Releases 页面](https://github.com/jalbarrang/hachimi-redux/releases)上的**安装器**：它会为你配置好核心 Mod 和可选的 Training Tracker 插件，无需手动复制文件或编辑 JSON。如果你更愿意自行构建，请参阅[从源码构建](#从源码构建进阶)。
+
+HachimiRedux 是核心 Mod（以 `cri_mana_vpx.dll` 的形式加载）；**Training Tracker（养成追踪器）** 是由核心 Mod 加载的可选插件 DLL。两者来自同一次构建。
 
 游戏目录即 Steam 安装文件夹，例如
 `C:\Program Files (x86)\Steam\steamapps\common\UmamusumePrettyDerby`。
 
-## 从源码构建
+## 使用安装器安装（推荐）
+
+1. 从 [Releases 页面](https://github.com/jalbarrang/hachimi-redux/releases)下载最新的 `hachimi_installer.exe`。
+2. 运行它。安装器会自动检测你的 Steam 游戏目录；如果检测不到，请手动选择（默认路径见上方）。
+3. 选择你的语言。若需要游戏内的 Training Tracker，请保持勾选 **“Install Training Tracker plugin”** 复选框（默认已勾选）。
+4. 点击 **Install**。安装器会备份原始的 `cri_mana_vpx.dll`、安装 Mod，并为你创建 `config.json`。
+5. 启动游戏。按下菜单键 —— 默认是**右方向键** —— 打开游戏内 UI。
+
+以后要更新或移除 HachimiRedux，只需再次运行安装器即可（它提供卸载选项）。
+
+## 从源码构建（进阶）
 
 本仓库是一个 Cargo workspace。在仓库根目录下：
 

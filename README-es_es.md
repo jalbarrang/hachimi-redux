@@ -8,6 +8,18 @@ Mod de mejora y traducción del juego para UM:PD. HachimiRedux es un fork de Hac
 
 <img height="400" src="apps/hachimi/assets/screenshot-2.png">
 
+## Tabla de contenidos
+
+- [Por favor, no enlaces a este repositorio ni a la web de Hachimi](#️-por-favor-no-enlaces-a-este-repositorio-ni-a-la-web-de-hachimi)
+- [Incompatible con los plugins de Hachimi original](#️-incompatible-con-los-plugins-de-hachimi-original)
+- [Características](#características)
+- [Instalación](#instalación)
+  - [Instalar con el instalador (recomendado)](#instalar-con-el-instalador-recomendado)
+  - [Compilar desde el código fuente (avanzado)](#compilar-desde-el-código-fuente-avanzado)
+- [Resolución de problemas](#resolución-de-problemas)
+- [Agradecimientos especiales](#agradecimientos-especiales)
+- [Licencia](#licencia)
+
 # ⚠️ Por favor, no enlaces a este repositorio ni a la web de Hachimi
 Entendemos que quieras ayudar a la gente a instalar Hachimi y a tener una mejor experiencia jugando. Sin embargo, este proyecto va, por su propia naturaleza, en contra de las condiciones de servicio del juego, y los desarrolladores del juego con toda seguridad querrían eliminarlo si llegaran a tener conocimiento de él.
 
@@ -64,12 +76,24 @@ En caso de duda, recompila el plugin contra este repositorio (host API v9) en lu
 
 # Instalación
 
-HachimiRedux es el mod principal (se carga como `cri_mana_vpx.dll`); el **Training Tracker** es un plugin DLL opcional que carga el mod principal. Ambos se compilan a partir de este repositorio y deben proceder de la misma compilación.
+La forma más fácil de instalar HachimiRedux es con el **instalador** de la [página de Releases](https://github.com/jalbarrang/hachimi-redux/releases): configura por ti el mod principal y el plugin opcional Training Tracker, sin copiar archivos a mano ni editar JSON. Si prefieres compilarlo tú mismo, consulta [Compilar desde el código fuente](#compilar-desde-el-código-fuente-avanzado).
+
+HachimiRedux es el mod principal (se carga como `cri_mana_vpx.dll`); el **Training Tracker** es un plugin DLL opcional que carga el mod principal. Ambos provienen de la misma compilación.
 
 El directorio del juego es la carpeta de instalación de Steam, p. ej.
 `C:\Program Files (x86)\Steam\steamapps\common\UmamusumePrettyDerby`.
 
-## Compilar desde el código fuente
+## Instalar con el instalador (recomendado)
+
+1. Descarga el `hachimi_installer.exe` más reciente de la [página de Releases](https://github.com/jalbarrang/hachimi-redux/releases).
+2. Ejecútalo. El instalador detecta automáticamente tu directorio del juego de Steam; si no puede, selecciónalo manualmente (la ruta por defecto está más arriba).
+3. Elige tu idioma. Para obtener el Training Tracker dentro del juego, deja marcada la casilla **«Install Training Tracker plugin»** (activada por defecto).
+4. Haz clic en **Install**. El instalador hace una copia de seguridad del `cri_mana_vpx.dll` original, instala el mod y crea `config.json` por ti.
+5. Inicia el juego. Pulsa la tecla de menú —por defecto la **flecha derecha**— para abrir la interfaz dentro del juego.
+
+Para actualizar o eliminar HachimiRedux más adelante, vuelve a ejecutar el instalador (ofrece una opción de desinstalación).
+
+## Compilar desde el código fuente (avanzado)
 
 Este repositorio es un workspace de Cargo. Desde la raíz del repositorio:
 

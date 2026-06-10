@@ -63,6 +63,9 @@ extend-exclude = [
     "apps/hachimi/assets/locales/",
     "apps/installer/locales/",
     "docs/reverse-engineering/",
+    # Translated READMEs are non-English; skip the English spell checker for them.
+    # The English README.md (no suffix) is still checked.
+    "README-*.md",
 ]
 
 [type.toml]
