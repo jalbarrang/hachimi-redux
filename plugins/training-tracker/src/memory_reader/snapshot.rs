@@ -1,5 +1,6 @@
 //! Career state snapshot: core stats, turn info, and training facility levels.
 
+use std::collections::HashMap;
 use std::ffi::c_void;
 use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -79,6 +80,9 @@ pub struct CareerSnapshot {
     /// each facility this turn (`TrainingHorseList` bond values →
     /// `planner::near_rainbow_pressure`). Feeds the multi-turn bond lookahead.
     pub per_facility_bond_pressure: [f32; 5],
+
+    /// `Evaluation.target_id` → (facility slot 0..4, per-character bond pressure).
+    pub partner_placements: HashMap<i32, (usize, f32)>,
 
     /// Speed-slot training command id of the active scenario (e.g. 101 URA, 601
     /// Unity Cup, 1101 Trackblazer). Identifies the scenario for the rest-vs-race
@@ -208,8 +212,10 @@ fn read_snapshot_inner() -> Option<CareerSnapshot> {
 
     // Step 10: Per-facility failure rate + stat-gain preview (live command info)
     hlog_trace!("snapshot: step 10 — command info");
+    let command_infos = read_command_infos(wsmd);
+    let partner_placements = partner_placements_from(&command_infos);
     let (failure_rates, stat_gains, per_stat_gains, per_facility_bond_pressure, scenario_command_base) =
-        align_command_infos(&read_command_infos(wsmd));
+        align_command_infos(&command_infos);
 
     // Step 11: Active scenario id (logged) + command base (rest-vs-race suggestion)
     // SAFETY: Reading a getter on a non-null IL2CPP chara object.
@@ -280,12 +286,27 @@ fn read_snapshot_inner() -> Option<CareerSnapshot> {
         stat_gains,
         per_stat_gains,
         per_facility_bond_pressure,
+        partner_placements,
         scenario_command_base,
         scenario_id,
         // SAFETY: `chara` is a valid non-null IL2CPP object from the resolved chain.
         scenario_state: read_scenario_state(chara),
         chara_effect_ids,
     })
+}
+
+/// Build per-partner facility placement from live command infos.
+fn partner_placements_from(infos: &[CommandInfo]) -> HashMap<i32, (usize, f32)> {
+    let mut map = HashMap::new();
+    for info in infos {
+        let Some(facility) = facility_index_of(info.command_id) else {
+            continue;
+        };
+        for &(target_id, pressure, _is_guest) in &info.partners {
+            map.insert(target_id, (facility, pressure));
+        }
+    }
+    map
 }
 
 /// Map live command infos onto facility slots [Speed, Stamina, Power, Guts, Wisdom]
@@ -475,6 +496,7 @@ mod tests {
                 stat_gain: 12,
                 per_stat: [10, 0, 2, 0, 0],
                 bond_pressure: 0.6,
+                partners: vec![],
             },
             CommandInfo {
                 command_id: 103, // Guts
@@ -482,6 +504,7 @@ mod tests {
                 stat_gain: 9,
                 per_stat: [0, 0, 3, 6, 0],
                 bond_pressure: 0.0,
+                partners: vec![],
             },
         ];
         let (failure, gain, per_stat, bond, base) = align_command_infos(&infos);
@@ -503,6 +526,7 @@ mod tests {
             stat_gain: 20,
             per_stat: [4, 4, 4, 4, 4],
             bond_pressure: 0.9,
+            partners: vec![],
         }];
         let (failure, gain, per_stat, bond, base) = align_command_infos(&infos);
         assert_eq!(failure, [-1; 5]);

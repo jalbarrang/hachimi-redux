@@ -30,7 +30,7 @@ const COMMAND_TYPE_TRAINING: i32 = 1;
 const STAT_PARAM_TYPES: [i32; 5] = [1, 2, 3, 4, 5];
 
 /// One training facility's live preview (failure rate + stat gains).
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Debug, Clone)]
 pub struct CommandInfo {
     pub command_id: i32,
     pub failure_rate: i32,
@@ -43,6 +43,8 @@ pub struct CommandInfo {
     /// [`crate::planner::near_rainbow_pressure`]). Drives the multi-turn bond
     /// lookahead; `0` when no partner is near the rainbow threshold.
     pub bond_pressure: f32,
+    /// Supports/guests on this facility: `(target_id, near-rainbow pressure, is_guest)`.
+    pub partners: Vec<(i32, f32, bool)>,
 }
 
 /// Read every training-facility command info for the current turn.
@@ -104,7 +106,8 @@ unsafe fn read_turn_info(ti: *mut c_void) -> CommandInfo {
         let bonus2 = read_param_dict(ti, "BonusParamIncDecInfoDic");
         let per_stat: [i32; 5] = std::array::from_fn(|s| main[s].0 + main[s].1 + bonus2[s].0 + bonus2[s].1);
         let stat_gain = per_stat.iter().sum();
-        let bond_pressure = read_partner_bond_pressure(ti);
+        let partners = read_training_horses(ti);
+        let bond_pressure = aggregate_bond_pressure(&partners);
         log_breakdown_on_change(command_id, &main, &bonus2);
         CommandInfo {
             command_id,
@@ -112,46 +115,40 @@ unsafe fn read_turn_info(ti: *mut c_void) -> CommandInfo {
             stat_gain,
             per_stat,
             bond_pressure,
+            partners,
         }
     }
 }
 
-/// Near-rainbow bond pressure `0..=1` from a `TurnInfo`'s `TrainingHorseList`:
-/// each present non-guest support's bond value (`TrainingHorse.GetEvaluation()
-/// .get_Value()`) is mapped through [`crate::planner::near_rainbow_pressure`] and
-/// combined as a soft-OR `1 − ∏(1 − p_k)` (more near-rainbow supports ⇒ more
-/// future-turn value). `0` when the list is empty/unreadable (degrades to greedy).
-unsafe fn read_partner_bond_pressure(ti: *mut c_void) -> f32 {
+/// Supports/guests on a facility's `TrainingHorseList`.
+unsafe fn read_training_horses(ti: *mut c_void) -> Vec<(i32, f32, bool)> {
     // SAFETY: `ti` is a non-null IL2CPP TurnInfo; each call is null-guarded below.
     unsafe {
         let Some(m_list) = resolve_obj_method(ti, "get_TrainingHorseList", 0) else {
-            return 0.0;
+            return Vec::new();
         };
         let list = call_obj(ti, m_list);
         if list.is_null() {
-            return 0.0;
+            return Vec::new();
         }
         let (Some(m_count), Some(m_item)) = (
             resolve_obj_method(list, "get_Count", 0),
             resolve_obj_method(list, "get_Item", 1),
         ) else {
-            return 0.0;
+            return Vec::new();
         };
         let count = call_i32(list, m_count);
         if !(0..=16).contains(&count) {
-            return 0.0;
+            return Vec::new();
         }
-        let mut not_p = 1.0f32; // ∏(1 − p_k)
+        let mut out = Vec::with_capacity(count as usize);
+        let mut m_target_id: *const c_void = std::ptr::null();
+        let mut m_value: *const c_void = std::ptr::null();
+        let mut methods_resolved = false;
         for i in 0..count {
             let horse = call_obj_with_i32(list, m_item, i);
             if horse.is_null() {
                 continue;
-            }
-            // Skip guest characters — they are not deck cards building toward rainbow.
-            if let Some(m_guest) = resolve_obj_method(horse, "get_IsGuest", 0) {
-                if call_bool(horse, m_guest) {
-                    continue;
-                }
             }
             let Some(m_eval) = resolve_obj_method(horse, "GetEvaluation", 0) else {
                 continue;
@@ -160,14 +157,42 @@ unsafe fn read_partner_bond_pressure(ti: *mut c_void) -> f32 {
             if eval.is_null() {
                 continue;
             }
-            let Some(m_val) = resolve_obj_method(eval, "get_Value", 0) else {
+            if !methods_resolved {
+                methods_resolved = true;
+                let klass = *(eval as *const *mut c_void);
+                let sdk = Sdk::get();
+                m_target_id = sdk
+                    .get_method(klass.cast(), "get_TargetId", 0)
+                    .map(|m| m.cast())
+                    .unwrap_or(std::ptr::null());
+                m_value = sdk
+                    .get_method(klass.cast(), "get_Value", 0)
+                    .map(|m| m.cast())
+                    .unwrap_or(std::ptr::null());
+            }
+            if m_target_id.is_null() || m_value.is_null() {
                 continue;
-            };
-            let bond = call_i32(eval, m_val);
-            not_p *= 1.0 - crate::planner::near_rainbow_pressure(bond);
+            }
+            let is_guest = resolve_obj_method(horse, "get_IsGuest", 0)
+                .is_some_and(|m| call_bool(horse, m));
+            let target_id = call_i32(eval, m_target_id);
+            let bond = call_i32(eval, m_value);
+            out.push((target_id, crate::planner::near_rainbow_pressure(bond), is_guest));
         }
-        (1.0 - not_p).clamp(0.0, 1.0)
+        out
     }
+}
+
+/// Soft-OR of non-guest partner pressures: `1 − ∏(1 − p_k)`.
+fn aggregate_bond_pressure(partners: &[(i32, f32, bool)]) -> f32 {
+    let mut not_p = 1.0f32;
+    for &(_, pressure, is_guest) in partners {
+        if is_guest {
+            continue;
+        }
+        not_p *= 1.0 - pressure;
+    }
+    (1.0 - not_p).clamp(0.0, 1.0)
 }
 
 /// Read per-stat `(Value, BonusValue)` for the 5 main stats from a `TurnInfo` dict
