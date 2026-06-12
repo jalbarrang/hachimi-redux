@@ -49,7 +49,9 @@ impl Tab {
 /// Bitmask with every tab enabled (the default).
 pub(crate) const ALL_ENABLED_MASK: u8 = 0b1_1111;
 
-static SELECTED_TAB: AtomicU8 = AtomicU8::new(0);
+// Default to the unified Career view so the dashboard-style panel is what users
+// see first; it is also force-enabled (see `set_enabled_mask`).
+static SELECTED_TAB: AtomicU8 = AtomicU8::new(Tab::Career as u8);
 static ENABLED_TABS: AtomicU8 = AtomicU8::new(ALL_ENABLED_MASK);
 
 /// The active tab, resolved against the enabled set: if the stored selection has
@@ -73,6 +75,11 @@ pub(crate) fn is_enabled(tab: Tab) -> bool {
 /// Enable or disable a tab. Refuses to clear the last enabled tab — at least one
 /// always stays on. Returns the resulting enabled state of `tab`.
 pub(crate) fn set_enabled(tab: Tab, enabled: bool) -> bool {
+    // The flagship Career view is always available and cannot be hidden.
+    if tab == Tab::Career {
+        ENABLED_TABS.fetch_or(Tab::Career.bit(), Ordering::Relaxed);
+        return true;
+    }
     let mut mask = ENABLED_TABS.load(Ordering::Relaxed);
     if enabled {
         mask |= tab.bit();
@@ -102,8 +109,16 @@ pub(crate) fn enabled_mask() -> u8 {
 /// Restore the enabled set from persisted config. An empty/invalid mask falls
 /// back to all-enabled so a corrupt file never hides every tab.
 pub(crate) fn set_enabled_mask(mask: u8) {
+    // A corrupt/empty mask restores every tab; otherwise force the Career bit on
+    // (it is brand new, so older persisted masks never set it) so the unified
+    // panel is always reachable.
     let m = mask & ALL_ENABLED_MASK;
-    ENABLED_TABS.store(if m == 0 { ALL_ENABLED_MASK } else { m }, Ordering::Relaxed);
+    let m = if m == 0 {
+        ALL_ENABLED_MASK
+    } else {
+        m | Tab::Career.bit()
+    };
+    ENABLED_TABS.store(m, Ordering::Relaxed);
 }
 
 #[cfg(test)]

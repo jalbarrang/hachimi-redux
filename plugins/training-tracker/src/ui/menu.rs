@@ -125,14 +125,20 @@ fn draw_tab_visibility(ui: &mut egui::Ui) {
     let last_one = tabs::enabled_count() <= 1;
     for (tab, label) in tabs::Tab::ALL {
         let mut on = tabs::is_enabled(tab);
-        let lock = last_one && on; // can't disable the only remaining tab
+        // The Career view is always on; the last remaining tab can't be hidden.
+        let always_on = tab == tabs::Tab::Career;
+        let lock = always_on || (last_one && on);
         let resp = ui.add_enabled(!lock, egui::Checkbox::new(&mut on, label));
         if resp.changed() {
             tabs::set_enabled(tab, on);
             config::persist();
         }
         if lock {
-            resp.on_hover_text("At least one tab must stay enabled");
+            resp.on_hover_text(if always_on {
+                "The Career view is always shown"
+            } else {
+                "At least one tab must stay enabled"
+            });
         }
     }
 }
