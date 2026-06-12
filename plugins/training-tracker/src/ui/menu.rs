@@ -531,6 +531,15 @@ fn draw_multiturn(ui: &mut egui::Ui) {
     changed |= r.changed();
     commit |= r.drag_stopped() || r.lost_focus();
 
+    let r = ui
+        .checkbox(&mut pp.specialty_rainbow_gating, "Specialty-only rainbow pressure")
+        .on_hover_text(
+            "Count a support's bond pressure only on its own specialty facility \
+             (where a rainbow can fire), instead of any facility it currently sits on.",
+        );
+    changed |= r.changed();
+    commit |= r.changed();
+
     if changed {
         planner::set_params(pp);
     }

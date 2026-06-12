@@ -80,6 +80,14 @@ pub struct PlannerParams {
     /// HP % below which rest/fatigue pressure ramps up.
     #[serde(default = "default_energy_floor")]
     pub energy_floor_pct: i32,
+    /// Opt-in: only count a support's near-rainbow pressure toward a facility when
+    /// that facility is the card's **own specialty** (Speed card on Speed, etc.),
+    /// matching where a friendship/rainbow training can actually fire. Off by
+    /// default — the bond term then credits bond-building on any facility the card
+    /// currently sits on (its future-rainbow value). Pal/friend/group cards never
+    /// contribute their own pressure under either mode (they have no rainbow).
+    #[serde(default)]
+    pub specialty_rainbow_gating: bool,
 }
 
 impl PlannerParams {
@@ -90,6 +98,7 @@ impl PlannerParams {
         lookahead_depth: 2,
         lookahead_aggressiveness: 0.6,
         energy_floor_pct: 40,
+        specialty_rainbow_gating: false,
     };
 
     /// Clamp every field to a sane range.
@@ -98,6 +107,7 @@ impl PlannerParams {
             lookahead_depth: self.lookahead_depth.clamp(0, MAX_LOOKAHEAD_DEPTH),
             lookahead_aggressiveness: self.lookahead_aggressiveness.clamp(0.0, 2.0),
             energy_floor_pct: self.energy_floor_pct.clamp(0, 100),
+            specialty_rainbow_gating: self.specialty_rainbow_gating,
         }
     }
 }
@@ -398,6 +408,7 @@ mod tests {
             lookahead_depth: 99,
             lookahead_aggressiveness: 5.0,
             energy_floor_pct: 200,
+            specialty_rainbow_gating: false,
         }
         .clamped();
         assert_eq!(c.lookahead_depth, MAX_LOOKAHEAD_DEPTH);
@@ -407,6 +418,7 @@ mod tests {
             lookahead_depth: -3,
             lookahead_aggressiveness: -1.0,
             energy_floor_pct: -10,
+            specialty_rainbow_gating: true,
         }
         .clamped();
         assert_eq!(c2.lookahead_depth, 0);

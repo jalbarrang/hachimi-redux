@@ -584,6 +584,29 @@ pub fn support_card_name(support_id: i64) -> Option<&'static str> {
     support_card(support_id).and_then(|c| c.char_name.as_deref())
 }
 
+/// Facility index a support card rainbows on (its specialty): Speed=0, Stamina=1,
+/// Power=2, Guts=3, Wit=4. `None` for pal/`friend`/`group` cards (they never
+/// rainbow) or when the card/type is uncatalogued. Mirrors the dashboard's
+/// `supportTypeFacility(supportCardType(id))`.
+#[must_use]
+pub fn support_specialty_facility(support_id: i64) -> Option<usize> {
+    specialty_facility_of(support_card(support_id)?.r#type.as_deref()?)
+}
+
+/// Map a gametora card-`type` string to a facility index (Speed=0 … Wit=4), or
+/// `None` for pal/`friend`/`group`/unknown types (no rainbow). Pure.
+#[must_use]
+pub(crate) fn specialty_facility_of(type_str: &str) -> Option<usize> {
+    match type_str {
+        "speed" => Some(0),
+        "stamina" => Some(1),
+        "power" => Some(2),
+        "guts" => Some(3),
+        "intelligence" => Some(4),
+        _ => None, // friend / group / unknown — no rainbow
+    }
+}
+
 /// `(event_id, story_id)` keys for a card's event chain / outings, for matching
 /// against the fired-event history. Empty when not catalogued.
 #[must_use]
@@ -634,6 +657,18 @@ mod tests {
 
     fn parse(s: &str) -> Value {
         serde_json::from_str(s).expect("valid test json")
+    }
+
+    #[test]
+    fn specialty_facility_maps_stat_types_and_excludes_pals() {
+        assert_eq!(specialty_facility_of("speed"), Some(0));
+        assert_eq!(specialty_facility_of("stamina"), Some(1));
+        assert_eq!(specialty_facility_of("power"), Some(2));
+        assert_eq!(specialty_facility_of("guts"), Some(3));
+        assert_eq!(specialty_facility_of("intelligence"), Some(4));
+        assert_eq!(specialty_facility_of("friend"), None);
+        assert_eq!(specialty_facility_of("group"), None);
+        assert_eq!(specialty_facility_of(""), None);
     }
 
     #[test]

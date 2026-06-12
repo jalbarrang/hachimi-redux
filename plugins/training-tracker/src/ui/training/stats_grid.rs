@@ -4,7 +4,9 @@ use hachimi_plugin_sdk::egui;
 
 use crate::build_profile;
 use crate::course_data;
+use crate::gametora_data;
 use crate::memory_reader;
+use crate::overlay_cache;
 use crate::planner;
 use crate::recommend;
 use crate::stat_targets;
@@ -40,8 +42,37 @@ pub(super) fn plan_context(snap: &memory_reader::CareerSnapshot) -> planner::Pla
         current_turn: snap.current_turn,
         failure_rates: snap.failure_rates,
         stat_deficit: planner::stat_deficits(current, stat_targets::targets(), snap.stat_caps),
-        bond_pressure: Some(snap.per_facility_bond_pressure),
+        bond_pressure: Some(if planner::params().specialty_rainbow_gating {
+            specialty_gated_bond_pressure(snap)
+        } else {
+            snap.per_facility_bond_pressure
+        }),
     }
+}
+
+/// Re-aggregate per-facility near-rainbow pressure, counting a support only on its
+/// **own specialty** facility (where a rainbow can actually fire). Same soft-OR as
+/// the ungated value (`1 − ∏(1 − p_k)`), but restricted to on-specialty deck
+/// cards. Guests and pal/friend/group cards drop out (no deck-map / no specialty).
+/// Used only when `PlannerParams::specialty_rainbow_gating` is on.
+fn specialty_gated_bond_pressure(snap: &memory_reader::CareerSnapshot) -> [f32; 5] {
+    // `target_id` (deck slot 1..6) -> equipped support-card id.
+    let deck: std::collections::HashMap<i32, i32> = overlay_cache::equipped_support_ids().into_iter().collect();
+    let mut not_p = [1.0f32; 5];
+    for (&target_id, &(facility, pressure)) in &snap.partner_placements {
+        if facility >= 5 {
+            continue;
+        }
+        let Some(&card_id) = deck.get(&target_id) else {
+            continue; // guest / unknown deck slot
+        };
+        // Only the card's own specialty facility can rainbow it.
+        if gametora_data::support_specialty_facility(card_id as i64) != Some(facility) {
+            continue;
+        }
+        not_p[facility] *= 1.0 - pressure.clamp(0.0, 1.0);
+    }
+    std::array::from_fn(|i| (1.0 - not_p[i]).clamp(0.0, 1.0))
 }
 
 /// Build the objective/CM scoring context from the active build profile + target
