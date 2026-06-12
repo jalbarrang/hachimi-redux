@@ -234,6 +234,11 @@ pub struct ScoringContext<'a> {
     /// Total heal (basis points of max HP) of the player's planned recovery
     /// skills; lowers the stamina the scorer expects (see `cm_model`).
     pub recovery_heal_bp: f64,
+    /// Flat career-race stat bonus `[Speed, Stamina, Power, Guts, Wit]` for the
+    /// active scenario (see [`cm_model::scenario_race_bonus`]). Shifts the in-race
+    /// curve position so the scorer doesn't over-value Stamina mid-career. `[0; 5]`
+    /// for the Rank context (no scenario).
+    pub scenario_race_bonus: [i32; 5],
 }
 
 impl Default for ScoringContext<'_> {
@@ -248,6 +253,7 @@ impl Default for ScoringContext<'_> {
             strategy: Strategy::LateSurger,
             ground_condition: GroundCondition::Firm,
             recovery_heal_bp: 0.0,
+            scenario_race_bonus: [0; 5],
         }
     }
 }
@@ -407,6 +413,7 @@ fn cm_eval_delta(current: [i32; 5], gains: [i32; 5], caps: [i32; 5], targets: [i
             ctx.aptitudes,
             ctx.ground_condition,
             ctx.recovery_heal_bp,
+            ctx.scenario_race_bonus,
         );
         total += mv * useful as f64 * ctx.stat_weights[s] as f64;
     }
@@ -482,6 +489,7 @@ mod tests {
             strategy: Strategy::LateSurger,
             ground_condition: GroundCondition::Firm,
             recovery_heal_bp: 0.0,
+            scenario_race_bonus: [0; 5],
         }
     }
 

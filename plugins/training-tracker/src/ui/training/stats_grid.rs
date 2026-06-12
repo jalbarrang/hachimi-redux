@@ -64,6 +64,9 @@ pub(super) fn scoring_context(snap: &memory_reader::CareerSnapshot) -> recommend
         // stamina the Uma already covers.
         recovery_heal_bp: (crate::gametora_data::recovery_heal_bp_total(&profile.recovery_skill_ids)
             + crate::gametora_data::card_recovery_bp_total(snap.card_id as i64)) as f64,
+        // Career races add a flat per-scenario stat line in-race; fold it into the
+        // curve-position math so Stamina isn't over-valued mid-career.
+        scenario_race_bonus: crate::cm_model::scenario_race_bonus(snap.scenario_id),
     }
 }
 

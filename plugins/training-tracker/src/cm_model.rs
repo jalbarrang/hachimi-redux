@@ -477,6 +477,31 @@ fn logistic(x: f64) -> f64 {
     1.0 / (1.0 + (-x).exp())
 }
 
+/// Per-scenario career-race stat bonus `[Speed, Stamina, Power, Guts, Wit]`.
+///
+/// During career-mode races the game adds a flat stat line on top of the
+/// trainee's trained stats (post-career events — Team Trials, Champions Meeting
+/// — add nothing). The threshold math in [`stat_marginal_value`] must place us on
+/// the in-race curve using `raw + bonus`, otherwise the stamina survival knee
+/// sits ~bonus points too high and Stamina is over-valued mid-career.
+///
+/// Known values (extend as scenarios are verified):
+/// - `1` URA Finale: `+400` to every stat (confirmed).
+/// - `4` Trackblazer: assumed `+400` (unverified).
+///
+/// Unknown/other scenarios fall back to the URA line, mirroring the dashboard's
+/// `scenarioRaceBonus`. `0` (no/unknown scenario) yields no bonus so non-career
+/// scoring is unchanged.
+#[must_use]
+pub fn scenario_race_bonus(scenario_id: i32) -> [i32; 5] {
+    const URA: [i32; 5] = [400, 400, 400, 400, 400];
+    match scenario_id {
+        0 => [0; 5],
+        1 | 4 => URA,
+        _ => URA,
+    }
+}
+
 /// The race-value (uutil) of **one more point** of `stat`, given current stats,
 /// the target course, strategy and aptitudes. Threshold-aware: it bakes in the
 /// stamina survival floor, the 1200 soft-cap, the power "enough" knee, and the
@@ -489,18 +514,27 @@ pub fn stat_marginal_value(
     apt: Aptitudes,
     condition: GroundCondition,
     recovery_heal_bp: f64,
+    race_bonus: [i32; 5],
 ) -> f64 {
     // Soft/heavy ground (and dirt) applies a flat penalty to the effective
     // in-race speed/power, so a given target needs more *raw* stat to reach the
     // same curve position (soft cap / power knee shift up). The marginal
     // derivative is unchanged; only where we sit on the curve moves.
-    let speed =
-        (current[StatKind::Speed.index()] as f64 + ground_speed_modifier(course.surface, condition) as f64).max(1.0);
-    let stamina = current[StatKind::Stamina.index()] as f64;
-    let power =
-        (current[StatKind::Power.index()] as f64 + ground_power_modifier(course.surface, condition) as f64).max(1.0);
-    let guts = current[StatKind::Guts.index()] as f64;
-    let wit = current[StatKind::Wit.index()] as f64;
+    // Career-race scenario bonus: a flat line added to every stat in-race, so the
+    // curve position (survival floor, soft-caps, knees) is evaluated at `raw +
+    // bonus`. The marginal derivative w.r.t. a *raw* training point is unchanged
+    // (the bonus is a constant), so only where we sit on the curve shifts.
+    let speed = (current[StatKind::Speed.index()] as f64
+        + race_bonus[StatKind::Speed.index()] as f64
+        + ground_speed_modifier(course.surface, condition) as f64)
+        .max(1.0);
+    let stamina = current[StatKind::Stamina.index()] as f64 + race_bonus[StatKind::Stamina.index()] as f64;
+    let power = (current[StatKind::Power.index()] as f64
+        + race_bonus[StatKind::Power.index()] as f64
+        + ground_power_modifier(course.surface, condition) as f64)
+        .max(1.0);
+    let guts = current[StatKind::Guts.index()] as f64 + race_bonus[StatKind::Guts.index()] as f64;
+    let wit = current[StatKind::Wit.index()] as f64 + race_bonus[StatKind::Wit.index()] as f64;
 
     // Overcap halves marginal in-race value above 1200.
     let overcap = |v: f64| if v >= 1200.0 { 0.5 } else { 1.0 };
@@ -694,6 +728,7 @@ mod tests {
             },
             GroundCondition::Firm,
             0.0,
+            [0; 5],
         );
         let above = stat_marginal_value(
             StatKind::Speed,
@@ -706,6 +741,7 @@ mod tests {
             },
             GroundCondition::Firm,
             0.0,
+            [0; 5],
         );
         assert!(
             below > above,
@@ -731,6 +767,7 @@ mod tests {
             apt,
             GroundCondition::Firm,
             0.0,
+            [0; 5],
         );
         let satisfied = stat_marginal_value(
             StatKind::Stamina,
@@ -740,10 +777,62 @@ mod tests {
             apt,
             GroundCondition::Firm,
             0.0,
+            [0; 5],
         );
         assert!(
             deficient > satisfied * 3.0,
             "stamina must dominate below the floor ({deficient} vs {satisfied})"
+        );
+    }
+
+    #[test]
+    fn scenario_race_bonus_table_mirrors_dashboard() {
+        // URA (1) and Trackblazer (4) get the +400 line; 0 ⇒ no bonus.
+        assert_eq!(scenario_race_bonus(1), [400; 5]);
+        assert_eq!(scenario_race_bonus(4), [400; 5]);
+        assert_eq!(scenario_race_bonus(0), [0; 5]);
+        // Unknown scenarios fall back to the URA line (mirrors the web `?? URA`).
+        assert_eq!(scenario_race_bonus(99), [400; 5]);
+    }
+
+    #[test]
+    fn career_race_bonus_lowers_the_stamina_knee() {
+        // A stamina value that is below the *raw* survival floor but comfortably
+        // above it once the +400 career-race bonus is folded in. The bonus must
+        // move us past the knee, dropping Stamina's marginal value sharply.
+        let c = course(2400.0, Surface::Turf, vec![]);
+        let apt = Aptitudes {
+            distance_grade: 7,
+            surface_grade: 7,
+        };
+        let floor = stamina_survival_threshold(&c, Strategy::LateSurger, 400.0, 1100.0, 7, GroundCondition::Firm);
+        // ~150 under the raw floor: deficient on raw stats, but +400 clears it.
+        let stam = (floor - 150.0).max(50.0) as i32;
+        let current = [1100, stam, 800, 400, 600];
+        let raw = stat_marginal_value(
+            StatKind::Stamina,
+            current,
+            &c,
+            Strategy::LateSurger,
+            apt,
+            GroundCondition::Firm,
+            0.0,
+            [0; 5],
+        );
+        let career = stat_marginal_value(
+            StatKind::Stamina,
+            current,
+            &c,
+            Strategy::LateSurger,
+            apt,
+            GroundCondition::Firm,
+            0.0,
+            scenario_race_bonus(1),
+        );
+        assert!(
+            career < raw * 0.5,
+            "career race bonus should clear the stamina knee, cutting its value \
+             (raw {raw} vs career {career})"
         );
     }
 
@@ -762,6 +851,7 @@ mod tests {
             apt,
             GroundCondition::Firm,
             0.0,
+            [0; 5],
         );
         let high = stat_marginal_value(
             StatKind::Power,
@@ -771,6 +861,7 @@ mod tests {
             apt,
             GroundCondition::Firm,
             0.0,
+            [0; 5],
         );
         assert!(low > high, "power value should taper past the knee ({low} vs {high})");
     }
@@ -790,6 +881,7 @@ mod tests {
             apt,
             GroundCondition::Firm,
             0.0,
+            [0; 5],
         );
         let high = stat_marginal_value(
             StatKind::Wit,
@@ -799,6 +891,7 @@ mod tests {
             apt,
             GroundCondition::Firm,
             0.0,
+            [0; 5],
         );
         assert!(mid > 0.0 && high > 0.0, "wit always has positive value");
         assert!(mid > high, "wit has diminishing (not zero) returns");
@@ -822,6 +915,7 @@ mod tests {
             apt,
             GroundCondition::Firm,
             0.0,
+            [0; 5],
         );
         let speed = stat_marginal_value(
             StatKind::Speed,
@@ -831,6 +925,7 @@ mod tests {
             apt,
             GroundCondition::Firm,
             0.0,
+            [0; 5],
         );
         assert!(guts > 0.0);
         assert!(guts < speed, "guts should be a minor stat vs speed ({guts} vs {speed})");
@@ -869,6 +964,7 @@ mod tests {
             apt,
             GroundCondition::Firm,
             0.0,
+            [0; 5],
         );
         let heavy = stat_marginal_value(
             StatKind::Power,
@@ -878,6 +974,7 @@ mod tests {
             apt,
             GroundCondition::Heavy,
             0.0,
+            [0; 5],
         );
         assert!(
             heavy > firm,
@@ -903,6 +1000,7 @@ mod tests {
             apt,
             GroundCondition::Firm,
             0.0,
+            [0; 5],
         );
         let heavy = stat_marginal_value(
             StatKind::Speed,
@@ -912,6 +1010,7 @@ mod tests {
             apt,
             GroundCondition::Heavy,
             0.0,
+            [0; 5],
         );
         assert!(
             heavy > firm,
@@ -939,6 +1038,7 @@ mod tests {
             apt,
             GroundCondition::Firm,
             0.0,
+            [0; 5],
         );
         let power = stat_marginal_value(
             StatKind::Power,
@@ -948,6 +1048,7 @@ mod tests {
             apt,
             GroundCondition::Firm,
             0.0,
+            [0; 5],
         );
         assert!(speed > 0.0 && power > 0.0);
         assert!(
@@ -975,6 +1076,7 @@ mod tests {
             apt,
             GroundCondition::Firm,
             0.0,
+            [0; 5],
         );
         let satisfied = stat_marginal_value(
             StatKind::Guts,
@@ -984,6 +1086,7 @@ mod tests {
             apt,
             GroundCondition::Firm,
             0.0,
+            [0; 5],
         );
         assert!(
             starved > satisfied * 1.5,
@@ -1042,6 +1145,7 @@ mod tests {
             apt,
             GroundCondition::Firm,
             0.0,
+            [0; 5],
         );
         let big_rec = stat_marginal_value(
             StatKind::Stamina,
@@ -1051,6 +1155,7 @@ mod tests {
             apt,
             GroundCondition::Firm,
             4000.0,
+            [0; 5],
         );
         assert!(
             big_rec < no_rec,
