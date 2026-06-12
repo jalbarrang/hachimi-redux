@@ -8,7 +8,9 @@ use hachimi_telemetry::pb;
 use hachimi_telemetry::Channel;
 
 use crate::evaluation::Aptitudes;
-use crate::memory_reader::{AcquiredSkillInfo, CareerSnapshot, EvaluationInfo, ScenarioState, TrackblazerShop};
+use crate::memory_reader::{
+    AcquiredSkillInfo, CareerSnapshot, EvaluationInfo, ReservedRace, ScenarioState, TrackblazerShop,
+};
 use crate::skill_shop::SkillShopEntry;
 
 const SOURCE: &str = "training-tracker";
@@ -22,6 +24,7 @@ pub fn publish(
     skill_shop: &[SkillShopEntry],
     skill_points: Option<i32>,
     support_ids: &[(i32, i32)],
+    reserved_races: &[ReservedRace],
 ) {
     if !hachimi_telemetry::is_enabled() {
         return;
@@ -36,7 +39,16 @@ pub fn publish(
     }
 
     if hachimi_telemetry::channel_enabled(Channel::CareerExtras) {
-        let extras = extras_to_pb(skills, evaluations, skill_shop, skill_points, support_ids);
+        let placements = snapshot.map(|s| &s.partner_placements);
+        let extras = extras_to_pb(
+            skills,
+            evaluations,
+            skill_shop,
+            skill_points,
+            support_ids,
+            placements,
+            reserved_races,
+        );
         hachimi_telemetry::publish(SOURCE, pb::envelope::Payload::CareerExtras(extras));
     }
 }
@@ -151,6 +163,8 @@ fn extras_to_pb(
     skill_shop: &[SkillShopEntry],
     skill_points: Option<i32>,
     support_ids: &[(i32, i32)],
+    partner_placements: Option<&std::collections::HashMap<i32, (usize, f32)>>,
+    reserved_races: &[ReservedRace],
 ) -> pb::CareerExtras {
     pb::CareerExtras {
         skills: skills
@@ -163,13 +177,21 @@ fn extras_to_pb(
             .collect(),
         evaluations: evaluations
             .iter()
-            .map(|e| pb::Evaluation {
-                target_id: e.target_id,
-                value: e.value,
-                is_appear: e.is_appear,
-                name: e.name.clone(),
-                story_step: e.story_step,
-                guest_chara_id: e.guest_chara_id,
+            .map(|e| {
+                let (training_facility, bond_pressure) = partner_placements
+                    .and_then(|m| m.get(&e.target_id))
+                    .map(|(fac, p)| (Some(*fac as i32), Some(*p)))
+                    .unwrap_or((None, None));
+                pb::Evaluation {
+                    target_id: e.target_id,
+                    value: e.value,
+                    is_appear: e.is_appear,
+                    name: e.name.clone(),
+                    story_step: e.story_step,
+                    guest_chara_id: e.guest_chara_id,
+                    training_facility,
+                    bond_pressure,
+                }
             })
             .collect(),
         skill_shop: skill_shop
@@ -191,6 +213,13 @@ fn extras_to_pb(
         deck: support_ids
             .iter()
             .map(|&(slot, support_card_id)| pb::SupportSlot { slot, support_card_id })
+            .collect(),
+        reserved_races: reserved_races
+            .iter()
+            .map(|r| pb::ReservedRace {
+                year: r.year,
+                program_id: r.program_id,
+            })
             .collect(),
     }
 }
@@ -229,11 +258,23 @@ mod tests {
             level: 2,
             name: "Test".to_string(),
         }];
-        let extras = extras_to_pb(&skills, &[], &[], Some(500), &[(1, 30001), (2, 30002)]);
+        let reserved = [
+            ReservedRace {
+                year: 2,
+                program_id: 1001,
+            },
+            ReservedRace {
+                year: 3,
+                program_id: 1002,
+            },
+        ];
+        let extras = extras_to_pb(&skills, &[], &[], Some(500), &[(1, 30001), (2, 30002)], None, &reserved);
         assert_eq!(extras.skills.len(), 1);
         assert_eq!(extras.skills[0].master_id, 100);
         assert_eq!(extras.skill_points, Some(500));
         assert_eq!(extras.deck.len(), 2);
         assert_eq!(extras.deck[1].support_card_id, 30002);
+        assert_eq!(extras.reserved_races.len(), 2);
+        assert_eq!(extras.reserved_races[1].program_id, 1002);
     }
 }

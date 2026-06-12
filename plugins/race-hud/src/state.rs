@@ -22,6 +22,9 @@ pub struct RunnerRow {
     pub temptation: i8,
     /// `RaceSimulateHorseFrameData.BlockFrontHorseIndex` (≥0 → blocked in front).
     pub block_front: i8,
+    /// Game `RunningStyle` enum (0 unknown, 1 Front, 2 Pace, 3 Late, 4 End).
+    /// Constant per runner across the race; sourced from `HorseData`, not frames.
+    pub strategy: u8,
 }
 
 /// Latest sampled race state for the overlay.
@@ -73,6 +76,8 @@ struct State {
     names: Vec<String>,
     /// Player-owned flag by horse index (`HorseData.IsUser`).
     mine: Vec<bool>,
+    /// Running style (`HorseData.RunningStyle`) by horse index; 0 when unknown.
+    styles: Vec<u8>,
     /// Starting stamina by horse index (frame 0), HP-bar reference.
     initial_hp: Vec<u16>,
     live: Option<LiveSnapshot>,
@@ -115,6 +120,7 @@ pub fn set_decoded(
     decoded: Option<DecodedRace>,
     names: Vec<String>,
     mine: Vec<bool>,
+    styles: Vec<u8>,
 ) {
     // Side-channel telemetry: publish the full decoded race one-shot (no-op when
     // disabled). Done before moving the data into the locked state.
@@ -127,6 +133,7 @@ pub fn set_decoded(
     state.live = None;
     state.names = names;
     state.mine = mine;
+    state.styles = styles;
     match decoded {
         Some(d) => {
             // Starting stamina per horse index from the first frame (HP-bar reference).
@@ -220,6 +227,7 @@ pub fn sample_live(elapsed: f32) {
                 accel,
                 temptation: r.temptation,
                 block_front: r.block_front,
+                strategy: state.styles.get(i).copied().unwrap_or(0),
             }
         })
         .collect();

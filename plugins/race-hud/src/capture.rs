@@ -24,6 +24,10 @@ const SAMPLE_CADENCE: Duration = Duration::from_millis(100);
 static ORIG_GET_RACE_TRACK_ID: AtomicUsize = AtomicUsize::new(0);
 static SIMDATA_FIELD_INFO: AtomicUsize = AtomicUsize::new(0);
 static RACE_INFO_HOOK_ADDR: AtomicUsize = AtomicUsize::new(0);
+// `RaceInfo.get_CourseDistance` → the authoritative official course distance (m).
+// Used to override the frame-derived race length, which over-runs the finish.
+static COURSE_DIST_FN: AtomicUsize = AtomicUsize::new(0);
+static COURSE_DIST_MI: AtomicUsize = AtomicUsize::new(0);
 
 // ── Runner names (resolved, not hooked) ──
 static RACE_HORSE_FN: AtomicUsize = AtomicUsize::new(0);
@@ -34,6 +38,10 @@ static CHARANAME_MI: AtomicUsize = AtomicUsize::new(0);
 // team races, their trainee in single mode).
 static ISUSER_FN: AtomicUsize = AtomicUsize::new(0);
 static ISUSER_MI: AtomicUsize = AtomicUsize::new(0);
+// `HorseData.get_RunningStyle` → the runner's running style (Nige/Senko/Sashi/
+// Oikomi). Best-effort: empty styles when the accessor is unavailable.
+static RUNSTYLE_FN: AtomicUsize = AtomicUsize::new(0);
+static RUNSTYLE_MI: AtomicUsize = AtomicUsize::new(0);
 
 // ── RaceManager live hook ──
 static ORIG_GET_ELAPSED: AtomicUsize = AtomicUsize::new(0);
@@ -48,6 +56,11 @@ type GetRaceTrackIdFn = extern "C" fn(this: *mut Il2CppObject, method: *const Me
 type GetSingleFn = extern "C" fn(this: *mut Il2CppObject, method: *const MethodInfo) -> f32;
 type GetObjFn = extern "C" fn(this: *mut Il2CppObject, method: *const MethodInfo) -> *mut c_void;
 type GetBoolFn = extern "C" fn(this: *mut Il2CppObject, method: *const MethodInfo) -> u8;
+type GetI32Fn = extern "C" fn(this: *mut Il2CppObject, method: *const MethodInfo) -> i32;
+// `Gallop.RaceDefine.RunningStyle` is a System.Byte-backed enum, so its getter
+// returns a single byte (read as u8, not i32 — the upper bits are not part of
+// the return value).
+type GetByteFn = extern "C" fn(this: *mut Il2CppObject, method: *const MethodInfo) -> u8;
 
 // ─────────────────────────── RaceInfo / SimData ───────────────────────────
 
@@ -87,13 +100,27 @@ fn capture_simdata(race_info: *mut Il2CppObject) {
         return;
     }
 
-    let decoded = read_il2cpp_string(simdata_str).and_then(|b64| match crate::sim::decode_full(&b64) {
+    let mut decoded = read_il2cpp_string(simdata_str).and_then(|b64| match crate::sim::decode_full(&b64) {
         Ok(d) => Some(d),
         Err(e) => {
             hlog_warn!(target: "race-hud", "SimData decode failed: {}", e);
             None
         }
     });
+
+    // Replace the frame-derived race length (leader's distance in the final frame,
+    // which over-runs the finish line) with the authoritative course distance read
+    // straight from RaceInfo. Best-effort: keep the frame value if unavailable.
+    if let (Some(d), Some(official)) = (decoded.as_mut(), course_distance(race_info)) {
+        if (d.summary.race_length_m - official as f32).abs() > 0.5 {
+            hlog_info!(
+                target: "race-hud",
+                "Race length: {}m official (frame-derived {:.0}m)",
+                official, d.summary.race_length_m
+            );
+        }
+        d.summary.race_length_m = official as f32;
+    }
 
     match &decoded {
         Some(d) => hlog_info!(
@@ -114,29 +141,44 @@ fn capture_simdata(race_info: *mut Il2CppObject) {
     }
 
     let count = decoded.as_ref().map_or(0, |d| d.summary.horse_num.max(0) as usize);
-    let (names, mine) = read_horse_meta(race_info, count);
+    let (names, mine, styles) = read_horse_meta(race_info, count);
 
-    crate::state::set_decoded(race_info as usize, len, decoded, names, mine);
+    crate::state::set_decoded(race_info as usize, len, decoded, names, mine, styles);
     *LAST_SAMPLE.lock().expect("race-hud sample lock poisoned") = None;
     FIRST_SAMPLE_LOGGED.store(false, Ordering::Release);
+}
+
+/// Read `RaceInfo.get_CourseDistance()` (resolved, not hooked): the official course
+/// distance in meters, or `None` if the accessor is unavailable or returns a
+/// non-positive value.
+fn course_distance(race_info: *mut Il2CppObject) -> Option<i32> {
+    let addr = COURSE_DIST_FN.load(Ordering::Acquire);
+    if addr == 0 {
+        return None;
+    }
+    // SAFETY: resolved 0-arg `RaceInfo.get_CourseDistance` returning Int32 on the
+    // live RaceInfo passed into the get_RaceTrackId hook.
+    let f: GetI32Fn = unsafe { std::mem::transmute(addr) };
+    let m = f(race_info, COURSE_DIST_MI.load(Ordering::Acquire) as *const MethodInfo);
+    (m > 0).then_some(m)
 }
 
 /// Read per-runner metadata via `RaceInfo.get_RaceHorse()` (HorseData[] in
 /// horse-index order): the `charaName` and whether the horse belongs to the
 /// player (`HorseData.get_IsUser`). Either vec is empty if its accessor is
 /// unavailable; the `mine` vec is empty when the player flag can't be read.
-fn read_horse_meta(race_info: *mut Il2CppObject, count: usize) -> (Vec<String>, Vec<bool>) {
+fn read_horse_meta(race_info: *mut Il2CppObject, count: usize) -> (Vec<String>, Vec<bool>, Vec<u8>) {
     let arr_fn = RACE_HORSE_FN.load(Ordering::Acquire);
     let name_fn = CHARANAME_FN.load(Ordering::Acquire);
     if arr_fn == 0 || count == 0 {
-        return (Vec::new(), Vec::new());
+        return (Vec::new(), Vec::new(), Vec::new());
     }
 
     // SAFETY: resolved 0-arg getter on the live RaceInfo; returns a HorseData[].
     let get_race_horse: GetObjFn = unsafe { std::mem::transmute(arr_fn) };
     let arr = get_race_horse(race_info, RACE_HORSE_MI.load(Ordering::Acquire) as *const MethodInfo);
     if arr.is_null() {
-        return (Vec::new(), Vec::new());
+        return (Vec::new(), Vec::new(), Vec::new());
     }
 
     // SZ array layout (64-bit): [klass][monitor][bounds][usize max_length][elems...]
@@ -149,14 +191,23 @@ fn read_horse_meta(race_info: *mut Il2CppObject, count: usize) -> (Vec<String>, 
 
     let isuser_fn = ISUSER_FN.load(Ordering::Acquire);
     let isuser_mi = ISUSER_MI.load(Ordering::Acquire) as *const MethodInfo;
+    let runstyle_fn = RUNSTYLE_FN.load(Ordering::Acquire);
+    let runstyle_mi = RUNSTYLE_MI.load(Ordering::Acquire) as *const MethodInfo;
     // SAFETY: resolved 0-arg `HorseData.get_charaName` returning an Il2CppString.
     let get_chara_name: GetObjFn = unsafe { std::mem::transmute(name_fn) };
     let name_mi = CHARANAME_MI.load(Ordering::Acquire) as *const MethodInfo;
     // SAFETY: resolved 0-arg `HorseData.get_IsUser` returning a Boolean.
     let get_is_user: Option<GetBoolFn> = (isuser_fn != 0).then(|| unsafe { std::mem::transmute(isuser_fn) });
+    // SAFETY: resolved 0-arg `HorseData.get_RunningStyle` returning a Byte enum.
+    let get_run_style: Option<GetByteFn> = (runstyle_fn != 0).then(|| unsafe { std::mem::transmute(runstyle_fn) });
 
     let mut names = Vec::with_capacity(n);
     let mut mine = if get_is_user.is_some() {
+        Vec::with_capacity(n)
+    } else {
+        Vec::new()
+    };
+    let mut styles = if get_run_style.is_some() {
         Vec::with_capacity(n)
     } else {
         Vec::new()
@@ -177,8 +228,17 @@ fn read_horse_meta(race_info: *mut Il2CppObject, count: usize) -> (Vec<String>, 
             let owned = !horse.is_null() && is_user(horse, isuser_mi) != 0;
             mine.push(owned);
         }
+        if let Some(run_style) = get_run_style {
+            // RunningStyle enum: 0 None/unknown, 1 Nige, 2 Senko, 3 Sashi, 4 Oikomi.
+            let style = if horse.is_null() {
+                0
+            } else {
+                run_style(horse, runstyle_mi)
+            };
+            styles.push(style);
+        }
     }
-    (names, mine)
+    (names, mine, styles)
 }
 
 /// Read the length field of an `Il2CppString`. Layout on 64-bit:
@@ -294,6 +354,19 @@ fn install_race_info(sdk: &Sdk, image: *const Il2CppImage) -> bool {
         }
     }
 
+    // Official course distance accessor (best-effort; falls back to the frame-
+    // derived race length when unavailable).
+    match sdk.get_method_addr(class, "get_CourseDistance", 0) {
+        Some(addr) => COURSE_DIST_FN.store(addr as usize, Ordering::Release),
+        None => hlog_warn!(
+            target: "race-hud",
+            "RaceInfo.get_CourseDistance not found; race length stays frame-derived"
+        ),
+    }
+    if let Some(mi) = sdk.get_method(class, "get_CourseDistance", 0) {
+        COURSE_DIST_MI.store(mi as usize, Ordering::Release);
+    }
+
     // Runner-name accessors (best-effort; live feed still works without names).
     if let Some(addr) = sdk.get_method_addr(class, "get_RaceHorse", 0) {
         RACE_HORSE_FN.store(addr as usize, Ordering::Release);
@@ -313,6 +386,18 @@ fn install_race_info(sdk: &Sdk, image: *const Il2CppImage) -> bool {
         }
         if let Some(mi) = sdk.get_method(hd, "get_IsUser", 0) {
             ISUSER_MI.store(mi as usize, Ordering::Release);
+        }
+        // Running style (per-runner strategy). Best-effort: the live feed + telemetry
+        // still work without it (strategy emitted as 0/unknown).
+        match sdk.get_method_addr(hd, "get_RunningStyle", 0) {
+            Some(addr) => RUNSTYLE_FN.store(addr as usize, Ordering::Release),
+            None => hlog_warn!(
+                target: "race-hud",
+                "HorseData.get_RunningStyle not found; runner strategy will be unknown"
+            ),
+        }
+        if let Some(mi) = sdk.get_method(hd, "get_RunningStyle", 0) {
+            RUNSTYLE_MI.store(mi as usize, Ordering::Release);
         }
     }
 

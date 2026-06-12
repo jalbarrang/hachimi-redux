@@ -138,6 +138,7 @@ mod tests {
                     accel: 0.25,
                     kakari: true,
                     blocked: false,
+                    strategy: 2,
                 }],
             })),
         };

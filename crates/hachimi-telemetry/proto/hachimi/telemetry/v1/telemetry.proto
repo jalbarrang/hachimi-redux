@@ -100,6 +100,10 @@ message Evaluation {
   string name = 4;
   int32 story_step = 5;
   int32 guest_chara_id = 6;
+  // Training preview this turn: facility slot 0=Speed..4=Wit; unset = not present.
+  optional int32 training_facility = 7;
+  // Per-character near-rainbow bond pressure 0..1 at that facility.
+  optional float bond_pressure = 8;
 }
 
 message SkillShopEntry {
@@ -120,12 +124,23 @@ message SupportSlot {
   int32 support_card_id = 2;
 }
 
+// A race the player has reserved/scheduled in SingleMode (the in-game "agenda").
+// Mirrors Gallop.SingleModeReservedRace. `program_id` resolves to the concrete
+// race (name/grade/distance/turn) via master data on the dashboard side.
+message ReservedRace {
+  int32 year = 1;
+  int32 program_id = 2;
+}
+
 message CareerExtras {
   repeated AcquiredSkill skills = 1;
   repeated Evaluation evaluations = 2;
   repeated SkillShopEntry skill_shop = 3;
   optional int32 skill_points = 4;
   repeated SupportSlot deck = 5;
+  // Player-reserved races (the in-game agenda), in deck order. Empty when none
+  // are reserved or the data is unavailable.
+  repeated ReservedRace reserved_races = 6;
 }
 
 // ---------------------------------------------------------------------------
@@ -143,6 +158,9 @@ message RunnerRow {
   float accel = 7;      // m/s^2
   bool kakari = 8;      // temptation != 0
   bool blocked = 9;     // block_front >= 0
+  // Game RunningStyle enum: 0 unknown, 1 Front (Nige), 2 Pace (Senko),
+  // 3 Late (Sashi), 4 End (Oikomi). Constant per runner across the race.
+  uint32 strategy = 10;
 }
 
 message RaceLiveFrame {

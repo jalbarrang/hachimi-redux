@@ -128,6 +128,14 @@ extern "C" fn refresh_cache_cb() {
         EVAL_DIAG_LOGGED.store(false, AtomicOrdering::Relaxed);
     }
 
+    // Player-reserved races (the in-game agenda) for telemetry only — not cached,
+    // since the overlay UI does not surface it. Cheap POD reads, career-gated.
+    let reserved_races = if is_playing {
+        memory_reader::read_reserved_races()
+    } else {
+        Vec::new()
+    };
+
     // Side-channel telemetry (no-op when disabled). Publish before moving the
     // freshly-read data into CACHE.
     crate::telemetry::publish(
@@ -137,6 +145,7 @@ extern "C" fn refresh_cache_cb() {
         &skill_shop,
         skill_points,
         &support_ids,
+        &reserved_races,
     );
 
     if let Ok(mut guard) = CACHE.lock() {

@@ -74,6 +74,7 @@ fn row_to_pb(r: &RunnerRow) -> pb::RunnerRow {
         accel: r.accel,
         kakari: r.temptation != 0,
         blocked: r.block_front >= 0,
+        strategy: u32::from(r.strategy),
     }
 }
 
@@ -93,6 +94,7 @@ mod tests {
             accel: 0.3,
             temptation: 1,
             block_front: 3,
+            strategy: 3,
         };
         let pb = row_to_pb(&row);
         assert_eq!(pb.rank, 2);
@@ -100,6 +102,7 @@ mod tests {
         assert_eq!(pb.speed_raw, 1800);
         assert!(pb.kakari);
         assert!(pb.blocked);
+        assert_eq!(pb.strategy, 3);
     }
 
     #[test]
@@ -114,9 +117,11 @@ mod tests {
             accel: 0.0,
             temptation: 0,
             block_front: -1,
+            strategy: 0,
         };
         let pb = row_to_pb(&row);
         assert!(!pb.kakari);
         assert!(!pb.blocked);
+        assert_eq!(pb.strategy, 0);
     }
 }
