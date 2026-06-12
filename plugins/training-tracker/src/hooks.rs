@@ -10,6 +10,15 @@ use std::ffi::c_void;
 use hachimi_plugin_abi::event;
 use hachimi_plugin_sdk::Sdk;
 
+/// Fired once per rendered frame on the render thread (`data` is null). Drive the
+/// overlay-cache refresh here so career snapshots are read/published even when the
+/// tracker overlay (or any of its tabs) is not being drawn. The refresh itself is
+/// throttled to [`crate::overlay_cache::AUTO_REFRESH_INTERVAL_MS`] and is a no-op
+/// when tracking is off, so calling it every frame is cheap.
+extern "C" fn on_frame(_event_id: u32, _data: *const c_void, _userdata: *mut c_void) {
+    crate::overlay_cache::maybe_request_refresh();
+}
+
 /// Fired before the host unloads this plugin (or on process detach). Remove every
 /// IL2CPP hook we installed so the host can safely free the DLL (UNLOADABLE).
 extern "C" fn on_shutdown(_event_id: u32, _data: *const c_void, _userdata: *mut c_void) {
@@ -29,5 +38,6 @@ pub fn subscribe_events() -> bool {
         return false;
     }
     sdk.on(event::SHUTDOWN, on_shutdown, std::ptr::null_mut());
+    sdk.on(event::FRAME, on_frame, std::ptr::null_mut());
     true
 }
