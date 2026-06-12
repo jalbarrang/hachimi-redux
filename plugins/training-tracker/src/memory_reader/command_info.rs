@@ -173,8 +173,7 @@ unsafe fn read_training_horses(ti: *mut c_void) -> Vec<(i32, f32, bool)> {
             if m_target_id.is_null() || m_value.is_null() {
                 continue;
             }
-            let is_guest = resolve_obj_method(horse, "get_IsGuest", 0)
-                .is_some_and(|m| call_bool(horse, m));
+            let is_guest = resolve_obj_method(horse, "get_IsGuest", 0).is_some_and(|m| call_bool(horse, m));
             let target_id = call_i32(eval, m_target_id);
             let bond = call_i32(eval, m_value);
             out.push((target_id, crate::planner::near_rainbow_pressure(bond), is_guest));
