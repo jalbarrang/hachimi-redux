@@ -68,10 +68,15 @@ extern "C" fn draw_overlay(ui: *mut c_void, _userdata: *mut c_void) {
 fn draw_overlay_inner(ui: &mut egui::Ui) {
     let tracking = memory_reader::TRACKING.load(Ordering::Relaxed);
 
-    // Drive a uniform content zoom from the panel width: resizing the window
-    // scales the whole panel (font + spacing) instead of scrolling/reflowing.
-    overlay::apply_scale(ui);
-    ui.set_min_width(constants::OVERLAY_MIN_WIDTH);
+    // Fixed content width (× zoom), auto height. Pinning both min and max width
+    // bounds `available_width`, which the Career panel uses to size its full-width
+    // section strips / columns — without this the host's auto-sizing window and
+    // those width-following elements feed back into each other and the overlay
+    // grows without bound. Zoom scales the whole panel (font + spacing + width).
+    let scale = overlay::apply_scale(ui);
+    let width = constants::OVERLAY_BASE_WIDTH * scale;
+    ui.set_min_width(width);
+    ui.set_max_width(width);
 
     if !overlay::draw_shell(ui, tracking) {
         return;

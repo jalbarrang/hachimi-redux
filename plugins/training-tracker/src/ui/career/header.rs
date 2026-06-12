@@ -11,39 +11,40 @@ use crate::gametora_data;
 use crate::memory_reader::{self, CareerSnapshot};
 use crate::rank_table;
 
-const PORTRAIT: f32 = 72.0;
+const PORTRAIT: f32 = 56.0;
 
 pub(super) fn draw(ui: &mut egui::Ui, snap: &CareerSnapshot) {
-    ui.horizontal_top(|ui| {
-        identity(ui, snap);
-        // Push the condition cluster to the right edge.
-        ui.with_layout(egui::Layout::right_to_left(egui::Align::TOP), |ui| {
-            condition(ui, snap);
-        });
-    });
+    // Narrow column: identity row (portrait + name/outfit/stars), then the
+    // condition pills wrapped beneath. Stacking avoids squeezing the name.
+    identity(ui, snap);
+    ui.add_space(6.0);
+    condition(ui, snap);
 }
 
 fn identity(ui: &mut egui::Ui, snap: &CareerSnapshot) {
-    ui.vertical(|ui| {
-        portrait_with_badge(ui, snap);
-        if let Some(ev) = snap.evaluation_value {
-            ui.vertical_centered(|ui| {
-                ui.label(RichText::new(group_thousands(ev)).strong().color(theme::FG_MUTED));
-            });
-        }
-    });
-    ui.add_space(10.0);
-    ui.vertical(|ui| {
-        ui.add_space(6.0);
-        let card = gametora_data::character_card(snap.card_id as i64);
-        let name = card
-            .and_then(|c| c.name_en.clone().or_else(|| c.name_jp.clone()))
-            .unwrap_or_else(|| format!("#{}", snap.card_id));
-        ui.label(RichText::new(name).size(18.0).strong().color(theme::FG));
-        ui.horizontal(|ui| {
+    ui.horizontal(|ui| {
+        ui.vertical(|ui| {
+            portrait_with_badge(ui, snap);
+            if let Some(ev) = snap.evaluation_value {
+                ui.add_sized(
+                    [PORTRAIT, 0.0],
+                    egui::Label::new(RichText::new(group_thousands(ev)).strong().color(theme::FG_MUTED)),
+                );
+            }
+        });
+        ui.add_space(8.0);
+        ui.vertical(|ui| {
+            ui.add_space(4.0);
+            let card = gametora_data::character_card(snap.card_id as i64);
+            let name = card
+                .and_then(|c| c.name_en.clone().or_else(|| c.name_jp.clone()))
+                .unwrap_or_else(|| format!("#{}", snap.card_id));
+            ui.add(egui::Label::new(RichText::new(name).size(16.0).strong().color(theme::FG)).truncate());
             if let Some(outfit) = card.and_then(|c| c.title_en_gl.clone().or_else(|| c.title_jp.clone())) {
                 if !outfit.is_empty() {
-                    ui.label(RichText::new(outfit).size(12.0).strong().color(theme::FG_MUTED));
+                    ui.add(
+                        egui::Label::new(RichText::new(outfit).size(11.0).strong().color(theme::FG_MUTED)).truncate(),
+                    );
                 }
             }
             stars(ui, snap.star.clamp(0, 5));
@@ -122,11 +123,10 @@ fn stars(ui: &mut egui::Ui, value: i32) {
 }
 
 fn condition(ui: &mut egui::Ui, snap: &CareerSnapshot) {
-    // right_to_left layout: add from the right; reverse visual order by stacking
-    // vertically instead so the cluster reads top-down like the web.
-    ui.vertical(|ui| {
-        let (year, date) = career_meta::turn_date(snap.current_turn, snap.scenario_id);
+    let (year, date) = career_meta::turn_date(snap.current_turn, snap.scenario_id);
+    ui.horizontal_wrapped(|ui| {
         theme::pill(ui, |ui| {
+            ui.spacing_mut().item_spacing.x = 4.0;
             ui.label(RichText::new(year).strong().color(theme::UMA_300));
             ui.label(RichText::new("·").color(theme::FG_DIM));
             ui.label(RichText::new(date).strong().color(theme::FG));
@@ -137,12 +137,8 @@ fn condition(ui: &mut egui::Ui, snap: &CareerSnapshot) {
                     .color(theme::FG_MUTED),
             );
         });
-        ui.add_space(6.0);
-        ui.horizontal(|ui| {
-            energy_pill(ui, snap);
-            ui.add_space(6.0);
-            mood_pill(ui, snap);
-        });
+        energy_pill(ui, snap);
+        mood_pill(ui, snap);
     });
 }
 

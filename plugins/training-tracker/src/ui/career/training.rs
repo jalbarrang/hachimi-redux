@@ -24,15 +24,16 @@ pub(super) fn draw(ui: &mut egui::Ui, snap: &CareerSnapshot) {
         .show(ui, |ui| {
             egui::Grid::new("tt_career_training")
                 .num_columns(6)
-                .spacing([14.0, 6.0])
-                .min_col_width(48.0)
+                .spacing([6.0, 5.0])
+                .min_col_width(26.0)
                 .show(ui, |ui| {
-                    // Header: blank corner + facility columns (icon + name + L#).
+                    // Header: blank corner + facility columns (stat icon + level).
+                    // The icon identifies the stat — names don't fit a 250px column.
                     ui.label("");
                     for (i, name) in FACILITIES.iter().enumerate() {
-                        ui.horizontal(|ui| {
-                            textures::image_square(ui, &career_meta::stat_icon_path(i), 14.0, Color32::WHITE);
-                            ui.label(RichText::new(*name).strong().color(theme::FG_MUTED));
+                        let resp = ui.horizontal(|ui| {
+                            ui.spacing_mut().item_spacing.x = 2.0;
+                            textures::image_square(ui, &career_meta::stat_icon_path(i), 13.0, Color32::WHITE);
                             ui.label(
                                 RichText::new(format!("L{}", snap.training_levels[i]))
                                     .small()
@@ -40,16 +41,17 @@ pub(super) fn draw(ui: &mut egui::Ui, snap: &CareerSnapshot) {
                                     .color(theme::UMA_400),
                             );
                         });
+                        resp.response.on_hover_text(*name);
                     }
                     ui.end_row();
 
-                    // Stat: rank sprite + value + /1200.
+                    // Stat: rank sprite + value.
                     ui.label(RichText::new("Stat").strong().color(theme::FG));
                     for &v in &stats {
                         ui.horizontal(|ui| {
-                            textures::image_square(ui, &career_meta::stat_rank_sprite(v), 22.0, Color32::WHITE);
+                            ui.spacing_mut().item_spacing.x = 2.0;
+                            textures::image_square(ui, &career_meta::stat_rank_sprite(v), 16.0, Color32::WHITE);
                             ui.label(RichText::new(v.to_string()).strong().color(theme::FG));
-                            ui.label(RichText::new("/1200").small().color(theme::FG_DIM));
                         });
                     }
                     ui.end_row();

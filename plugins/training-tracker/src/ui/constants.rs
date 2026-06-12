@@ -2,7 +2,9 @@
 
 /// Default overlay font size.
 pub(super) const OVERLAY_FONT_SIZE: f32 = 12.0;
-pub(super) const OVERLAY_MIN_WIDTH: f32 = 340.0;
+/// Fixed overlay content width at zoom 1.0 (points). The panel is a fixed-width
+/// column with auto height; the zoom slider scales this (and the fonts/spacing).
+pub(super) const OVERLAY_BASE_WIDTH: f32 = 250.0;
 /// Minimum height for scrollable lists (Skills/Shop tabs, Bonds section) when the
 /// panel is small, in points. Lists otherwise grow to fill the resizable panel.
 pub(super) const MIN_LIST_HEIGHT: f32 = 80.0;
