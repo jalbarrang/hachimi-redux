@@ -36,8 +36,16 @@ static CACHE: Mutex<OverlayCache> = Mutex::new(OverlayCache {
     support_ids: Vec::new(),
 });
 static PENDING: AtomicBool = AtomicBool::new(false);
+/// Wall-clock (ms) when the in-flight refresh was scheduled; drives the staleness
+/// watchdog so a callback scheduled but never run to completion can't wedge
+/// `PENDING` true and freeze the overlay on "Loading career data".
+static PENDING_SINCE_MS: AtomicU64 = AtomicU64::new(0);
 static LAST_REFRESH_MS: AtomicU64 = AtomicU64::new(0);
 static SHUTTING_DOWN: AtomicBool = AtomicBool::new(false);
+
+/// If a scheduled refresh hasn't completed within this window, treat it as lost
+/// and allow a fresh one to be scheduled.
+const PENDING_STALE_MS: u64 = 5000;
 
 fn now_ms() -> u64 {
     SystemTime::now()
@@ -65,8 +73,14 @@ fn schedule_refresh() {
         return;
     }
     if PENDING.swap(true, AtomicOrdering::AcqRel) {
-        return;
+        // Already pending: coalesce, unless the in-flight refresh looks lost
+        // (scheduled long ago, never completed) — then fall through to reschedule.
+        let since = PENDING_SINCE_MS.load(AtomicOrdering::Relaxed);
+        if since == 0 || now_ms().saturating_sub(since) < PENDING_STALE_MS {
+            return;
+        }
     }
+    PENDING_SINCE_MS.store(now_ms(), AtomicOrdering::Relaxed);
     Sdk::get().schedule_on_main_thread(refresh_cache_cb);
 }
 
@@ -75,6 +89,25 @@ extern "C" fn refresh_cache_cb() {
         PENDING.store(false, AtomicOrdering::Release);
         return;
     }
+    // Run the (panic-prone) IL2CPP reads + telemetry behind a catch so a single
+    // bad frame can never unwind across this `extern "C"` boundary nor wedge the
+    // refresh loop. If we didn't reset PENDING here, a panic mid-callback would
+    // leave PENDING stuck `true`, blocking every future refresh and freezing the
+    // overlay on "Loading career data\u2026" (see the get_Character-null career-start
+    // window). PENDING/LAST_REFRESH are always restored, panic or not.
+    if let Err(e) = std::panic::catch_unwind(refresh_cache_inner) {
+        let msg = e
+            .downcast_ref::<&str>()
+            .map(|s| (*s).to_string())
+            .or_else(|| e.downcast_ref::<String>().cloned())
+            .unwrap_or_else(|| "<non-string panic>".to_string());
+        hlog_error!("refresh_cache_cb PANICKED: {msg} \u{2014} overlay refresh recovered for next frame");
+    }
+    LAST_REFRESH_MS.store(now_ms(), AtomicOrdering::Relaxed);
+    PENDING.store(false, AtomicOrdering::Release);
+}
+
+fn refresh_cache_inner() {
     let mut snapshot = memory_reader::read_snapshot();
     let skills = memory_reader::read_acquired_skills();
     let evaluations = memory_reader::read_evaluations();
@@ -136,10 +169,22 @@ extern "C" fn refresh_cache_cb() {
         Vec::new()
     };
 
-    // Side-channel telemetry (no-op when disabled). Publish before moving the
-    // freshly-read data into CACHE.
+    // Populate the overlay cache FIRST, so the UI always has fresh data even if
+    // the side-channel telemetry below panics. Clone the bits telemetry needs.
+    let snap_for_pub = snapshot.clone();
+    if let Ok(mut guard) = CACHE.lock() {
+        guard.snapshot = snapshot;
+        guard.skills = skills.clone();
+        guard.evaluations = evaluations.clone();
+        guard.skill_shop = skill_shop.clone();
+        guard.skill_points = skill_points;
+        guard.support_ids = support_ids.clone();
+    }
+
+    // Side-channel telemetry (no-op when disabled). Runs after the cache store so a
+    // telemetry failure can't stall the overlay; the outer catch_unwind contains it.
     crate::telemetry::publish(
-        snapshot.as_ref(),
+        snap_for_pub.as_ref(),
         &skills,
         &evaluations,
         &skill_shop,
@@ -147,18 +192,6 @@ extern "C" fn refresh_cache_cb() {
         &support_ids,
         &reserved_races,
     );
-
-    if let Ok(mut guard) = CACHE.lock() {
-        guard.snapshot = snapshot;
-        guard.skills = skills;
-        guard.evaluations = evaluations;
-        guard.skill_shop = skill_shop;
-        guard.skill_points = skill_points;
-        guard.support_ids = support_ids;
-    }
-
-    LAST_REFRESH_MS.store(now_ms(), AtomicOrdering::Relaxed);
-    PENDING.store(false, AtomicOrdering::Release);
 }
 
 /// One-shot per career: dump the (safe, already-read) evaluation rows so the
@@ -259,6 +292,7 @@ pub fn skill_points() -> Option<i32> {
 pub fn shutdown() {
     SHUTTING_DOWN.store(true, AtomicOrdering::Release);
     PENDING.store(false, AtomicOrdering::Release);
+    PENDING_SINCE_MS.store(0, AtomicOrdering::Release);
     LAST_REFRESH_MS.store(0, AtomicOrdering::Release);
 }
 
