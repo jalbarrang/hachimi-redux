@@ -14,6 +14,7 @@ mod bond_progress;
 // scorer (cm-scoring-refactor) and UI; stat_targets + config use the rest now.
 #[allow(dead_code)]
 mod build_profile;
+mod career_meta;
 mod chara_effects;
 mod class_dump;
 // Foundation module: the public API is consumed by the CM-objective scorer

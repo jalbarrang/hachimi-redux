@@ -286,6 +286,26 @@ if (Test-Path -LiteralPath $CourseParamsSrc) {
   Write-Host "  (course_params.json missing; run: cargo run -p fetch-master-db; cargo run -p course-data)" -ForegroundColor Yellow
 }
 
+# Career-panel icon sprites (trainee portraits, rank sprites, stat/skill icons).
+# These are the game UI sprites the honse-tracker dashboard already extracted; the
+# overlay loads them on demand from <GameDir>\hachimi\icons via host_data_path.
+# Source defaults to the sibling honse-tracker checkout; override with
+# $env:HONSE_ICONS_DIR. ~16 MB; only the active frame's handful are loaded.
+$IconsSrc = if ($env:HONSE_ICONS_DIR) { $env:HONSE_ICONS_DIR } else {
+  Join-Path $PSScriptRoot "..\..\honse-tracker\apps\web\public\icons"
+}
+if (Test-Path -LiteralPath $IconsSrc -PathType Container) {
+  $IconsDest = Join-Path $DataDir 'icons'
+  if (-not (Test-Path -LiteralPath $IconsDest -PathType Container)) {
+    New-Item -ItemType Directory -Path $IconsDest -Force | Out-Null
+  }
+  Copy-Item -Path (Join-Path $IconsSrc '*') -Destination $IconsDest -Recurse -Force
+  $IconCount = (Get-ChildItem -LiteralPath $IconsDest -Recurse -File | Measure-Object).Count
+  Write-Host "  icons ($IconCount files)  ->  hachimi\icons\"
+} else {
+  Write-Host "  (career icons missing; set `$env:HONSE_ICONS_DIR or clone honse-tracker beside this repo)" -ForegroundColor Yellow
+}
+
 Write-Host ""
 Write-Host "Done. Ensure config.json lists the plugins under windows.load_libraries:" -ForegroundColor Cyan
 Write-Host '  "load_libraries": ["hachimi_training_tracker.dll", "hachimi_debug_viewer.dll", "hachimi_race_hud.dll"]'

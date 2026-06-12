@@ -13,6 +13,7 @@ use hachimi_plugin_sdk::{egui, ui_from_ptr, Sdk};
 use crate::memory_reader;
 
 mod bonds;
+mod career;
 mod constants;
 // Race-condition icon toggles (weather/season/time). Currently hidden from the
 // UI per product decision; kept dormant so it can be re-enabled cheaply.
@@ -24,6 +25,7 @@ mod scenario;
 mod skill_shop_tab;
 mod skills;
 mod snapshot;
+mod textures;
 mod training;
 mod util;
 
@@ -76,6 +78,7 @@ fn draw_overlay_inner(ui: &mut egui::Ui) {
     }
 
     match crate::tabs::selected_tab() {
+        crate::tabs::Tab::Career => career::draw_tab(ui),
         crate::tabs::Tab::Training => training::draw(ui),
         crate::tabs::Tab::Skills => skills::draw(ui),
         crate::tabs::Tab::Shop => skill_shop_tab::draw(ui),

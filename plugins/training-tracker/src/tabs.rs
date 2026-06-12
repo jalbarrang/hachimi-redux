@@ -17,11 +17,14 @@ pub(crate) enum Tab {
     Skills = 1,
     Shop = 2,
     Scenario = 3,
+    /// Unified dashboard-style career view (header + training + bonds + skills).
+    Career = 4,
 }
 
 impl Tab {
     /// All tabs in display order, paired with their tab-bar label.
-    pub(crate) const ALL: [(Tab, &'static str); 4] = [
+    pub(crate) const ALL: [(Tab, &'static str); 5] = [
+        (Tab::Career, "Career"),
         (Tab::Training, "Training"),
         (Tab::Skills, "Skills"),
         (Tab::Shop, "Shop"),
@@ -37,13 +40,14 @@ impl Tab {
             1 => Tab::Skills,
             2 => Tab::Shop,
             3 => Tab::Scenario,
+            4 => Tab::Career,
             _ => Tab::Training,
         }
     }
 }
 
 /// Bitmask with every tab enabled (the default).
-pub(crate) const ALL_ENABLED_MASK: u8 = 0b1111;
+pub(crate) const ALL_ENABLED_MASK: u8 = 0b1_1111;
 
 static SELECTED_TAB: AtomicU8 = AtomicU8::new(0);
 static ENABLED_TABS: AtomicU8 = AtomicU8::new(ALL_ENABLED_MASK);
