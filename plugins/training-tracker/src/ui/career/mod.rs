@@ -20,8 +20,10 @@ use crate::overlay_cache;
 /// or a waiting note when no career is active.
 pub(super) fn draw_tab(ui: &mut egui::Ui) {
     overlay_cache::maybe_request_refresh();
-    let snap = overlay_cache::snapshot();
-    super::overlay::scroll_list(ui, |ui| match snap {
+    // No scroll area: the overlay is fixed-width / auto-height, so the panel just
+    // grows to fit. A ScrollArea here fills the available width and defeats the
+    // width cap (the window then grows without bound).
+    match overlay_cache::snapshot() {
         Some(s) if s.is_playing => draw(ui, &s),
         _ => {
             ui.label(
@@ -30,7 +32,7 @@ pub(super) fn draw_tab(ui: &mut egui::Ui) {
                     .color(theme::FG_MUTED),
             );
         }
-    });
+    }
 }
 
 /// Draw the unified Career panel for an active career snapshot. The overlay's own
