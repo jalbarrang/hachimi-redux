@@ -69,6 +69,10 @@ missing_panics_doc = "allow"
 doc_markdown = "allow"
 
 [dependencies]
+# Flexbox/grid layout for egui (Taffy engine). Pinned to the release that targets
+# egui 0.33 so it unifies with the host's egui (a mismatched egui would break the
+# shared Ui type across the host↔plugin boundary).
+egui_taffy = "=0.10.0"
 hachimi-plugin-abi = { path = "../../crates/hachimi-plugin-abi", version = "0.1.0" }
 hachimi-plugin-sdk = { path = "../../crates/hachimi-plugin-sdk", version = "0.1.0" }
 hachimi-telemetry = { path = "../../crates/hachimi-telemetry", version = "0.1.0" }

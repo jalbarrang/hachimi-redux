@@ -2,6 +2,8 @@
 //! name, outfit, stars) and the condition cluster (year·date·turn, energy, mood).
 //! Mirrors the top row of the dashboard `CareerPanel`.
 
+use egui_taffy::taffy::prelude::length;
+use egui_taffy::{taffy, tui, TuiBuilderLogic};
 use hachimi_plugin_sdk::egui::{self, Color32, CornerRadius, Pos2, Rect, RichText, Stroke, StrokeKind, Vec2};
 
 use super::super::textures;
@@ -13,43 +15,81 @@ use crate::rank_table;
 
 const PORTRAIT: f32 = 56.0;
 
-pub(super) fn draw(ui: &mut egui::Ui, snap: &CareerSnapshot) {
-    // Narrow column: identity row (portrait + name/outfit/stars), then the
-    // condition pills wrapped beneath. Stacking avoids squeezing the name.
-    identity(ui, snap);
-    ui.add_space(6.0);
-    condition(ui, snap);
+/// A flex column / row style with a gap (the two layouts the header needs).
+fn col(gap: f32) -> taffy::Style {
+    taffy::Style {
+        display: taffy::Display::Flex,
+        flex_direction: taffy::FlexDirection::Column,
+        gap: length(gap),
+        ..Default::default()
+    }
+}
+fn row(gap: f32) -> taffy::Style {
+    taffy::Style {
+        display: taffy::Display::Flex,
+        flex_direction: taffy::FlexDirection::Row,
+        align_items: Some(taffy::AlignItems::Center),
+        gap: length(gap),
+        ..Default::default()
+    }
 }
 
-fn identity(ui: &mut egui::Ui, snap: &CareerSnapshot) {
-    ui.horizontal(|ui| {
-        ui.vertical(|ui| {
-            portrait_with_badge(ui, snap);
-            if let Some(ev) = snap.evaluation_value {
-                ui.add_sized(
-                    [PORTRAIT, 0.0],
-                    egui::Label::new(RichText::new(group_thousands(ev)).strong().color(theme::FG_MUTED)),
-                );
-            }
+/// Header laid out with egui_taffy (flexbox) instead of nested horizontal/vertical:
+/// an identity row (portrait column + name/outfit/stars column) above a wrapping
+/// row of condition pills. Custom-painted bits (portrait, pills) are egui nodes;
+/// taffy owns direction / gap / alignment / wrap.
+pub(super) fn draw(ui: &mut egui::Ui, snap: &CareerSnapshot) {
+    let card = gametora_data::character_card(snap.card_id as i64);
+    let name = card
+        .and_then(|c| c.name_en.clone().or_else(|| c.name_jp.clone()))
+        .unwrap_or_else(|| format!("#{}", snap.card_id));
+    let outfit = card
+        .and_then(|c| c.title_en_gl.clone().or_else(|| c.title_jp.clone()))
+        .filter(|s| !s.is_empty());
+
+    tui(ui, ui.id().with("career_header"))
+        .reserve_available_width()
+        .style(col(6.0))
+        .show(|tui| {
+            // Identity row.
+            tui.style(row(8.0)).add(|tui| {
+                // Portrait column: portrait + eval value.
+                tui.style(col(2.0)).add(|tui| {
+                    tui.ui(|ui| portrait_with_badge(ui, snap));
+                    if let Some(ev) = snap.evaluation_value {
+                        tui.ui(|ui| {
+                            ui.label(RichText::new(group_thousands(ev)).strong().color(theme::FG_MUTED));
+                        });
+                    }
+                });
+                // Name / outfit / stars column.
+                tui.style(col(2.0)).add(|tui| {
+                    tui.ui(|ui| {
+                        ui.add(egui::Label::new(RichText::new(&name).size(16.0).strong().color(theme::FG)).truncate());
+                    });
+                    if let Some(outfit) = &outfit {
+                        tui.ui(|ui| {
+                            ui.add(
+                                egui::Label::new(RichText::new(outfit).size(11.0).strong().color(theme::FG_MUTED))
+                                    .truncate(),
+                            );
+                        });
+                    }
+                    tui.ui(|ui| stars(ui, snap.star.clamp(0, 5)));
+                });
+            });
+
+            // Condition pills, wrapping.
+            tui.style(taffy::Style {
+                flex_wrap: taffy::FlexWrap::Wrap,
+                ..row(6.0)
+            })
+            .add(|tui| {
+                tui.ui(|ui| date_pill(ui, snap));
+                tui.ui(|ui| energy_pill(ui, snap));
+                tui.ui(|ui| mood_pill(ui, snap));
+            });
         });
-        ui.add_space(8.0);
-        ui.vertical(|ui| {
-            ui.add_space(4.0);
-            let card = gametora_data::character_card(snap.card_id as i64);
-            let name = card
-                .and_then(|c| c.name_en.clone().or_else(|| c.name_jp.clone()))
-                .unwrap_or_else(|| format!("#{}", snap.card_id));
-            ui.add(egui::Label::new(RichText::new(name).size(16.0).strong().color(theme::FG)).truncate());
-            if let Some(outfit) = card.and_then(|c| c.title_en_gl.clone().or_else(|| c.title_jp.clone())) {
-                if !outfit.is_empty() {
-                    ui.add(
-                        egui::Label::new(RichText::new(outfit).size(11.0).strong().color(theme::FG_MUTED)).truncate(),
-                    );
-                }
-            }
-            stars(ui, snap.star.clamp(0, 5));
-        });
-    });
 }
 
 /// Portrait square with the overlapping circular rank badge at the top-right.
@@ -122,23 +162,19 @@ fn stars(ui: &mut egui::Ui, value: i32) {
     ui.label(RichText::new(s).size(13.0).color(theme::GOLD));
 }
 
-fn condition(ui: &mut egui::Ui, snap: &CareerSnapshot) {
+fn date_pill(ui: &mut egui::Ui, snap: &CareerSnapshot) {
     let (year, date) = career_meta::turn_date(snap.current_turn, snap.scenario_id);
-    ui.horizontal_wrapped(|ui| {
-        theme::pill(ui, |ui| {
-            ui.spacing_mut().item_spacing.x = 4.0;
-            ui.label(RichText::new(year).strong().color(theme::UMA_300));
-            ui.label(RichText::new("·").color(theme::FG_DIM));
-            ui.label(RichText::new(date).strong().color(theme::FG));
-            ui.label(RichText::new("·").color(theme::FG_DIM));
-            ui.label(
-                RichText::new(format!("T{}", snap.current_turn))
-                    .strong()
-                    .color(theme::FG_MUTED),
-            );
-        });
-        energy_pill(ui, snap);
-        mood_pill(ui, snap);
+    theme::pill(ui, |ui| {
+        ui.spacing_mut().item_spacing.x = 4.0;
+        ui.label(RichText::new(year).strong().color(theme::UMA_300));
+        ui.label(RichText::new("·").color(theme::FG_DIM));
+        ui.label(RichText::new(date).strong().color(theme::FG));
+        ui.label(RichText::new("·").color(theme::FG_DIM));
+        ui.label(
+            RichText::new(format!("T{}", snap.current_turn))
+                .strong()
+                .color(theme::FG_MUTED),
+        );
     });
 }
 
