@@ -9,9 +9,6 @@ use super::constants::{MIN_LIST_HEIGHT, OVERLAY_BASE_WIDTH, OVERLAY_FONT_SIZE};
 
 /// Panel-frame inner margin (must match [`panel_frame`]); content sits inside it.
 const PANEL_INNER_MARGIN: f32 = 10.0;
-/// Width reserved for the vertical scrollbar gutter so full-width content doesn't
-/// sit under the scrollbar (or trigger a horizontal scroll) when it appears.
-const SCROLLBAR_GUTTER: f32 = 14.0;
 use crate::tabs::{self, selected_tab, set_selected_tab, Tab};
 
 /// Apply the user's content zoom to `ui` (font size + spacing) so the whole
@@ -39,7 +36,7 @@ pub(super) fn scale() -> f32 {
 /// full-width elements: under the host's `auto_sized` window `available_width` is
 /// measured with a huge value and would inflate the panel (and the window).
 pub(super) fn content_width() -> f32 {
-    (OVERLAY_BASE_WIDTH * scale() - 2.0 * PANEL_INNER_MARGIN - SCROLLBAR_GUTTER).max(80.0)
+    (OVERLAY_BASE_WIDTH * scale() - 2.0 * PANEL_INNER_MARGIN).max(80.0)
 }
 
 /// The overlay's own background panel (the whole visual, since the host renders
