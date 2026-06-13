@@ -38,9 +38,10 @@ pub(super) fn draw(ui: &mut egui::Ui, snap: &CareerSnapshot) {
     // Supports before guests, then highest bond first.
     bonds.sort_by(|a, b| (a.is_support.cmp(&b.is_support).reverse()).then(b.value.cmp(&a.value)));
 
-    let cols = if ui.available_width() > 360.0 { 2 } else { 1 };
+    let avail = super::super::overlay::content_width();
+    let cols = if avail > 360.0 { 2 } else { 1 };
     let gap = 6.0;
-    let cell_w = ((ui.available_width() - gap * (cols - 1) as f32) / cols as f32).max(80.0);
+    let cell_w = ((avail - gap * (cols - 1) as f32) / cols as f32).max(80.0);
     for chunk in bonds.chunks(cols) {
         ui.horizontal(|ui| {
             for (k, bond) in chunk.iter().enumerate() {

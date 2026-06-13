@@ -47,8 +47,11 @@ pub(super) fn draw(ui: &mut egui::Ui, snap: &CareerSnapshot) {
         .and_then(|c| c.title_en_gl.clone().or_else(|| c.title_jp.clone()))
         .filter(|s| !s.is_empty());
 
+    // Reserve the deterministic column width, not the (auto_sized-inflated)
+    // available width — egui_taffy's reserve_*_width does set_min_width(), so a
+    // huge value would force the header and the window wide.
     tui(ui, ui.id().with("career_header"))
-        .reserve_available_width()
+        .reserve_width(super::super::overlay::content_width())
         .style(col(6.0))
         .show(|tui| {
             // Identity row.

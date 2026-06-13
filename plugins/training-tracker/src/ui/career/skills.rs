@@ -22,9 +22,10 @@ pub(super) fn draw(ui: &mut egui::Ui, snap: &CareerSnapshot) {
     if skills.is_empty() {
         ui.label(RichText::new("No skills acquired yet").small().color(theme::FG_DIM));
     } else {
-        let cols = (ui.available_width() / 200.0).floor().clamp(1.0, 3.0) as usize;
+        let avail = super::super::overlay::content_width();
+        let cols = (avail / 200.0).floor().clamp(1.0, 3.0) as usize;
         let gap = 6.0;
-        let cell_w = ((ui.available_width() - gap * (cols - 1) as f32) / cols as f32).max(120.0);
+        let cell_w = ((avail - gap * (cols - 1) as f32) / cols as f32).max(120.0);
         for chunk in skills.chunks(cols) {
             ui.horizontal(|ui| {
                 for (k, s) in chunk.iter().enumerate() {

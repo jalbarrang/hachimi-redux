@@ -5,7 +5,10 @@ use hachimi_plugin_sdk::{egui, Sdk};
 use crate::memory_reader;
 use crate::overlay_prefs;
 
-use super::constants::{MIN_LIST_HEIGHT, OVERLAY_FONT_SIZE};
+use super::constants::{MIN_LIST_HEIGHT, OVERLAY_BASE_WIDTH, OVERLAY_FONT_SIZE};
+
+/// Panel-frame inner margin (must match [`panel_frame`]); content sits inside it.
+const PANEL_INNER_MARGIN: f32 = 10.0;
 use crate::tabs::{self, selected_tab, set_selected_tab, Tab};
 
 /// Apply the user's content zoom to `ui` (font size + spacing) so the whole
@@ -28,12 +31,20 @@ pub(super) fn scale() -> f32 {
     overlay_prefs::zoom()
 }
 
+/// Deterministic content column width (inside the panel-frame margins), driven by
+/// the fixed base width × zoom. Use this instead of `ui.available_width()` for
+/// full-width elements: under the host's `auto_sized` window `available_width` is
+/// measured with a huge value and would inflate the panel (and the window).
+pub(super) fn content_width() -> f32 {
+    (OVERLAY_BASE_WIDTH * scale() - 2.0 * PANEL_INNER_MARGIN).max(80.0)
+}
+
 /// The overlay's own background panel (the whole visual, since the host renders
 /// the panel chromeless). Rounded dark face with a faint border, matching the
 /// Career card so the "inner frame" reads as the overlay itself.
 pub(super) fn panel_frame() -> egui::Frame {
     egui::Frame::new()
-        .inner_margin(egui::Margin::same(10))
+        .inner_margin(egui::Margin::same(PANEL_INNER_MARGIN as i8))
         .corner_radius(egui::CornerRadius::same(12))
         .fill(egui::Color32::from_rgb(0x12, 0x16, 0x1f))
         .stroke(egui::Stroke::new(1.0, egui::Color32::from_rgb(0x2c, 0x36, 0x48)))

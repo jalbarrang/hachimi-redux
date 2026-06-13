@@ -102,7 +102,9 @@ fn lerp_color(a: Color32, b: Color32, t: f32) -> Color32 {
 /// small right-aligned caption (e.g. "1429 SP · 5"), empty for none.
 pub fn section_strip(ui: &mut Ui, label: &str, trailing: &str) {
     let height = (ui.text_style_height(&egui::TextStyle::Body) + 8.0).max(22.0);
-    let width = ui.available_width();
+    // Deterministic width (not ui.available_width(), which inflates under the
+    // host's auto_sized window) so the strip can't grow the panel.
+    let width = super::super::overlay::content_width();
     let (rect, _) = ui.allocate_exact_size(Vec2::new(width, height), egui::Sense::hover());
     let painter = ui.painter();
 
