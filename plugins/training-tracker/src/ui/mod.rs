@@ -80,22 +80,25 @@ fn draw_overlay_inner(ui: &mut egui::Ui) {
     let scale = overlay::apply_scale(ui);
     let width = constants::OVERLAY_BASE_WIDTH * scale;
 
-    // Our own rounded background panel is the overlay's visual (the host draws no
-    // chrome for a chromeless panel). Everything — shell + tab body — lives inside.
-    overlay::panel_frame().show(ui, |ui| {
-        ui.set_min_width(width);
-        ui.set_max_width(width);
-
-        if !overlay::draw_shell(ui, tracking) {
-            return;
-        }
-
-        match crate::tabs::selected_tab() {
-            crate::tabs::Tab::Career => career::draw_tab(ui),
-            crate::tabs::Tab::Training => training::draw(ui),
-            crate::tabs::Tab::Skills => skills::draw(ui),
-            crate::tabs::Tab::Shop => skill_shop_tab::draw(ui),
-            crate::tabs::Tab::Scenario => scenario::draw(ui),
-        }
+    // Hard-allocate a fixed-width column. The host renders a chromeless panel in an
+    // auto-sizing window whose `available_width` is large; any content that follows
+    // it (section strips, taffy `reserve_available_width`, scroll areas) would grow
+    // the panel — and the window with it — without bound. Allocating an exact-width
+    // region pins `available_width` so the window auto-sizes down to us.
+    ui.allocate_ui_with_layout(egui::vec2(width, 0.0), egui::Layout::top_down(egui::Align::Min), |ui| {
+        ui.set_width(width);
+        // Our own rounded background panel is the overlay's whole visual.
+        overlay::panel_frame().show(ui, |ui| {
+            if !overlay::draw_shell(ui, tracking) {
+                return;
+            }
+            match crate::tabs::selected_tab() {
+                crate::tabs::Tab::Career => career::draw_tab(ui),
+                crate::tabs::Tab::Training => training::draw(ui),
+                crate::tabs::Tab::Skills => skills::draw(ui),
+                crate::tabs::Tab::Shop => skill_shop_tab::draw(ui),
+                crate::tabs::Tab::Scenario => scenario::draw(ui),
+            }
+        });
     });
 }

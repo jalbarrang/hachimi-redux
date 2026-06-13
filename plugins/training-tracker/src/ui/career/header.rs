@@ -62,8 +62,14 @@ pub(super) fn draw(ui: &mut egui::Ui, snap: &CareerSnapshot) {
                         });
                     }
                 });
-                // Name / outfit / stars column.
-                tui.style(col(2.0)).add(|tui| {
+                // Name / outfit / stars column — grows to fill the row so the name
+                // gets real width (otherwise it truncates to "…" / stars stack).
+                tui.style(taffy::Style {
+                    flex_grow: 1.0,
+                    flex_basis: length(0.0),
+                    ..col(2.0)
+                })
+                .add(|tui| {
                     tui.ui(|ui| {
                         ui.add(egui::Label::new(RichText::new(&name).size(16.0).strong().color(theme::FG)).truncate());
                     });
