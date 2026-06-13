@@ -130,7 +130,12 @@ impl Gui {
         let mut window = egui::Window::new(title)
             .id(win_id)
             .title_bar(false)
-            .resizable(false)
+            // Shrink-wrap to the plugin's content: `.resizable(false)` keeps a
+            // default/remembered size (the interactable area stayed huge and ate
+            // clicks); `.auto_sized()` sizes the window to the content it draws.
+            // The plugin bounds its content to a fixed width, so the window can't
+            // grow on the "non-wrapping text expands width" caveat.
+            .auto_sized()
             .movable(!locked && !ov.fixed)
             .interactable(!locked)
             .frame(egui::Frame::NONE);
