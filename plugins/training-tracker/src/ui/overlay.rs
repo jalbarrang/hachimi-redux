@@ -28,6 +28,17 @@ pub(super) fn scale() -> f32 {
     overlay_prefs::zoom()
 }
 
+/// The overlay's own background panel (the whole visual, since the host renders
+/// the panel chromeless). Rounded dark face with a faint border, matching the
+/// Career card so the "inner frame" reads as the overlay itself.
+pub(super) fn panel_frame() -> egui::Frame {
+    egui::Frame::new()
+        .inner_margin(egui::Margin::same(10))
+        .corner_radius(egui::CornerRadius::same(12))
+        .fill(egui::Color32::from_rgb(0x12, 0x16, 0x1f))
+        .stroke(egui::Stroke::new(1.0, egui::Color32::from_rgb(0x2c, 0x36, 0x48)))
+}
+
 /// Scaled base font size for callers that set an explicit text size.
 pub(super) fn font_size() -> f32 {
     OVERLAY_FONT_SIZE * scale()

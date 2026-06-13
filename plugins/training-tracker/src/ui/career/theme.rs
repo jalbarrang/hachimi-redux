@@ -98,18 +98,6 @@ fn lerp_color(a: Color32, b: Color32, t: f32) -> Color32 {
     Color32::from_rgba_unmultiplied(l(a.r(), b.r()), l(a.g(), b.g()), l(a.b(), b.b()), l(a.a(), b.a()))
 }
 
-/// A raised dark card face (`uma-raised`): rounded, faint border, content padded.
-pub fn card(ui: &mut Ui, add: impl FnOnce(&mut Ui)) {
-    egui::Frame::new()
-        .inner_margin(egui::Margin::symmetric(12, 10))
-        .corner_radius(CornerRadius::same(10))
-        .fill(SURFACE_1)
-        .stroke(Stroke::new(1.0, LINE))
-        .show(ui, |ui| {
-            ui.vertical(add);
-        });
-}
-
 /// The green striped section header with the `//` slash accent. `trailing` is a
 /// small right-aligned caption (e.g. "1429 SP · 5"), empty for none.
 pub fn section_strip(ui: &mut Ui, label: &str, trailing: &str) {

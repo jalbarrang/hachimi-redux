@@ -108,6 +108,11 @@ pub mod overlay_flags {
     /// visual; the panel stays draggable when overlays are unlocked and is still
     /// managed (show/hide/reset) from the L1 Overlay tab.
     pub const CHROMELESS: u64 = 1 << 0;
+    /// Pin the overlay: it cannot be dragged (the plugin / user owns its position
+    /// via the persisted overlay state), but it stays interactive when overlays
+    /// are unlocked — unlike the global lock, which disables interaction too.
+    /// Independent of [`CHROMELESS`]; bit-OR them to combine.
+    pub const FIXED: u64 = 1 << 1;
 }
 
 /// Plugin metadata read by the host before/at init for introspection and validation.

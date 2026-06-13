@@ -24,26 +24,23 @@ pub(super) fn draw_tab(ui: &mut egui::Ui) {
     super::overlay::scroll_list(ui, |ui| match snap {
         Some(s) if s.is_playing => draw(ui, &s),
         _ => {
-            theme::card(ui, |ui| {
-                ui.label(
-                    egui::RichText::new("Waiting for an active career\u{2026}")
-                        .italics()
-                        .color(theme::FG_MUTED),
-                );
-            });
+            ui.label(
+                egui::RichText::new("Waiting for an active career\u{2026}")
+                    .italics()
+                    .color(theme::FG_MUTED),
+            );
         }
     });
 }
 
-/// Draw the unified Career panel for an active career snapshot.
+/// Draw the unified Career panel for an active career snapshot. The overlay's own
+/// background frame is the panel face, so sections are drawn directly (no card).
 fn draw(ui: &mut egui::Ui, snap: &CareerSnapshot) {
-    theme::card(ui, |ui| {
-        header::draw(ui, snap);
-        ui.add_space(10.0);
-        training::draw(ui, snap);
-        ui.add_space(10.0);
-        bonds::draw(ui, snap);
-        ui.add_space(10.0);
-        skills::draw(ui, snap);
-    });
+    header::draw(ui, snap);
+    ui.add_space(10.0);
+    training::draw(ui, snap);
+    ui.add_space(10.0);
+    bonds::draw(ui, snap);
+    ui.add_space(10.0);
+    skills::draw(ui, snap);
 }

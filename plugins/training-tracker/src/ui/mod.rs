@@ -39,8 +39,12 @@ pub fn register_ui() {
 
     sdk.register_page(draw_menu_section, std::ptr::null_mut());
 
-    if sdk.register_panel(constants::OVERLAY_ID, draw_overlay, std::ptr::null_mut()) != 0 {
-        hlog_info!(target: "training-tracker", "UI registered (L1 page + L2 panel)");
+    // Chromeless + fixed: the host draws no window frame/header (our rounded panel
+    // is the entire overlay) and the panel is pinned in place — not draggable, but
+    // still interactive. Position is owned via the overlay state. Falls back to a
+    // framed, movable panel on hosts older than v12.
+    if sdk.register_panel_chromeless_fixed(constants::OVERLAY_ID, draw_overlay, std::ptr::null_mut()) != 0 {
+        hlog_info!(target: "training-tracker", "UI registered (L1 page + chromeless fixed L2 panel)");
     } else {
         hlog_warn!(
             target: "training-tracker",
@@ -75,18 +79,23 @@ fn draw_overlay_inner(ui: &mut egui::Ui) {
     // grows without bound. Zoom scales the whole panel (font + spacing + width).
     let scale = overlay::apply_scale(ui);
     let width = constants::OVERLAY_BASE_WIDTH * scale;
-    ui.set_min_width(width);
-    ui.set_max_width(width);
 
-    if !overlay::draw_shell(ui, tracking) {
-        return;
-    }
+    // Our own rounded background panel is the overlay's visual (the host draws no
+    // chrome for a chromeless panel). Everything — shell + tab body — lives inside.
+    overlay::panel_frame().show(ui, |ui| {
+        ui.set_min_width(width);
+        ui.set_max_width(width);
 
-    match crate::tabs::selected_tab() {
-        crate::tabs::Tab::Career => career::draw_tab(ui),
-        crate::tabs::Tab::Training => training::draw(ui),
-        crate::tabs::Tab::Skills => skills::draw(ui),
-        crate::tabs::Tab::Shop => skill_shop_tab::draw(ui),
-        crate::tabs::Tab::Scenario => scenario::draw(ui),
-    }
+        if !overlay::draw_shell(ui, tracking) {
+            return;
+        }
+
+        match crate::tabs::selected_tab() {
+            crate::tabs::Tab::Career => career::draw_tab(ui),
+            crate::tabs::Tab::Training => training::draw(ui),
+            crate::tabs::Tab::Skills => skills::draw(ui),
+            crate::tabs::Tab::Shop => skill_shop_tab::draw(ui),
+            crate::tabs::Tab::Scenario => scenario::draw(ui),
+        }
+    });
 }

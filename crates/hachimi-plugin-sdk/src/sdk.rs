@@ -227,6 +227,31 @@ impl Sdk {
         }
     }
 
+    /// Register a **chromeless, fixed** L2 panel: bare visuals (no host chrome)
+    /// that are pinned in place — the panel can't be dragged (its position is
+    /// owned via the persisted overlay state), but stays interactive when overlays
+    /// are unlocked. Combines [`overlay_flags::CHROMELESS`] and
+    /// [`overlay_flags::FIXED`]. Falls back to a normal framed panel before API v12.
+    ///
+    /// [`overlay_flags::CHROMELESS`]: hachimi_plugin_abi::overlay_flags::CHROMELESS
+    /// [`overlay_flags::FIXED`]: hachimi_plugin_abi::overlay_flags::FIXED
+    pub fn register_panel_chromeless_fixed(
+        &self,
+        id: &str,
+        callback: GuiMenuSectionCallback,
+        userdata: *mut c_void,
+    ) -> u64 {
+        if !self.version.at_least(12) {
+            return self.register_overlay(id, callback, userdata);
+        }
+        let Ok(id_c) = CString::new(id) else {
+            return 0;
+        };
+        let flags = hachimi_plugin_abi::overlay_flags::CHROMELESS | hachimi_plugin_abi::overlay_flags::FIXED;
+        // SAFETY: host vtable slot valid after init (v12+); callback lifetime managed by plugin.
+        unsafe { (vt().gui_register_overlay_ex)(id_c.as_ptr(), flags, Some(callback), userdata) }
+    }
+
     /// Show or hide a registered overlay panel by `id`. The host persists the
     /// choice (and reflects it in its Overlay tab). Returns `false` on bad input.
     pub fn set_overlay_visible(&self, id: &str, visible: bool) -> bool {

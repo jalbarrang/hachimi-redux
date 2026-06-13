@@ -61,7 +61,7 @@ impl Gui {
             let mut window = egui::Window::new(&title)
                 .id(win_id)
                 .title_bar(false)
-                .movable(!locked)
+                .movable(!locked && !ov.fixed)
                 .interactable(!locked)
                 .frame(panel_frame(ctx, opacity));
 
@@ -81,7 +81,9 @@ impl Gui {
                     .default_size(state.size.map_or_else(|| default_panel_size(scale), egui::Vec2::from));
             }
 
-            window = if force_reset {
+            // A fixed panel is pinned to its persisted position every frame (the
+            // user sets it via the overlay state, not by dragging).
+            window = if force_reset || ov.fixed {
                 window.current_pos(default_pos)
             } else {
                 window.default_pos(default_pos)
@@ -129,11 +131,13 @@ impl Gui {
             .id(win_id)
             .title_bar(false)
             .resizable(false)
-            .movable(!locked)
+            .movable(!locked && !ov.fixed)
             .interactable(!locked)
             .frame(egui::Frame::NONE);
 
-        window = if force_reset {
+        // A fixed panel is pinned to its persisted position (set by the user via
+        // the overlay state, not by dragging).
+        window = if force_reset || ov.fixed {
             window.current_pos(default_pos)
         } else {
             window.default_pos(default_pos)

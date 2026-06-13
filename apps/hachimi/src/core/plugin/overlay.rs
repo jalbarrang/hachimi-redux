@@ -29,6 +29,9 @@ pub(crate) struct PluginOverlay {
     pub(crate) userdata: usize,
     /// Render bare (no host title/collapse/close header, no window frame).
     pub(crate) chromeless: bool,
+    /// Non-draggable: the panel keeps its persisted position and can't be moved,
+    /// but stays interactive (unlike the global lock).
+    pub(crate) fixed: bool,
 }
 
 /// Persisted per-panel state.
@@ -143,6 +146,7 @@ pub fn register_plugin_overlay_ex(
         callback,
         userdata: userdata as usize,
         chromeless: flags & hachimi_plugin_abi::overlay_flags::CHROMELESS != 0,
+        fixed: flags & hachimi_plugin_abi::overlay_flags::FIXED != 0,
     });
     handle
 }
