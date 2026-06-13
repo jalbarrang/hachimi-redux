@@ -39,12 +39,12 @@ pub fn register_ui() {
 
     sdk.register_page(draw_menu_section, std::ptr::null_mut());
 
-    // Chromeless + fixed: the host draws no window frame/header (our rounded panel
-    // is the entire overlay) and the panel is pinned in place — not draggable, but
-    // still interactive. Position is owned via the overlay state. Falls back to a
-    // framed, movable panel on hosts older than v12.
-    if sdk.register_panel_chromeless_fixed(constants::OVERLAY_ID, draw_overlay, std::ptr::null_mut()) != 0 {
-        hlog_info!(target: "training-tracker", "UI registered (L1 page + chromeless fixed L2 panel)");
+    // Chromeless: the host draws no window frame/header, so our own rounded panel
+    // is the entire overlay. Still draggable when overlays are unlocked (a FIXED
+    // variant exists via register_panel_chromeless_fixed for pinning it later).
+    // Falls back to a framed panel on hosts older than v12.
+    if sdk.register_panel_chromeless(constants::OVERLAY_ID, draw_overlay, std::ptr::null_mut()) != 0 {
+        hlog_info!(target: "training-tracker", "UI registered (L1 page + chromeless L2 panel)");
     } else {
         hlog_warn!(
             target: "training-tracker",
