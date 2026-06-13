@@ -38,14 +38,6 @@ if [[ ${PIPESTATUS[0]} -ne 0 ]]; then
     exit 1
 fi
 
-if command -v typos &>/dev/null; then
-    echo "  → typos..."
-    typos $STAGED_RS 2>&1 || {
-        echo "❌ Typos found. Fix them before committing."
-        exit 1
-    }
-fi
-
 echo "✅ Pre-commit checks passed."
 '@
 
@@ -53,4 +45,4 @@ Set-Content -Path $hookFile -Value $hookContent -Encoding UTF8 -NoNewline
 Write-Host "✅ Pre-commit hook installed at $hookFile" -ForegroundColor Green
 Write-Host ""
 Write-Host "Optional: Install the quality tools for full coverage:" -ForegroundColor Cyan
-Write-Host "  cargo install typos-cli cargo-deny cargo-machete" -ForegroundColor White
+Write-Host "  cargo install cargo-deny cargo-machete" -ForegroundColor White

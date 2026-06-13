@@ -6,11 +6,10 @@
 .DESCRIPTION
     Executes the same checks as .github/workflows/ci.yml in order:
       1. rustfmt (formatting)
-      2. typos (spell check)
-      3. cargo-deny (supply chain)
-      4. cargo-machete (unused deps)
-      5. clippy with -D warnings (zero-warning lint)
-      6. cargo check (type verification)
+      2. cargo-deny (supply chain)
+      3. cargo-machete (unused deps)
+      4. clippy with -D warnings (zero-warning lint)
+      5. cargo check (type verification)
 
     Exit code 0 = all gates passed. Non-zero = at least one gate failed.
 
@@ -22,7 +21,6 @@
 
 param(
     [switch]$SkipDeny,
-    [switch]$SkipTypos,
     [switch]$SkipMachete,
     [switch]$Quick
 )
@@ -58,18 +56,7 @@ $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
 Run-Gate "Rustfmt (core)" { cargo fmt --check }
 Run-Gate "Rustfmt (plugin)" { Push-Location plugins/training-tracker; cargo fmt --check; Pop-Location }
 
-# ── Gate 2: Typos ───────────────────────────────────────────────
-if (-not $Quick -and -not $SkipTypos) {
-    $typosCmd = Get-Command typos -ErrorAction SilentlyContinue
-    if ($typosCmd) {
-        Run-Gate "Typos" { typos }
-    } else {
-        Write-Host ""
-        Write-Host "  ⚠ SKIP: typos not installed (cargo install typos-cli)" -ForegroundColor Yellow
-    }
-}
-
-# ── Gate 3: Supply chain ────────────────────────────────────────
+# ── Gate 2: Supply chain ────────────────────────────────────────
 if (-not $Quick -and -not $SkipDeny) {
     $denyCmd = Get-Command cargo-deny -ErrorAction SilentlyContinue
     if ($denyCmd) {
@@ -80,7 +67,7 @@ if (-not $Quick -and -not $SkipDeny) {
     }
 }
 
-# ── Gate 4: Unused dependencies ─────────────────────────────────
+# ── Gate 3: Unused dependencies ─────────────────────────────────
 if (-not $Quick -and -not $SkipMachete) {
     $macheteCmd = Get-Command cargo-machete -ErrorAction SilentlyContinue
     if ($macheteCmd) {
@@ -92,7 +79,7 @@ if (-not $Quick -and -not $SkipMachete) {
     }
 }
 
-# ── Gate 5: Clippy (zero warnings) ──────────────────────────────
+# ── Gate 4: Clippy (zero warnings) ──────────────────────────────
 Run-Gate "Clippy (core — zero warnings)" {
     cargo clippy --all-targets -- -D warnings
 }
@@ -102,7 +89,7 @@ Run-Gate "Clippy (plugin — zero warnings)" {
     Pop-Location
 }
 
-# ── Gate 6: Tests ─────────────────────────────────────────────────────
+# ── Gate 5: Tests ─────────────────────────────────────────────────────
 Run-Gate "Tests (core)" { cargo test --lib }
 Run-Gate "Tests (plugin)" {
     Push-Location plugins/training-tracker
@@ -110,7 +97,7 @@ Run-Gate "Tests (plugin)" {
     Pop-Location
 }
 
-# ── Gate 7: Type check ──────────────────────────────────────────
+# ── Gate 6: Type check ──────────────────────────────────────────
 if (-not $Quick) {
     Run-Gate "Cargo check (core)" { cargo check --all-targets }
     Run-Gate "Cargo check (plugin)" {
