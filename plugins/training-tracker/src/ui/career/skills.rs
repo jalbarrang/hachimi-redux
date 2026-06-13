@@ -22,30 +22,18 @@ pub(super) fn draw(ui: &mut egui::Ui, snap: &CareerSnapshot) {
     if skills.is_empty() {
         ui.label(RichText::new("No skills acquired yet").small().color(theme::FG_DIM));
     } else {
-        let avail = super::super::overlay::content_width();
-        let cols = (avail / 200.0).floor().clamp(1.0, 3.0) as usize;
-        let gap = 6.0;
-        let cell_w = ((avail - gap * (cols - 1) as f32) / cols as f32).max(120.0);
-        for chunk in skills.chunks(cols) {
-            ui.horizontal(|ui| {
-                for (k, s) in chunk.iter().enumerate() {
-                    if k > 0 {
-                        ui.add_space(gap);
-                    }
-                    ui.allocate_ui_with_layout(Vec2::new(cell_w, 0.0), Layout::top_down(Align::Min), |ui| {
-                        ui.set_width(cell_w);
-                        skill_card(ui, s.master_id, s.level, &s.name);
-                    });
-                }
-            });
-            ui.add_space(gap);
+        // Single full-width column at the overlay's narrow width.
+        let w = super::super::overlay::content_width();
+        for s in &skills {
+            skill_card(ui, s.master_id, s.level, &s.name, w);
+            ui.add_space(4.0);
         }
     }
 
     conditions(ui, snap);
 }
 
-fn skill_card(ui: &mut egui::Ui, master_id: i32, level: i32, name: &str) {
+fn skill_card(ui: &mut egui::Ui, master_id: i32, level: i32, name: &str, w: f32) {
     let meta = gametora_data::skill(master_id as i64);
     let rarity = meta.and_then(|m| m.rarity).unwrap_or(1);
     let icon_id = meta.and_then(|m| m.iconid);
@@ -61,7 +49,10 @@ fn skill_card(ui: &mut egui::Ui, master_id: i32, level: i32, name: &str) {
         .fill(theme::SURFACE_2)
         .stroke(Stroke::new(1.0, theme::LINE))
         .show(ui, |ui| {
+            // Fill the column (minus the frame's right inner margin).
+            ui.set_width((w - 8.0).max(40.0));
             ui.horizontal(|ui| {
+                ui.spacing_mut().item_spacing.x = 6.0;
                 // Rarity rail.
                 let (rail, _) = ui.allocate_exact_size(Vec2::new(4.0, 24.0), egui::Sense::hover());
                 ui.painter().rect_filled(
@@ -74,7 +65,6 @@ fn skill_card(ui: &mut egui::Ui, master_id: i32, level: i32, name: &str) {
                     },
                     rarity_color(rarity),
                 );
-                ui.add_space(6.0);
                 if let Some(id) = icon_id {
                     textures::image_square(ui, &format!("{id}.png"), 24.0, Color32::WHITE);
                 }
@@ -83,22 +73,22 @@ fn skill_card(ui: &mut egui::Ui, master_id: i32, level: i32, name: &str) {
                 } else {
                     name.to_string()
                 };
-                // Name fills the row; Lv pill (when > 1) pinned right.
-                ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                    if level > 1 {
-                        theme::pill(ui, |ui| {
-                            ui.label(
-                                RichText::new(format!("Lv {level}"))
-                                    .small()
-                                    .strong()
-                                    .color(theme::FG_MUTED),
-                            );
-                        });
-                    }
-                    ui.with_layout(Layout::left_to_right(Align::Center), |ui| {
-                        ui.add(egui::Label::new(RichText::new(label).small().strong().color(theme::FG)).truncate());
-                    });
+                // Deterministic: name fills the remaining width; Lv pill is fixed.
+                let lv_w = if level > 1 { 44.0 } else { 0.0 };
+                let name_w = (ui.available_width() - lv_w).max(24.0);
+                ui.allocate_ui_with_layout(Vec2::new(name_w, 22.0), Layout::left_to_right(Align::Center), |ui| {
+                    ui.add(egui::Label::new(RichText::new(label).small().strong().color(theme::FG)).truncate());
                 });
+                if level > 1 {
+                    theme::pill(ui, |ui| {
+                        ui.label(
+                            RichText::new(format!("Lv {level}"))
+                                .small()
+                                .strong()
+                                .color(theme::FG_MUTED),
+                        );
+                    });
+                }
             });
         });
 }

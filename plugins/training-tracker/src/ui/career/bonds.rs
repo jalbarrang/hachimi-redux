@@ -38,23 +38,11 @@ pub(super) fn draw(ui: &mut egui::Ui, snap: &CareerSnapshot) {
     // Supports before guests, then highest bond first.
     bonds.sort_by(|a, b| (a.is_support.cmp(&b.is_support).reverse()).then(b.value.cmp(&a.value)));
 
-    let avail = super::super::overlay::content_width();
-    let cols = if avail > 360.0 { 2 } else { 1 };
-    let gap = 6.0;
-    let cell_w = ((avail - gap * (cols - 1) as f32) / cols as f32).max(80.0);
-    for chunk in bonds.chunks(cols) {
-        ui.horizontal(|ui| {
-            for (k, bond) in chunk.iter().enumerate() {
-                if k > 0 {
-                    ui.add_space(gap);
-                }
-                ui.allocate_ui_with_layout(Vec2::new(cell_w, 0.0), Layout::top_down(Align::Min), |ui| {
-                    ui.set_width(cell_w);
-                    row(ui, bond);
-                });
-            }
-        });
-        ui.add_space(gap);
+    // Single full-width column at the overlay's narrow width.
+    let w = super::super::overlay::content_width();
+    for bond in &bonds {
+        row(ui, bond, w);
+        ui.add_space(4.0);
     }
 }
 
@@ -102,32 +90,38 @@ fn collect(snap: &CareerSnapshot) -> Vec<Bond> {
         .collect()
 }
 
-fn row(ui: &mut egui::Ui, bond: &Bond) {
+/// A bond row: `[name (fills, truncates) | type chip | bond value | On chip]`.
+/// Deterministic widths only — no right_to_left/left_to_right nesting, which broke
+/// (rows escaped the column) under the auto_sized window.
+fn row(ui: &mut egui::Ui, bond: &Bond, w: f32) {
     theme::row_frame(bond.rainbow_ready).show(ui, |ui| {
+        // Fill the column (minus the frame's horizontal inner margin).
+        ui.set_width((w - 20.0).max(40.0));
         ui.horizontal(|ui| {
-            // Right cluster (On chip, bond value, type chip) then the name fills left.
-            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                on_chip(ui, bond.on_facility);
-                ui.add_space(6.0);
-                bond_value(ui, bond.value);
-                ui.add_space(6.0);
-                type_chip(ui, bond);
-                ui.with_layout(Layout::left_to_right(Align::Center), |ui| {
-                    ui.add(egui::Label::new(RichText::new(&bond.name).small().strong().color(theme::FG)).truncate());
-                });
+            ui.spacing_mut().item_spacing.x = 6.0;
+            // Reserve the right cluster's budget; the name takes the rest and truncates.
+            let right = 96.0;
+            let name_w = (ui.available_width() - right).max(28.0);
+            ui.allocate_ui_with_layout(Vec2::new(name_w, 18.0), Layout::left_to_right(Align::Center), |ui| {
+                ui.add(egui::Label::new(RichText::new(&bond.name).small().strong().color(theme::FG)).truncate());
             });
+            type_chip(ui, bond);
+            bond_value(ui, bond.value);
+            on_chip(ui, bond.on_facility);
         });
     });
 }
 
+/// Card specialty: stat chip for trainable types, glyph for pal/friend/group.
 fn type_chip(ui: &mut egui::Ui, bond: &Bond) {
     if !bond.has_type {
         ui.label(RichText::new("\u{2013}").small().color(theme::FG_DIM));
         return;
     }
-    ui.label(RichText::new("Type:").small().color(theme::FG_MUTED));
     match bond.specialty {
-        Some(f) => theme::stat_chip(ui, f, 18.0),
+        Some(f) => {
+            theme::stat_chip(ui, f, 16.0);
+        }
         None => {
             let glyph = if bond.is_friend { "\u{1f91d}" } else { "\u{1f465}" }; // 🤝 / 👥
             ui.label(RichText::new(glyph).small());
@@ -150,13 +144,11 @@ fn bond_value(ui: &mut egui::Ui, value: i32) {
     });
 }
 
+/// The facility this card trained on this turn (stat chip), or a dash.
 fn on_chip(ui: &mut egui::Ui, facility: Option<usize>) {
     match facility {
         Some(f) => {
-            ui.with_layout(Layout::left_to_right(Align::Center), |ui| {
-                ui.label(RichText::new("On:").small().color(theme::FG_MUTED));
-                theme::stat_chip(ui, f, 18.0);
-            });
+            theme::stat_chip(ui, f, 16.0);
         }
         None => {
             ui.label(RichText::new("\u{2013}").small().color(theme::FG_DIM));
