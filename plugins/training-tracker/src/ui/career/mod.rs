@@ -20,24 +20,19 @@ use crate::overlay_cache;
 /// or a waiting note when no career is active.
 pub(super) fn draw_tab(ui: &mut egui::Ui) {
     overlay_cache::maybe_request_refresh();
-    let snap = overlay_cache::snapshot();
-    // Height-capped scroll so a tall career (many bonds/skills) stays within the
-    // viewport. `auto_shrink: [false, true]` = fill the (deterministic) content
-    // width, shrink height to content up to the cap. Width is safe now that every
-    // section sizes from overlay::content_width(), not ui.available_width().
-    egui::ScrollArea::vertical()
-        .auto_shrink([false, true])
-        .max_height(super::overlay::body_max_height(ui))
-        .show(ui, |ui| match snap {
-            Some(s) if s.is_playing => draw(ui, &s),
-            _ => {
-                ui.label(
-                    egui::RichText::new("Waiting for an active career\u{2026}")
-                        .italics()
-                        .color(theme::FG_MUTED),
-                );
-            }
-        });
+    // No inner scroll area: the host's chromeless window scrolls vertically itself
+    // (height-capped to the viewport). An inner ScrollArea here fought that and
+    // flickered/collapsed.
+    match overlay_cache::snapshot() {
+        Some(s) if s.is_playing => draw(ui, &s),
+        _ => {
+            ui.label(
+                egui::RichText::new("Waiting for an active career\u{2026}")
+                    .italics()
+                    .color(theme::FG_MUTED),
+            );
+        }
+    }
 }
 
 /// Draw the unified Career panel for an active career snapshot. The overlay's own

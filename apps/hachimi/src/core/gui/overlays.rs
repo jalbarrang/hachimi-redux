@@ -127,15 +127,19 @@ impl Gui {
     ) {
         let ctx = &self.context;
         let win_id = egui::Id::new("plugin_overlay").with(&ov.id);
+        // Auto-size to the plugin's content (it bounds its own width), but cap the
+        // height to the viewport and let the window scroll vertically past that.
+        // NOTE: do NOT use `.auto_sized()` here — it disables scrolling and fights
+        // any inner scroll area (collapse + drag flicker). An INFINITY default size
+        // gives the same content-hug while leaving the window's own scroll intact.
+        let max_h = ctx.input(egui::InputState::viewport_rect).height() * 0.9;
         let mut window = egui::Window::new(title)
             .id(win_id)
             .title_bar(false)
-            // Shrink-wrap to the plugin's content: `.resizable(false)` keeps a
-            // default/remembered size (the interactable area stayed huge and ate
-            // clicks); `.auto_sized()` sizes the window to the content it draws.
-            // The plugin bounds its content to a fixed width, so the window can't
-            // grow on the "non-wrapping text expands width" caveat.
-            .auto_sized()
+            .resizable(false)
+            .default_size(egui::Vec2::splat(f32::INFINITY))
+            .max_height(max_h)
+            .scroll([false, true])
             .movable(!locked && !ov.fixed)
             .interactable(!locked)
             .frame(egui::Frame::NONE);

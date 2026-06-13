@@ -42,14 +42,6 @@ pub(super) fn content_width() -> f32 {
     (OVERLAY_BASE_WIDTH * scale() - 2.0 * PANEL_INNER_MARGIN - SCROLLBAR_GUTTER).max(80.0)
 }
 
-/// Max height for a tab body's scroll area: keep the whole overlay within the
-/// viewport (leaving room for the shell above + window chrome/margins). Driven by
-/// the screen height since `available_height` is unbounded under the auto_sized
-/// window.
-pub(super) fn body_max_height(ui: &egui::Ui) -> f32 {
-    (ui.ctx().content_rect().height() - 200.0).max(220.0)
-}
-
 /// The overlay's own background panel (the whole visual, since the host renders
 /// the panel chromeless). Rounded dark face with a faint border, matching the
 /// Career card so the "inner frame" reads as the overlay itself.
