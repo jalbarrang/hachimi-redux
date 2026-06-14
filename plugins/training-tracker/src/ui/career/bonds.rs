@@ -7,6 +7,7 @@ use egui_taffy::taffy::prelude::{auto, fr, length};
 use egui_taffy::{taffy, tui, TuiBuilderLogic, TuiContainerResponse};
 use hachimi_plugin_sdk::egui::{self, Align, Layout, RichText, Vec2, Vec2b};
 
+use super::super::dimens;
 use super::theme;
 use crate::gametora_data;
 use crate::memory_reader::CareerSnapshot;
@@ -43,7 +44,7 @@ pub(super) fn draw(ui: &mut egui::Ui, snap: &CareerSnapshot) {
     // Two side-by-side columns, filled column-major: the first half goes down the
     // left column, the rest down the right.
     let w = super::super::overlay::content_width();
-    let gap = 6.0;
+    let gap = dimens::z(dimens::GAP_MD);
     let col_w = ((w - gap) / 2.0).max(60.0);
     let mid = bonds.len().div_ceil(2);
     ui.horizontal_top(|ui| {
@@ -115,7 +116,7 @@ fn collect(snap: &CareerSnapshot) -> Vec<Bond> {
 fn row(ui: &mut egui::Ui, bond: &Bond, w: f32, idx: usize) {
     theme::row_frame(bond.rainbow_ready).show(ui, |ui| {
         // Fill the column (minus the frame's symmetric 10px horizontal margin).
-        let inner = (w - 20.0).max(40.0);
+        let inner = (w - dimens::z(dimens::ROW_FRAME_MARGIN)).max(40.0);
         ui.set_width(inner);
         // Cells get ~0 measured width during taffy's layout pass; force text to
         // extend so non-truncating labels don't wrap one glyph per line.
@@ -129,7 +130,7 @@ fn row(ui: &mut egui::Ui, bond: &Bond, w: f32, idx: usize) {
                 // Name flexes; the three right-cluster cells size to content.
                 grid_template_columns: vec![fr(1.), auto(), auto(), auto()],
                 gap: taffy::Size {
-                    width: length(6.0),
+                    width: length(dimens::z(dimens::GAP_MD)),
                     height: length(0.0),
                 },
                 align_items: Some(taffy::AlignItems::Center),
@@ -198,7 +199,7 @@ fn type_chip(ui: &mut egui::Ui, bond: &Bond) {
     }
     match bond.specialty {
         Some(f) => {
-            theme::stat_chip(ui, f, 16.0);
+            theme::stat_chip(ui, f, dimens::z(dimens::ICON_MD));
         }
         None => {
             let glyph = if bond.is_friend { "\u{1f91d}" } else { "\u{1f465}" }; // 🤝 / 👥
@@ -226,7 +227,7 @@ fn bond_value(ui: &mut egui::Ui, value: i32) {
 fn on_chip(ui: &mut egui::Ui, facility: Option<usize>) {
     match facility {
         Some(f) => {
-            theme::stat_chip(ui, f, 16.0);
+            theme::stat_chip(ui, f, dimens::z(dimens::ICON_MD));
         }
         None => {
             ui.label(RichText::new("\u{2013}").small().color(theme::FG_DIM));

@@ -2,7 +2,11 @@
 
 use std::sync::atomic::Ordering;
 
+use egui_taffy::taffy::prelude::{auto, fr, length};
+use egui_taffy::{taffy, tui, Tui, TuiBuilderLogic};
 use hachimi_plugin_sdk::{egui, Sdk};
+
+use super::dimens;
 
 use crate::build_profile::{self, Objective};
 use crate::class_dump;
@@ -63,19 +67,94 @@ pub(super) fn draw(ui: &mut egui::Ui) {
     ui.add_space(12.0);
     ui.separator();
     ui.add_space(8.0);
-    ui.horizontal(|ui| {
-        if ui.button("\u{1f4ca} Show Training Overlay").clicked() {
-            if sdk.overlay_set_visible(OVERLAY_ID, true) {
-                sdk.show_notification("Training overlay shown");
-            } else {
-                hlog_warn!(target: "training-tracker", "Host declined overlay_set_visible");
-            }
-        }
-        if ui.button("\u{1f4cb} Dump All IL2CPP Classes").clicked() {
-            class_dump::dump_all_classes();
-            sdk.show_notification("Class dump complete — see il2cpp_classes.txt");
-        }
-    });
+    let w = menu_width(ui);
+    ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend);
+    tui(ui, ui.id().with("tt_actions"))
+        .reserve_width(w)
+        .style(menu_row(w))
+        .show(|tui| {
+            menu_item(tui, |tui| {
+                tui.ui(|ui| {
+                    if ui.button("\u{1f4ca} Show Training Overlay").clicked() {
+                        if sdk.overlay_set_visible(OVERLAY_ID, true) {
+                            sdk.show_notification("Training overlay shown");
+                        } else {
+                            hlog_warn!(target: "training-tracker", "Host declined overlay_set_visible");
+                        }
+                    }
+                });
+            });
+            menu_item(tui, |tui| {
+                tui.ui(|ui| {
+                    if ui.button("\u{1f4cb} Dump All IL2CPP Classes").clicked() {
+                        class_dump::dump_all_classes();
+                        sdk.show_notification("Class dump complete — see il2cpp_classes.txt");
+                    }
+                });
+            });
+        });
+}
+
+/// Deterministic width for the menu's taffy layouts. Floored so sub-pixel host
+/// jitter can't change the root size frame-to-frame (which would make egui_taffy
+/// recompute + `request_discard` every frame and flicker). Capped so the form
+/// doesn't stretch absurdly wide in a roomy host panel.
+fn menu_width(ui: &egui::Ui) -> f32 {
+    ui.available_width()
+        .floor()
+        .clamp(dimens::MENU_WIDTH_MIN, dimens::MENU_WIDTH_MAX)
+}
+
+/// A wrapping flex row pinned to `width`.
+fn menu_row(width: f32) -> taffy::Style {
+    taffy::Style {
+        display: taffy::Display::Flex,
+        flex_direction: taffy::FlexDirection::Row,
+        flex_wrap: taffy::FlexWrap::Wrap,
+        align_items: Some(taffy::AlignItems::Center),
+        gap: taffy::Size {
+            width: length(dimens::MENU_GAP_X),
+            height: length(dimens::MENU_ROW_GAP_Y),
+        },
+        size: taffy::Size {
+            width: length(width),
+            height: auto(),
+        },
+        ..Default::default()
+    }
+}
+
+/// A grid container of `columns` tracks pinned to `width`.
+fn menu_grid(columns: Vec<taffy::TrackSizingFunction>, width: f32) -> taffy::Style {
+    taffy::Style {
+        display: taffy::Display::Grid,
+        grid_template_columns: columns,
+        gap: taffy::Size {
+            width: length(dimens::MENU_GAP_X),
+            height: length(dimens::MENU_GAP_Y),
+        },
+        align_items: Some(taffy::AlignItems::Center),
+        size: taffy::Size {
+            width: length(width),
+            height: auto(),
+        },
+        ..Default::default()
+    }
+}
+
+/// A content-sized, vertically-centered cell holding fixed-size widgets.
+fn menu_item(tui: &mut Tui, content: impl FnOnce(&mut Tui)) {
+    tui.style(taffy::Style {
+        display: taffy::Display::Flex,
+        align_items: Some(taffy::AlignItems::Center),
+        justify_content: Some(taffy::JustifyContent::Start),
+        min_size: taffy::Size {
+            width: length(0.0),
+            height: auto(),
+        },
+        ..Default::default()
+    })
+    .add(content);
 }
 
 /// Draw start/stop button and brief status in the menu.
@@ -152,12 +231,14 @@ fn draw_recommendation(ui: &mut egui::Ui) {
     let mut p = recommend::params();
     let mut changed = false;
     let mut commit = false;
-    egui::Grid::new("tt_recommend")
-        .num_columns(2)
-        .spacing([8.0, 4.0])
-        .show(ui, |ui| {
+    let w = menu_width(ui);
+    ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend);
+    tui(ui, ui.id().with("tt_recommend"))
+        .reserve_width(w)
+        .style(menu_grid(vec![fr(1.0), auto()], w))
+        .show(|tui| {
             rec_row(
-                ui,
+                tui,
                 "Risk penalty threshold",
                 "%",
                 &mut p.risk_threshold_pct,
@@ -166,7 +247,7 @@ fn draw_recommendation(ui: &mut egui::Ui) {
                 &mut commit,
             );
             rec_row(
-                ui,
+                tui,
                 "Rest-all threshold",
                 "%",
                 &mut p.all_risky_pct,
@@ -175,7 +256,7 @@ fn draw_recommendation(ui: &mut egui::Ui) {
                 &mut commit,
             );
             rec_row(
-                ui,
+                tui,
                 "Failure penalty weight",
                 " pts",
                 &mut p.mood_drop_penalty,
@@ -184,7 +265,7 @@ fn draw_recommendation(ui: &mut egui::Ui) {
                 &mut commit,
             );
             rec_row(
-                ui,
+                tui,
                 "Failure stat loss",
                 "",
                 &mut p.failure_stat_loss,
@@ -208,8 +289,9 @@ fn draw_recommendation(ui: &mut egui::Ui) {
 
 /// One labelled `DragValue` row for the recommendation grid. Sets `changed` while
 /// editing and `commit` when the edit is finished (drag stop / focus lost).
+#[allow(clippy::too_many_arguments)]
 fn rec_row(
-    ui: &mut egui::Ui,
+    tui: &mut Tui,
     label: &str,
     suffix: &str,
     value: &mut i32,
@@ -217,15 +299,22 @@ fn rec_row(
     changed: &mut bool,
     commit: &mut bool,
 ) {
-    ui.label(label);
-    let mut drag = egui::DragValue::new(value).range(range);
-    if !suffix.is_empty() {
-        drag = drag.suffix(suffix);
-    }
-    let resp = ui.add(drag);
-    *changed |= resp.changed();
-    *commit |= resp.drag_stopped() || resp.lost_focus();
-    ui.end_row();
+    menu_item(tui, |tui| {
+        tui.ui(|ui| {
+            ui.label(label);
+        });
+    });
+    menu_item(tui, |tui| {
+        tui.ui(|ui| {
+            let mut drag = egui::DragValue::new(value).range(range);
+            if !suffix.is_empty() {
+                drag = drag.suffix(suffix);
+            }
+            let resp = ui.add(drag);
+            *changed |= resp.changed();
+            *commit |= resp.drag_stopped() || resp.lost_focus();
+        });
+    });
 }
 
 /// Human label for an objective.
@@ -271,74 +360,116 @@ fn draw_build_profile(ui: &mut egui::Ui) {
         "— none —".to_owned()
     };
 
-    egui::Grid::new("tt_profile_controls")
-        .num_columns(4)
-        .spacing([8.0, 6.0])
-        .show(ui, |ui| {
+    let ctrl_w = menu_width(ui);
+    ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend);
+    tui(ui, ui.id().with("tt_profile_controls"))
+        .reserve_width(ctrl_w)
+        .style(menu_grid(vec![auto(), fr(1.0), auto(), fr(1.0)], ctrl_w))
+        .show(|tui| {
             // Row 1: objective + running style.
-            ui.label("Objective");
-            egui::ComboBox::from_id_salt("tt_objective")
-                .width(150.0)
-                .selected_text(objective_label(prof.objective))
-                .show_ui(ui, |ui| {
-                    for obj in [Objective::Off, Objective::Rank, Objective::Cm] {
-                        picked |= ui
-                            .selectable_value(&mut prof.objective, obj, objective_label(obj))
-                            .changed();
-                    }
+            menu_item(tui, |tui| {
+                tui.ui(|ui| {
+                    ui.label("Objective");
                 });
-            ui.label("Strategy");
-            egui::ComboBox::from_id_salt("tt_strategy")
-                .width(150.0)
-                .selected_text(prof.strategy.label())
-                .show_ui(ui, |ui| {
-                    for s in Strategy::ALL {
-                        picked |= ui.selectable_value(&mut prof.strategy, s, s.label()).changed();
-                    }
-                });
-            ui.end_row();
-
-            // Row 2: track + course + ground (only when course data is loaded).
-            if grouped.is_empty() {
-                ui.label("Track");
-                ui.weak("\u{26a0} course data unavailable (run the course-data tool / deploy assets)");
-                ui.end_row();
-            } else {
-                ui.label("Track");
-                egui::ComboBox::from_id_salt("tt_track")
-                    .width(150.0)
-                    .selected_text(course_data::track_name(track))
-                    .show_ui(ui, |ui| {
-                        for &t in grouped.keys() {
-                            if ui.selectable_label(t == track, course_data::track_name(t)).clicked() && t != track {
-                                if let Some(first) = grouped.get(&t).and_then(|v| v.first()) {
-                                    prof.target_course_id = first.0;
-                                    picked = true;
-                                }
-                            }
-                        }
-                    });
-                egui::ComboBox::from_id_salt("tt_course")
-                    .width(190.0)
-                    .height(320.0)
-                    .selected_text(course_desc)
-                    .show_ui(ui, |ui| {
-                        for (id, label) in grouped.get(&track).into_iter().flatten() {
-                            picked |= ui.selectable_value(&mut prof.target_course_id, *id, label).changed();
-                        }
-                    });
-                ui.horizontal(|ui| {
-                    ui.label("Ground");
-                    egui::ComboBox::from_id_salt("tt_ground")
-                        .width(110.0)
-                        .selected_text(prof.ground_condition.label())
+            });
+            menu_item(tui, |tui| {
+                tui.ui(|ui| {
+                    egui::ComboBox::from_id_salt("tt_objective")
+                        .width(150.0)
+                        .selected_text(objective_label(prof.objective))
                         .show_ui(ui, |ui| {
-                            for c in cm_model::GroundCondition::ALL {
-                                picked |= ui.selectable_value(&mut prof.ground_condition, c, c.label()).changed();
+                            for obj in [Objective::Off, Objective::Rank, Objective::Cm] {
+                                picked |= ui
+                                    .selectable_value(&mut prof.objective, obj, objective_label(obj))
+                                    .changed();
                             }
                         });
                 });
-                ui.end_row();
+            });
+            menu_item(tui, |tui| {
+                tui.ui(|ui| {
+                    ui.label("Strategy");
+                });
+            });
+            menu_item(tui, |tui| {
+                tui.ui(|ui| {
+                    egui::ComboBox::from_id_salt("tt_strategy")
+                        .width(150.0)
+                        .selected_text(prof.strategy.label())
+                        .show_ui(ui, |ui| {
+                            for s in Strategy::ALL {
+                                picked |= ui.selectable_value(&mut prof.strategy, s, s.label()).changed();
+                            }
+                        });
+                });
+            });
+
+            // Row 2: track + course + ground (only when course data is loaded).
+            if grouped.is_empty() {
+                menu_item(tui, |tui| {
+                    tui.ui(|ui| {
+                        ui.label("Track");
+                    });
+                });
+                menu_item(tui, |tui| {
+                    tui.ui(|ui| {
+                        ui.weak("\u{26a0} course data unavailable (run the course-data tool / deploy assets)");
+                    });
+                });
+            } else {
+                menu_item(tui, |tui| {
+                    tui.ui(|ui| {
+                        ui.label("Track");
+                    });
+                });
+                menu_item(tui, |tui| {
+                    tui.ui(|ui| {
+                        egui::ComboBox::from_id_salt("tt_track")
+                            .width(150.0)
+                            .selected_text(course_data::track_name(track))
+                            .show_ui(ui, |ui| {
+                                for &t in grouped.keys() {
+                                    if ui.selectable_label(t == track, course_data::track_name(t)).clicked()
+                                        && t != track
+                                    {
+                                        if let Some(first) = grouped.get(&t).and_then(|v| v.first()) {
+                                            prof.target_course_id = first.0;
+                                            picked = true;
+                                        }
+                                    }
+                                }
+                            });
+                    });
+                });
+                menu_item(tui, |tui| {
+                    tui.ui(|ui| {
+                        egui::ComboBox::from_id_salt("tt_course")
+                            .width(190.0)
+                            .height(320.0)
+                            .selected_text(course_desc)
+                            .show_ui(ui, |ui| {
+                                for (id, label) in grouped.get(&track).into_iter().flatten() {
+                                    picked |= ui.selectable_value(&mut prof.target_course_id, *id, label).changed();
+                                }
+                            });
+                    });
+                });
+                menu_item(tui, |tui| {
+                    tui.ui(|ui| {
+                        ui.horizontal(|ui| {
+                            ui.label("Ground");
+                            egui::ComboBox::from_id_salt("tt_ground")
+                                .width(110.0)
+                                .selected_text(prof.ground_condition.label())
+                                .show_ui(ui, |ui| {
+                                    for c in cm_model::GroundCondition::ALL {
+                                        picked |=
+                                            ui.selectable_value(&mut prof.ground_condition, c, c.label()).changed();
+                                    }
+                                });
+                        });
+                    });
+                });
             }
         });
 
@@ -352,36 +483,65 @@ fn draw_build_profile(ui: &mut egui::Ui) {
 
     // --- Per-stat targets + weights ---
     ui.small("Targets (0 = game cap) • Weights bias CM scoring per stat");
-    egui::Grid::new("tt_profile_stats")
-        .num_columns(build_profile::STAT_LABELS.len() + 1)
-        .striped(true)
-        .spacing([8.0, 4.0])
-        .show(ui, |ui| {
-            ui.label("");
+    let stats_w = menu_width(ui);
+    let mut stat_cols = vec![auto()];
+    stat_cols.extend(build_profile::STAT_LABELS.iter().map(|_| fr(1.0)));
+    ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend);
+    tui(ui, ui.id().with("tt_profile_stats"))
+        .reserve_width(stats_w)
+        .style(menu_grid(stat_cols, stats_w))
+        .show(|tui| {
+            menu_item(tui, |tui| {
+                tui.ui(|ui| {
+                    ui.label("");
+                });
+            });
             for name in build_profile::STAT_LABELS.iter() {
-                ui.label(*name);
+                menu_item(tui, |tui| {
+                    tui.ui(|ui| {
+                        ui.label(*name);
+                    });
+                });
             }
-            ui.end_row();
 
-            ui.strong("Target");
+            menu_item(tui, |tui| {
+                tui.ui(|ui| {
+                    ui.strong("Target");
+                });
+            });
             for value in &mut prof.per_stat_target {
-                let resp = ui.add(
-                    egui::DragValue::new(value)
-                        .speed(10.0)
-                        .range(0..=build_profile::MAX_TARGET),
-                );
-                changed |= resp.changed();
-                commit |= resp.drag_stopped() || resp.lost_focus();
+                menu_item(tui, |tui| {
+                    tui.ui(|ui| {
+                        let resp = ui.add(
+                            egui::DragValue::new(value)
+                                .speed(10.0)
+                                .range(0..=build_profile::MAX_TARGET),
+                        );
+                        changed |= resp.changed();
+                        commit |= resp.drag_stopped() || resp.lost_focus();
+                    });
+                });
             }
-            ui.end_row();
 
-            ui.strong("Weight");
-            for w in &mut prof.stat_weights {
-                let resp = ui.add(egui::DragValue::new(w).speed(0.05).range(0.0..=5.0).max_decimals(2));
-                changed |= resp.changed();
-                commit |= resp.drag_stopped() || resp.lost_focus();
+            menu_item(tui, |tui| {
+                tui.ui(|ui| {
+                    ui.strong("Weight");
+                });
+            });
+            for weight in &mut prof.stat_weights {
+                menu_item(tui, |tui| {
+                    tui.ui(|ui| {
+                        let resp = ui.add(
+                            egui::DragValue::new(weight)
+                                .speed(0.05)
+                                .range(0.0..=5.0)
+                                .max_decimals(2),
+                        );
+                        changed |= resp.changed();
+                        commit |= resp.drag_stopped() || resp.lost_focus();
+                    });
+                });
             }
-            ui.end_row();
         });
 
     if changed || picked {

@@ -7,14 +7,13 @@ use egui_taffy::taffy::style_helpers::auto;
 use egui_taffy::{taffy, tui, TuiBuilderLogic};
 use hachimi_plugin_sdk::egui::{self, Color32, CornerRadius, Pos2, Rect, RichText, Stroke, StrokeKind, Vec2};
 
+use super::super::dimens;
 use super::super::textures;
 use super::theme;
 use crate::career_meta;
 use crate::gametora_data;
 use crate::memory_reader::{self, CareerSnapshot};
 use crate::rank_table;
-
-const PORTRAIT: f32 = 56.0;
 
 /// A flex column / row style with a gap (the two layouts the header needs).
 fn col(gap: f32) -> taffy::Style {
@@ -77,11 +76,11 @@ pub(super) fn draw(ui: &mut egui::Ui, snap: &CareerSnapshot) {
     let width = super::super::overlay::content_width();
     tui(ui, ui.id().with("career_header"))
         .reserve_width(width)
-        .style(grid_2col(8.0, width))
+        .style(grid_2col(dimens::z(dimens::GAP_LG), width))
         .show(|tui| {
             // Left column: portrait + name / outfit / stars.
-            tui.style(row(8.0)).add(|tui| {
-                tui.style(col(2.0)).add(|tui| {
+            tui.style(row(dimens::z(dimens::GAP_LG))).add(|tui| {
+                tui.style(col(dimens::z(dimens::GAP_XS))).add(|tui| {
                     tui.ui(|ui| portrait_with_badge(ui, snap));
                     if let Some(ev) = snap.evaluation_value {
                         tui.ui(|ui| {
@@ -92,17 +91,30 @@ pub(super) fn draw(ui: &mut egui::Ui, snap: &CareerSnapshot) {
                 tui.style(taffy::Style {
                     flex_grow: 1.0,
                     flex_basis: length(0.0),
-                    ..col(2.0)
+                    ..col(dimens::z(dimens::GAP_XS))
                 })
                 .add(|tui| {
                     tui.ui(|ui| {
-                        ui.add(egui::Label::new(RichText::new(&name).size(16.0).strong().color(theme::FG)).truncate());
+                        ui.add(
+                            egui::Label::new(
+                                RichText::new(&name)
+                                    .size(dimens::z(dimens::FONT_NAME))
+                                    .strong()
+                                    .color(theme::FG),
+                            )
+                            .truncate(),
+                        );
                     });
                     if let Some(outfit) = &outfit {
                         tui.ui(|ui| {
                             ui.add(
-                                egui::Label::new(RichText::new(outfit).size(11.0).strong().color(theme::FG_MUTED))
-                                    .truncate(),
+                                egui::Label::new(
+                                    RichText::new(outfit)
+                                        .size(dimens::z(dimens::FONT_OUTFIT))
+                                        .strong()
+                                        .color(theme::FG_MUTED),
+                                )
+                                .truncate(),
                             );
                         });
                     }
@@ -110,7 +122,7 @@ pub(super) fn draw(ui: &mut egui::Ui, snap: &CareerSnapshot) {
                 });
             });
             // Right column: condition pills, right-aligned.
-            tui.style(col_end(6.0)).add(|tui| {
+            tui.style(col_end(dimens::z(dimens::GAP_MD))).add(|tui| {
                 tui.ui(|ui| date_pill(ui, snap));
                 tui.ui(|ui| energy_pill(ui, snap));
                 tui.ui(|ui| mood_pill(ui, snap));
@@ -120,10 +132,11 @@ pub(super) fn draw(ui: &mut egui::Ui, snap: &CareerSnapshot) {
 
 /// Portrait square with the overlapping circular rank badge at the top-right.
 fn portrait_with_badge(ui: &mut egui::Ui, snap: &CareerSnapshot) {
-    let badge = 30.0;
-    let region = Vec2::new(PORTRAIT + badge * 0.4, PORTRAIT + badge * 0.35);
+    let badge = dimens::z(dimens::RANK_BADGE);
+    let portrait = dimens::z(dimens::PORTRAIT);
+    let region = Vec2::new(portrait + badge * 0.4, portrait + badge * 0.35);
     let (rect, _) = ui.allocate_exact_size(region, egui::Sense::hover());
-    let p_rect = Rect::from_min_size(Pos2::new(rect.left(), rect.bottom() - PORTRAIT), Vec2::splat(PORTRAIT));
+    let p_rect = Rect::from_min_size(Pos2::new(rect.left(), rect.bottom() - portrait), Vec2::splat(portrait));
 
     // Portrait image (or placeholder), with a rounded border.
     let drawn = career_meta::trainee_portrait_path(snap.card_id)
@@ -185,13 +198,13 @@ fn stars(ui: &mut egui::Ui, value: i32) {
     for i in 0..5 {
         s.push(if i < value { '\u{2605}' } else { '\u{2606}' }); // ★ / ☆
     }
-    ui.label(RichText::new(s).size(13.0).color(theme::GOLD));
+    ui.label(RichText::new(s).size(dimens::z(dimens::FONT_STARS)).color(theme::GOLD));
 }
 
 fn date_pill(ui: &mut egui::Ui, snap: &CareerSnapshot) {
     let (year, date) = career_meta::turn_date(snap.current_turn, snap.scenario_id);
     theme::pill(ui, |ui| {
-        ui.spacing_mut().item_spacing.x = 4.0;
+        ui.spacing_mut().item_spacing.x = dimens::z(dimens::GAP_SM);
         ui.label(RichText::new(year).strong().color(theme::UMA_300));
         ui.label(RichText::new("·").color(theme::FG_DIM));
         ui.label(RichText::new(date).strong().color(theme::FG));

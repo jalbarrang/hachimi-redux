@@ -5,6 +5,7 @@ use egui_taffy::taffy::prelude::{auto, length};
 use egui_taffy::{taffy, tui, TuiBuilderLogic, TuiContainerResponse};
 use hachimi_plugin_sdk::egui::{self, Color32, CornerRadius, RichText, Stroke, StrokeKind, Vec2, Vec2b};
 
+use super::super::dimens;
 use super::super::textures;
 use super::theme;
 use crate::chara_effects::{self, Polarity};
@@ -58,7 +59,7 @@ fn skill_card(ui: &mut egui::Ui, idx: usize, master_id: i32, level: i32, name: &
         .fill(theme::SURFACE_2)
         .stroke(Stroke::new(1.0, theme::LINE))
         .show(ui, |ui| {
-            let inner = (w - 8.0).max(40.0);
+            let inner = (w - dimens::z(dimens::SKILL_CARD_MARGIN)).max(40.0);
             ui.set_width(inner);
             ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend);
             tui(ui, ui.id().with("career_skill").with(idx))
@@ -68,7 +69,7 @@ fn skill_card(ui: &mut egui::Ui, idx: usize, master_id: i32, level: i32, name: &
                     flex_direction: taffy::FlexDirection::Row,
                     align_items: Some(taffy::AlignItems::Center),
                     gap: taffy::Size {
-                        width: length(6.0),
+                        width: length(dimens::z(dimens::GAP_MD)),
                         height: length(0.0),
                     },
                     size: taffy::Size {
@@ -81,7 +82,10 @@ fn skill_card(ui: &mut egui::Ui, idx: usize, master_id: i32, level: i32, name: &
                     // Rarity rail (rounded on its right edge).
                     tui.style(item_center()).add(|tui| {
                         tui.ui(|ui| {
-                            let (rail, _) = ui.allocate_exact_size(Vec2::new(4.0, 24.0), egui::Sense::hover());
+                            let (rail, _) = ui.allocate_exact_size(
+                                Vec2::new(dimens::z(dimens::RAIL_W), dimens::z(dimens::RAIL_H)),
+                                egui::Sense::hover(),
+                            );
                             ui.painter().rect_filled(
                                 rail,
                                 CornerRadius {
@@ -96,7 +100,14 @@ fn skill_card(ui: &mut egui::Ui, idx: usize, master_id: i32, level: i32, name: &
                     });
                     if let Some(id) = icon_id {
                         tui.style(item_center()).add(|tui| {
-                            tui.ui(|ui| textures::image_square(ui, &format!("{id}.png"), 24.0, Color32::WHITE));
+                            tui.ui(|ui| {
+                                textures::image_square(
+                                    ui,
+                                    &format!("{id}.png"),
+                                    dimens::z(dimens::ICON_LG),
+                                    Color32::WHITE,
+                                )
+                            });
                         });
                     }
                     // Name fills the remaining width and truncates. Report a
@@ -176,7 +187,7 @@ fn conditions(ui: &mut egui::Ui, snap: &CareerSnapshot) {
     if snap.chara_effect_ids.is_empty() {
         return;
     }
-    ui.add_space(8.0);
+    ui.add_space(dimens::z(dimens::GAP_LG));
     let w = super::super::overlay::content_width();
     ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend);
     tui(ui, ui.id().with("career_conditions"))
@@ -187,8 +198,8 @@ fn conditions(ui: &mut egui::Ui, snap: &CareerSnapshot) {
             flex_wrap: taffy::FlexWrap::Wrap,
             align_items: Some(taffy::AlignItems::Center),
             gap: taffy::Size {
-                width: length(6.0),
-                height: length(4.0),
+                width: length(dimens::z(dimens::GAP_MD)),
+                height: length(dimens::z(dimens::GAP_SM)),
             },
             size: taffy::Size {
                 width: length(w),
@@ -228,10 +239,10 @@ fn chip_style() -> taffy::Style {
         align_items: Some(taffy::AlignItems::Center),
         justify_content: Some(taffy::JustifyContent::Center),
         padding: taffy::Rect {
-            left: length(8.0),
-            right: length(8.0),
-            top: length(3.0),
-            bottom: length(3.0),
+            left: length(dimens::z(dimens::CHIP_PAD_X)),
+            right: length(dimens::z(dimens::CHIP_PAD_X)),
+            top: length(dimens::z(dimens::CHIP_PAD_Y)),
+            bottom: length(dimens::z(dimens::CHIP_PAD_Y)),
         },
         ..Default::default()
     }

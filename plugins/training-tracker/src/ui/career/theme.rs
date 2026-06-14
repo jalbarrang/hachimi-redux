@@ -9,6 +9,7 @@ use egui_taffy::taffy::prelude::length;
 use egui_taffy::{taffy, tui, TaffyContainerUi, TuiBuilderLogic};
 use hachimi_plugin_sdk::egui::{self, Color32, CornerRadius, Pos2, Rect, RichText, Stroke, StrokeKind, Ui, Vec2};
 
+use super::super::dimens;
 use super::super::textures;
 use crate::career_meta;
 
@@ -122,13 +123,13 @@ pub fn section_strip(ui: &mut Ui, label: &str, trailing: &str) {
         align_items: Some(taffy::AlignItems::Center),
         justify_content: Some(taffy::JustifyContent::SpaceBetween),
         padding: taffy::Rect {
-            left: length(12.0),
-            right: length(14.0),
+            left: length(dimens::z(dimens::STRIP_PAD_L)),
+            right: length(dimens::z(dimens::STRIP_PAD_R)),
             top: length(0.0),
             bottom: length(0.0),
         },
         gap: taffy::Size {
-            width: length(8.0),
+            width: length(dimens::z(dimens::GAP_LG)),
             height: length(0.0),
         },
         size,
@@ -189,7 +190,7 @@ fn strip_background(ui: &mut egui::Ui, container: &TaffyContainerUi) {
 /// A small raised pill chip; `add` draws its inline contents.
 pub fn pill(ui: &mut Ui, add: impl FnOnce(&mut Ui)) {
     egui::Frame::new()
-        .inner_margin(egui::Margin::symmetric(10, 5))
+        .inner_margin(egui::Margin::symmetric(dimens::z(10.0) as i8, dimens::z(5.0) as i8))
         .corner_radius(CornerRadius::same(8))
         .fill(SURFACE_2)
         .stroke(Stroke::new(1.0, LINE))
@@ -206,7 +207,7 @@ pub fn row_frame(rainbow: bool) -> egui::Frame {
         Stroke::new(1.0, LINE)
     };
     egui::Frame::new()
-        .inner_margin(egui::Margin::symmetric(10, 6))
+        .inner_margin(egui::Margin::symmetric(dimens::z(10.0) as i8, dimens::z(6.0) as i8))
         .corner_radius(CornerRadius::same(8))
         .fill(SURFACE_2)
         .stroke(stroke)

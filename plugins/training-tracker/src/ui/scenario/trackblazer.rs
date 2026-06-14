@@ -6,6 +6,7 @@ use hachimi_plugin_sdk::egui::{self, Color32, RichText, Vec2, Vec2b};
 
 use crate::memory_reader;
 
+use crate::ui::dimens;
 use crate::ui::overlay;
 use crate::ui::util::worth_color;
 
@@ -156,8 +157,8 @@ fn grid_style(columns: Vec<taffy::TrackSizingFunction>, width: f32) -> taffy::St
         display: taffy::Display::Grid,
         grid_template_columns: columns,
         gap: taffy::Size {
-            width: length(10.0),
-            height: length(4.0),
+            width: length(dimens::z(dimens::GRID_GAP_X)),
+            height: length(dimens::z(dimens::GAP_SM)),
         },
         align_items: Some(taffy::AlignItems::Center),
         size: taffy::Size {

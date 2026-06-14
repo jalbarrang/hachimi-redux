@@ -7,6 +7,7 @@ use egui_taffy::taffy::style_helpers::auto;
 use egui_taffy::{taffy, tui, TaffyContainerUi, TuiBuilderLogic};
 use hachimi_plugin_sdk::egui::{self, Color32, CornerRadius, RichText, Stroke, StrokeKind};
 
+use super::super::dimens;
 use super::super::textures;
 use super::theme;
 use crate::career_meta;
@@ -30,7 +31,7 @@ fn fixed_width(w: f32) -> taffy::Style {
 
 fn card() -> taffy::Style {
     taffy::Style {
-        padding: length(8.0),
+        padding: length(dimens::z(dimens::GAP_LG)),
         ..Default::default()
     }
 }
@@ -41,10 +42,17 @@ fn grid_6col() -> taffy::Style {
         // Grow to fill the card's main axis so the fr() columns have the full
         // width to distribute, instead of collapsing to content width on the left.
         flex_grow: 1.0,
-        grid_template_columns: vec![length(52.0), fr(1.), fr(1.), fr(1.), fr(1.), fr(1.)],
+        grid_template_columns: vec![
+            length(dimens::z(dimens::STAT_LABEL_COL)),
+            fr(1.),
+            fr(1.),
+            fr(1.),
+            fr(1.),
+            fr(1.),
+        ],
         gap: taffy::Size {
-            width: length(6.0),
-            height: length(5.0),
+            width: length(dimens::z(dimens::GAP_MD)),
+            height: length(dimens::z(dimens::GAP_ROW)),
         },
         align_items: Some(taffy::AlignItems::Stretch),
         justify_items: Some(taffy::AlignItems::Stretch),
@@ -121,7 +129,7 @@ fn draw_header_row(tui: &mut egui_taffy::Tui, snap: &CareerSnapshot) {
         tui.style(data_cell()).add(|tui| {
             tui.ui(|ui| {
                 let resp = ui.horizontal(|ui| {
-                    ui.spacing_mut().item_spacing.x = 2.0;
+                    ui.spacing_mut().item_spacing.x = dimens::z(dimens::GAP_XS);
                     ui.label(RichText::new(*name).small().strong().color(theme::FG));
                     ui.label(
                         RichText::new(format!("L{}", snap.training_levels[i]))
@@ -144,8 +152,13 @@ fn draw_stat_row(tui: &mut egui_taffy::Tui, stats: &[i32; 5]) {
         tui.style(data_cell()).add(|tui| {
             tui.ui(|ui| {
                 ui.horizontal(|ui| {
-                    ui.spacing_mut().item_spacing.x = 2.0;
-                    textures::image_square(ui, &career_meta::stat_rank_sprite(v), 16.0, Color32::WHITE);
+                    ui.spacing_mut().item_spacing.x = dimens::z(dimens::GAP_XS);
+                    textures::image_square(
+                        ui,
+                        &career_meta::stat_rank_sprite(v),
+                        dimens::z(dimens::ICON_MD),
+                        Color32::WHITE,
+                    );
                     ui.label(RichText::new(v.to_string()).strong().color(theme::FG));
                 });
             });

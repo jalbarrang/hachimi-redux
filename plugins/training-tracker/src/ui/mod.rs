@@ -14,6 +14,7 @@ use crate::memory_reader;
 
 mod career;
 mod constants;
+mod dimens;
 // Race-condition icon toggles (weather/season/time). Currently hidden from the
 // UI per product decision; kept dormant so it can be re-enabled cheaply.
 #[allow(dead_code)]
@@ -50,6 +51,22 @@ pub fn register_ui() {
             target: "training-tracker",
             "L1 page registered; L2 panel registration declined by host"
         );
+    }
+
+    // Unbound by default; the user assigns a chord from the host's Hotkeys tab.
+    sdk.register_hotkey(
+        "training-tracker.toggle_overlay",
+        "Toggle Training Tracker Overlay",
+        0,
+        0,
+        toggle_overlay_hotkey,
+        std::ptr::null_mut(),
+    );
+}
+
+extern "C" fn toggle_overlay_hotkey(_userdata: *mut c_void) {
+    if panic::catch_unwind(|| Sdk::get().toggle_overlay(constants::OVERLAY_ID)).is_err() {
+        hlog_error!(target: "training-tracker", "toggle_overlay_hotkey PANICKED");
     }
 }
 

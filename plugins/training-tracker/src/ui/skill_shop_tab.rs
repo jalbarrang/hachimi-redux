@@ -8,6 +8,7 @@ use crate::overlay_cache;
 use crate::skill_shop;
 use crate::skill_shop_prefs::{cycle_sort_mode, prefs, set_prefs, sort_mode_label, DistanceFilter, StyleFilter};
 
+use super::dimens;
 use super::overlay;
 
 pub(super) fn draw(ui: &mut egui::Ui) {
@@ -127,7 +128,7 @@ fn shop_row(ui: &mut egui::Ui, idx: usize, w: f32, left: &str, left_color: Color
             flex_direction: taffy::FlexDirection::Row,
             align_items: Some(taffy::AlignItems::Center),
             gap: taffy::Size {
-                width: length(6.0),
+                width: length(dimens::z(dimens::GAP_MD)),
                 height: length(0.0),
             },
             size: taffy::Size {

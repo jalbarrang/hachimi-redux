@@ -1,13 +1,15 @@
 //! L2 overlay shell: tracking toggle, tab bar, scroll helper, content scaling.
 
 use egui_taffy::taffy::prelude::{auto, length};
-use egui_taffy::{taffy, tui, TuiBuilderLogic};
+use egui_taffy::{taffy, tui, TuiBuilderLogic, TuiContainerResponse};
+use hachimi_plugin_sdk::egui::{Vec2, Vec2b};
 use hachimi_plugin_sdk::{egui, Sdk};
 
 use crate::memory_reader;
 use crate::overlay_prefs;
 
 use super::constants::{MIN_LIST_HEIGHT, OVERLAY_BASE_WIDTH, OVERLAY_FONT_SIZE};
+use super::dimens;
 
 /// Panel-frame inner margin (must match [`panel_frame`]); content sits inside it.
 const PANEL_INNER_MARGIN: f32 = 10.0;
@@ -19,7 +21,14 @@ use crate::tabs::{self, selected_tab, set_selected_tab, Tab};
 /// auto-sizing and grew without bound. Returns the applied scale.
 pub(super) fn apply_scale(ui: &mut egui::Ui) -> f32 {
     let scale = overlay_prefs::zoom();
-    ui.style_mut().override_font_id = Some(egui::FontId::proportional(OVERLAY_FONT_SIZE * scale));
+    let style = ui.style_mut();
+    // Scale every text style so `.small()` / `.strong()` / default labels follow
+    // the zoom. `override_font_id` alone is not enough: text set via a `TextStyle`
+    // or an explicit size bypasses it (egui 0.33 `FontSelection::resolve`).
+    for (_, font_id) in style.text_styles.iter_mut() {
+        font_id.size *= scale;
+    }
+    style.override_font_id = Some(egui::FontId::proportional(OVERLAY_FONT_SIZE * scale));
     let sp = ui.spacing_mut();
     sp.item_spacing *= scale;
     sp.button_padding *= scale;
@@ -81,9 +90,14 @@ fn draw_zoom_control(ui: &mut egui::Ui) {
                     ui.label("\u{1f50d} Zoom");
                 });
             });
-            // Slider fills the remaining width of the row.
+            // Slider fills the remaining width of the row. Report a constant,
+            // width-independent size (width 0 + infinite.x) via `ui_manual`: a
+            // width-filling widget reported through `.ui()` (which uses
+            // `ui.min_size()`) feeds its assigned width back into flex sizing,
+            // keeping the node perpetually dirty so egui exceeds its 2-pass budget
+            // and the overlay flickers on every repaint (drag/scroll).
             tui.style(item_grow()).add(|tui| {
-                tui.ui(|ui| {
+                tui.ui_manual(|ui, _| {
                     let mut z = overlay_prefs::pending_zoom();
                     let slider = egui::Slider::new(&mut z, overlay_prefs::MIN_ZOOM..=overlay_prefs::MAX_ZOOM)
                         // Log scale so the multiplicative range is symmetric: 0.4 .. 2.5
@@ -100,6 +114,14 @@ fn draw_zoom_control(ui: &mut egui::Ui) {
                         overlay_prefs::commit_zoom();
                         crate::config::persist();
                     }
+                    let h = ui.min_size().y;
+                    TuiContainerResponse {
+                        inner: (),
+                        min_size: Vec2::new(0.0, h),
+                        intrinsic_size: None,
+                        max_size: Vec2::new(0.0, h),
+                        infinite: Vec2b::new(true, false),
+                    }
                 });
             });
         });
@@ -113,8 +135,8 @@ fn row_style(width: f32) -> taffy::Style {
         flex_wrap: taffy::FlexWrap::Wrap,
         align_items: Some(taffy::AlignItems::Center),
         gap: taffy::Size {
-            width: length(6.0),
-            height: length(4.0),
+            width: length(dimens::z(dimens::GAP_MD)),
+            height: length(dimens::z(dimens::GAP_SM)),
         },
         size: taffy::Size {
             width: length(width),
