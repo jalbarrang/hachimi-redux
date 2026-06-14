@@ -1,8 +1,7 @@
 //! L2 overlay shell: tracking toggle, tab bar, scroll helper, content scaling.
 
 use egui_taffy::taffy::prelude::{auto, length};
-use egui_taffy::{taffy, tui, TuiBuilderLogic, TuiContainerResponse};
-use hachimi_plugin_sdk::egui::{Vec2, Vec2b};
+use egui_taffy::{taffy, tui, TuiBuilderLogic};
 use hachimi_plugin_sdk::{egui, Sdk};
 
 use crate::memory_reader;
@@ -79,52 +78,30 @@ pub(super) fn space(ui: &mut egui::Ui, base: f32) {
 /// slider's own size) only changes when the drag ends. This stops the slider from
 /// rescaling under the cursor mid-drag, which made it jitter/overshoot.
 fn draw_zoom_control(ui: &mut egui::Ui) {
-    let w = content_width();
-    ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend);
-    tui(ui, ui.id().with("zoom_ctrl"))
-        .reserve_width(w)
-        .style(row_style(w))
-        .show(|tui| {
-            tui.style(item_center()).add(|tui| {
-                tui.ui(|ui| {
-                    ui.label("\u{1f50d} Zoom");
-                });
-            });
-            // Slider fills the remaining width of the row. Report a constant,
-            // width-independent size (width 0 + infinite.x) via `ui_manual`: a
-            // width-filling widget reported through `.ui()` (which uses
-            // `ui.min_size()`) feeds its assigned width back into flex sizing,
-            // keeping the node perpetually dirty so egui exceeds its 2-pass budget
-            // and the overlay flickers on every repaint (drag/scroll).
-            tui.style(item_grow()).add(|tui| {
-                tui.ui_manual(|ui, _| {
-                    let mut z = overlay_prefs::pending_zoom();
-                    let slider = egui::Slider::new(&mut z, overlay_prefs::MIN_ZOOM..=overlay_prefs::MAX_ZOOM)
-                        // Log scale so the multiplicative range is symmetric: 0.4 .. 2.5
-                        // places 1.0 (100%) at the visual center (sqrt(0.4 * 2.5) == 1.0).
-                        .logarithmic(true)
-                        .custom_formatter(|v, _| format!("{:.0}%", v * 100.0))
-                        .show_value(true);
-                    let resp = ui.add(slider);
-                    if resp.changed() {
-                        overlay_prefs::set_pending_zoom(z);
-                    }
-                    // Commit on release (drag) or on a discrete change (click / keyboard).
-                    if resp.drag_stopped() || (resp.changed() && !resp.dragged()) {
-                        overlay_prefs::commit_zoom();
-                        crate::config::persist();
-                    }
-                    let h = ui.min_size().y;
-                    TuiContainerResponse {
-                        inner: (),
-                        min_size: Vec2::new(0.0, h),
-                        intrinsic_size: None,
-                        max_size: Vec2::new(0.0, h),
-                        infinite: Vec2b::new(true, false),
-                    }
-                });
-            });
-        });
+    // Plain egui: the egui `Slider` is an interactive widget whose measured size
+    // depends on `slider_width`/`interact_size` (both zoom-scaled per frame), so it
+    // can't be a stable egui_taffy leaf — it kept the `shell:zoom` taffy node
+    // dirty every frame and flickered the overlay. This is a leaf control row, so
+    // egui's own horizontal layout is the right tool.
+    ui.horizontal(|ui| {
+        ui.label("\u{1f50d} Zoom");
+        let mut z = overlay_prefs::pending_zoom();
+        let slider = egui::Slider::new(&mut z, overlay_prefs::MIN_ZOOM..=overlay_prefs::MAX_ZOOM)
+            // Log scale so the multiplicative range is symmetric: 0.4 .. 2.5
+            // places 1.0 (100%) at the visual center (sqrt(0.4 * 2.5) == 1.0).
+            .logarithmic(true)
+            .custom_formatter(|v, _| format!("{:.0}%", v * 100.0))
+            .show_value(true);
+        let resp = ui.add(slider);
+        if resp.changed() {
+            overlay_prefs::set_pending_zoom(z);
+        }
+        // Commit on release (drag) or on a discrete change (click / keyboard).
+        if resp.drag_stopped() || (resp.changed() && !resp.dragged()) {
+            overlay_prefs::commit_zoom();
+            crate::config::persist();
+        }
+    });
 }
 
 /// A pinned-width flex row, vertically centered, wrapping, with a small gap.
@@ -154,18 +131,7 @@ fn item_center() -> taffy::Style {
     }
 }
 
-fn item_grow() -> taffy::Style {
-    taffy::Style {
-        display: taffy::Display::Flex,
-        flex_grow: 1.0,
-        align_items: Some(taffy::AlignItems::Center),
-        min_size: taffy::Size {
-            width: length(0.0),
-            height: auto(),
-        },
-        ..Default::default()
-    }
-}
+
 
 /// Apply overlay chrome and draw tracking toggle + tab bar when tracking is on.
 pub(super) fn draw_shell(ui: &mut egui::Ui, tracking: bool) -> bool {
@@ -177,11 +143,13 @@ pub(super) fn draw_shell(ui: &mut egui::Ui, tracking: bool) -> bool {
     }
 
     ui.separator();
-    draw_zoom_control(ui);
+    // TEMPORARY flicker diagnostic.
+    let ctx = ui.ctx().clone();
+    super::flicker_diag::watch(&ctx, "shell:zoom", || draw_zoom_control(ui));
     // Hide the tab row when only one tab is enabled — the overlay becomes a single
     // clean panel showing just that tab's body.
     if tabs::enabled_count() > 1 {
-        draw_tab_bar(ui);
+        super::flicker_diag::watch(&ctx, "shell:tab_bar", || draw_tab_bar(ui));
         ui.separator();
     }
     true
