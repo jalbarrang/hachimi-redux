@@ -645,10 +645,9 @@ impl ConfigEditor {
     }
 
     /// Live overlay controls relocated from the removed Overlay tab: global
-    /// opacity + per-panel show/hide and reset-position. These are runtime overlay
-    /// prefs (apply immediately, not part of the Save/Cancel working copy). The
-    /// global lock toggle was dropped per design; per-panel show/hide stays until
-    /// the overlay-toggle-hotkeys plan replaces it.
+    /// opacity + per-panel reset-position. Runtime overlay prefs (apply
+    /// immediately, not part of the Save/Cancel working copy). The lock toggle was
+    /// dropped; per-panel show/hide is now a hotkey (Hotkeys tab) per design.
     fn ui_overlays_section(ui: &mut egui::Ui) {
         ui.add_space(8.0);
         widgets::section_header(ui, t!("config_editor.overlays_heading").into_owned());
@@ -670,11 +669,7 @@ impl ConfigEditor {
         }
         for ov in &overlays {
             let title = overlay::display_title(&ov.id);
-            let mut visible = overlay::is_overlay_visible(&ov.id);
             ui.horizontal(|ui| {
-                if widgets::toggle_ui(ui, &mut visible).changed() {
-                    overlay::set_overlay_visible(&ov.id, visible);
-                }
                 ui.label(&title);
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     if widgets::ghost_button(ui, t!("config_editor.overlay_reset").into_owned())
