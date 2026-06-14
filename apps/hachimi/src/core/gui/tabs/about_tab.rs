@@ -1,10 +1,12 @@
-//! L1 About tab — about info, update check, stats, and the danger zone.
+//! L1 About tab — config actions, about info, update check, stats, danger zone.
+
+use std::borrow::Cow;
 
 use chrono::{Datelike, Utc};
 use rust_i18n::t;
 
 use crate::core::gui::widgets;
-use crate::core::gui::window::{BoxedWindow, LicenseWindow, SimpleYesNoDialog};
+use crate::core::gui::window::{BoxedWindow, FirstTimeSetupWindow, LicenseWindow, SimpleYesNoDialog};
 use crate::core::gui::Gui;
 use crate::core::hachimi::{REPO_PATH, WEBSITE_URL};
 use crate::core::Hachimi;
@@ -19,8 +21,36 @@ impl Gui {
         &mut self,
         ui: &mut egui::Ui,
         ctx: &egui::Context,
+        show_notification: &mut Option<Cow<'_, str>>,
         show_window: &mut Option<BoxedWindow>,
     ) {
+        // Config actions (relocated here from the old Config tab).
+        let hachimi = Hachimi::instance();
+        widgets::section_header(ui, t!("about.config_actions_heading").into_owned());
+        ui.horizontal_wrapped(|ui| {
+            ui.spacing_mut().item_spacing.x = 8.0;
+            if widgets::primary_button(ui, t!("menu.reload_config").into_owned()).clicked() {
+                hachimi.reload_config();
+                *show_notification = Some(t!("notification.config_reloaded"));
+            }
+            if widgets::secondary_button(ui, t!("menu.open_first_time_setup").into_owned()).clicked() {
+                *show_window = Some(Box::new(FirstTimeSetupWindow::new()));
+            }
+            #[cfg(target_os = "windows")]
+            if widgets::secondary_button(ui, t!("menu.save_diagnostics").into_owned()).clicked() {
+                match crate::windows::diagnostics::write_report() {
+                    Ok(path) => {
+                        *show_notification =
+                            Some(t!("notification.diagnostics_saved", path = path.display().to_string()));
+                    }
+                    Err(e) => {
+                        *show_notification = Some(t!("notification.diagnostics_failed", error = e.to_string()));
+                    }
+                }
+            }
+        });
+        ui.add_space(8.0);
+
         ui.add_space(4.0);
         ui.horizontal(|ui| {
             ui.add(Self::icon_2x(ctx));

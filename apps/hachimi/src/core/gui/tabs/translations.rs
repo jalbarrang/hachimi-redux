@@ -57,6 +57,5 @@ impl Gui {
         ui.label(t!("menu.hashed_dict_entries", count = hashed_dict_count));
 
         self.config_editor.ui_translations(ui, ctx);
-        self.config_editor.ui_footer(ui);
     }
 }

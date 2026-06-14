@@ -130,6 +130,7 @@ first_time_setup:
 
 about:
   title: "About"
+  config_actions_heading: "Config actions"
   copyright: "© 2024-%{year} LeadRDRK, kairusds and contributors"
   view_license: "View license"
   open_website: "Open website"
@@ -158,6 +159,12 @@ config_editor:
   language: "Language"
   restore_defaults: "Restore Defaults"
   revert: "Revert"
+  cancel: "Cancel"
+  overlays_heading: "Overlays"
+  overlay_opacity: "Overlay opacity"
+  overlays_none: "No plugins have registered any overlays."
+  overlay_reset: "Reset"
+  overlay_reset_hint: "Reset position and size"
   disable_overlay: "Disable overlay (GUI)"
   disable_overlay_warning: >-
     This option will disable the Hachimi overlay after you restart the game,

@@ -248,6 +248,9 @@ pub(crate) fn is_locked() -> bool {
     OVERLAY_UI.lock().is_ok_and(|s| s.locked)
 }
 
+// Retained for reuse: the lock (click-through) toggle UI was removed per the
+// menu restructure, but `is_locked` is still honored by overlay rendering.
+#[allow(dead_code)]
 pub(crate) fn set_locked(locked: bool) {
     let mut state = OVERLAY_UI.lock().expect("lock poisoned");
     state.locked = locked;

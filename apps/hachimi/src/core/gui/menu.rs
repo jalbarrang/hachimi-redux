@@ -1,7 +1,8 @@
-//! L1 "Control Center": a hotkey-toggled `egui::Modal` with fixed top tabs
-//! (Settings · Plugins · Overlay · About). Replaces the old left `SidePanel`.
-//! Tab bodies live in `gui/tabs/`; this module owns the modal shell + tab bar
-//! plus shared combo helpers and the game-UI toggle.
+//! L1 "Control Center": a hotkey-toggled `egui::Modal` with a single scrollable
+//! top tab row (General · Graphics · Gameplay · Hotkeys · Translations · Plugins ·
+//! About) over a Header / scrolling-Content / pinned Save-Cancel Footer shell.
+//! Tab bodies live in `gui/tabs/` and `window/config_editor.rs`; this module owns
+//! the modal shell + tab bar plus shared combo helpers and the game-UI toggle.
 
 use std::borrow::Cow;
 
@@ -11,18 +12,36 @@ use crate::core::utils::SendPtr;
 
 use super::scale::get_scale;
 use super::widgets::{self, PillButtonKind};
-use super::window::BoxedWindow;
+use super::window::{BoxedWindow, ConfigEditorTab};
 use super::{Gui, DISABLED_GAME_UIS};
 
-/// Fixed top-level tabs of the Control Center.
+/// Fixed top-level tabs of the Control Center. The former Config sub-tabs
+/// (General/Graphics/Gameplay/Hotkeys) are now top-level; Overlay was removed.
 #[derive(Clone, Copy, PartialEq, Eq, Default)]
 pub(crate) enum ControlTab {
     #[default]
-    Config,
+    General,
+    Graphics,
+    Gameplay,
+    Hotkeys,
     Translations,
     Plugins,
-    Overlay,
     About,
+}
+
+impl ControlTab {
+    /// Tabs whose body edits the config working-copy (the Save/Cancel footer is
+    /// active there; disabled on the others).
+    fn edits_config(self) -> bool {
+        matches!(
+            self,
+            ControlTab::General
+                | ControlTab::Graphics
+                | ControlTab::Gameplay
+                | ControlTab::Hotkeys
+                | ControlTab::Translations
+        )
+    }
 }
 
 impl Gui {
@@ -69,25 +88,42 @@ impl Gui {
 
             ui.add_space(8.0 * scale);
 
-            // Fixed top tab bar.
-            ui.horizontal_wrapped(|ui| {
-                self.tab_button(ui, ControlTab::Config, "\u{f013} Config");
-                self.tab_button(ui, ControlTab::Translations, "\u{f1ab} Translations");
-                self.tab_button(ui, ControlTab::Plugins, "\u{f12e} Plugins");
-                self.tab_button(ui, ControlTab::Overlay, "\u{f2d0} Overlay");
-                self.tab_button(ui, ControlTab::About, "\u{f129} About");
-            });
+            // Top tab bar: a single horizontally-scrollable row.
+            egui::ScrollArea::horizontal()
+                .id_salt("l1_tabs_scroll")
+                .auto_shrink([false, false])
+                .show(ui, |ui| {
+                    ui.horizontal(|ui| {
+                        ui.spacing_mut().item_spacing.x = 6.0 * scale;
+                        self.tab_button(ui, ControlTab::General, &t!("config_editor.general_tab"));
+                        self.tab_button(ui, ControlTab::Graphics, &t!("config_editor.graphics_tab"));
+                        self.tab_button(ui, ControlTab::Gameplay, &t!("config_editor.gameplay_tab"));
+                        self.tab_button(ui, ControlTab::Hotkeys, &t!("config_editor.hotkeys_tab"));
+                        self.tab_button(ui, ControlTab::Translations, "\u{f1ab} Translations");
+                        self.tab_button(ui, ControlTab::Plugins, "\u{f12e} Plugins");
+                        self.tab_button(ui, ControlTab::About, "\u{f129} About");
+                    });
+                });
             ui.add_space(8.0 * scale);
 
+            // Pin the footer at the bottom: cap the scrolling content to leave it room.
+            let footer_h = 48.0 * scale;
+            let content_h = (ui.available_height() - footer_h).max(120.0 * scale);
             egui::ScrollArea::vertical()
+                .max_height(content_h)
                 .auto_shrink([false, false])
                 .show(ui, |ui| match self.menu_tab {
-                    ControlTab::Config => self.run_config_tab(ui, &ctx, &mut show_notification),
+                    ControlTab::General => self.config_editor.ui_body(ui, &ctx, ConfigEditorTab::General),
+                    ControlTab::Graphics => self.config_editor.ui_body(ui, &ctx, ConfigEditorTab::Graphics),
+                    ControlTab::Gameplay => self.config_editor.ui_body(ui, &ctx, ConfigEditorTab::Gameplay),
+                    ControlTab::Hotkeys => self.config_editor.ui_body(ui, &ctx, ConfigEditorTab::Hotkeys),
                     ControlTab::Translations => self.run_translations_tab(ui, &ctx, &mut show_notification),
                     ControlTab::Plugins => self.run_plugins_tab(ui, &ctx, &mut show_notification),
-                    ControlTab::Overlay => self.run_overlay_settings_tab(ui),
-                    ControlTab::About => self.run_about_tab(ui, &ctx, &mut show_window),
+                    ControlTab::About => self.run_about_tab(ui, &ctx, &mut show_notification, &mut show_window),
                 });
+
+            // Always-present footer: Save/Cancel (greyed where the tab doesn't edit config).
+            self.config_editor.ui_footer(ui, self.menu_tab.edits_config());
         });
 
         // Close on backdrop click / Escape, or via the header button.

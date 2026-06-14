@@ -290,6 +290,7 @@ pub(crate) fn toggle_ui(ui: &mut egui::Ui, on: &mut bool) -> egui::Response {
 
 /// A labelled toggle row: `[label .................... (switch)]`.
 /// Returns the switch [`egui::Response`] so callers can react to `.changed()`.
+#[allow(dead_code)]
 pub(crate) fn toggle_row(ui: &mut egui::Ui, label: impl Into<egui::WidgetText>, on: &mut bool) -> egui::Response {
     ui.horizontal(|ui| {
         ui.label(label);

@@ -1,4 +1,4 @@
-use std::{borrow::Cow, ops::RangeInclusive, sync::Arc, thread};
+use std::{ops::RangeInclusive, sync::Arc, thread};
 
 use rust_i18n::t;
 
@@ -17,52 +17,33 @@ use crate::il2cpp::hook::{
     UnityEngine_CoreModule::Texture::AnisoLevel,
 };
 
-use egui_taffy::taffy::prelude::{auto, length};
+use egui_taffy::taffy::prelude::{auto, fr, length, min_content};
 use egui_taffy::{taffy, tui, Tui, TuiBuilderLogic, TuiContainerResponse};
+
+use crate::core::plugin::overlay;
 
 use super::super::scale::get_scale;
 use super::super::widgets;
-use super::super::widgets::PillButtonKind;
 use super::super::Gui;
 use super::{random_id, save_and_reload_config, LiveVocalsSwapWindow, SimpleOkDialog, ThemeEditorWindow};
 
 // ── egui_taffy layout helpers for the two-column settings grids ────────────
 
-// Fixed grid column widths (base, at scale 1.0). Both columns are definite so the
-// grid is a stable constant width: it does NOT depend on `available_width()`,
-// which jumps by the scrollbar width inside the menu's vertical ScrollArea and
-// would make the taffy root never settle (flicker + collapsed min-content text).
-const CFG_LABEL_W: f32 = 160.0;
-const CFG_CONTROL_W: f32 = 200.0;
-const CFG_GAP_X: f32 = 16.0;
-
-/// Stable total width of the settings grid at `scale`.
-fn cfg_grid_width(scale: f32) -> f32 {
-    (CFG_LABEL_W + CFG_GAP_X + CFG_CONTROL_W) * scale
-}
-
-/// Available width for the footer's space-between row (footer is short, so it
-/// never toggles the vertical scrollbar — `available_width` is stable here).
-fn cfg_width(ui: &egui::Ui) -> f32 {
-    ui.available_width().floor().max(200.0)
-}
-
-/// Two-column grid with two fixed columns (label + control).
+/// Two-column settings grid: a `min_content` label column (sized to the widest
+/// label, single line) + an `fr` control column that fills the rest. Idiomatic
+/// egui_taffy (its README grid example); relies on egui multi-pass (see
+/// `frame::run`) to settle, and on `wrap_mode = Extend` so labels render on one
+/// line instead of a glyph-per-line column.
 fn cfg_grid_style(scale: f32) -> taffy::Style {
-    let size = taffy::Size {
-        width: length(cfg_grid_width(scale)),
-        height: auto(),
-    };
     taffy::Style {
         display: taffy::Display::Grid,
-        grid_template_columns: vec![length(CFG_LABEL_W * scale), length(CFG_CONTROL_W * scale)],
+        grid_template_columns: vec![min_content(), fr(1.0)],
+        grid_auto_rows: vec![min_content()],
         gap: taffy::Size {
-            width: length(CFG_GAP_X * scale),
-            height: length(5.0 * scale),
+            width: length(24.0 * scale),
+            height: length(6.0 * scale),
         },
         align_items: Some(taffy::AlignItems::Center),
-        size,
-        max_size: size,
         ..Default::default()
     }
 }
@@ -120,23 +101,14 @@ pub(crate) struct ConfigEditor {
     current_tab: ConfigEditorTab,
 }
 
+/// Which config body to render. Driven by the L1 Control Center tab (the former
+/// Config sub-tabs are now top-level tabs).
 #[derive(Eq, PartialEq, Clone, Copy)]
-enum ConfigEditorTab {
+pub(crate) enum ConfigEditorTab {
     General,
     Graphics,
     Gameplay,
     Hotkeys,
-}
-
-impl ConfigEditorTab {
-    fn display_list() -> [(ConfigEditorTab, Cow<'static, str>); 4] {
-        [
-            (ConfigEditorTab::General, t!("config_editor.general_tab")),
-            (ConfigEditorTab::Graphics, t!("config_editor.graphics_tab")),
-            (ConfigEditorTab::Gameplay, t!("config_editor.gameplay_tab")),
-            (ConfigEditorTab::Hotkeys, t!("config_editor.hotkeys_tab")),
-        ]
-    }
 }
 
 impl ConfigEditor {
@@ -148,12 +120,6 @@ impl ConfigEditor {
             id: random_id(),
             current_tab: ConfigEditorTab::General,
         }
-    }
-
-    fn restore_defaults(&mut self) {
-        let current_language = self.config.language;
-        self.config = hachimi::Config::default();
-        self.config.language = current_language;
     }
 
     /// Discard unsaved edits: reset the working copy to the currently saved config
@@ -637,52 +603,89 @@ impl ConfigEditor {
         }
     }
 
-    /// Config tab body: the General / Graphics / Gameplay sub-tabs + options grid.
-    pub(crate) fn ui_editor(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
-        let scale = get_scale(ctx);
+    /// Body for one config tab (General / Graphics / Gameplay / Hotkeys), driven
+    /// by the L1 Control Center tab. No inner sub-tab strip — the former sub-tabs
+    /// are now top-level tabs.
+    pub(crate) fn ui_body(&mut self, ui: &mut egui::Ui, ctx: &egui::Context, tab: ConfigEditorTab) {
+        self.current_tab = tab;
         self.sync();
 
-        // Inner sub-tab strip (General / Graphics / Gameplay).
-        egui::ScrollArea::horizontal().id_salt("tabs_scroll").show(ui, |ui| {
-            ui.horizontal(|ui| {
-                ui.spacing_mut().item_spacing.x = 6.0 * scale;
-
-                for (tab, label) in ConfigEditorTab::display_list() {
-                    let kind = if self.current_tab == tab {
-                        PillButtonKind::Primary
-                    } else {
-                        PillButtonKind::Secondary
-                    };
-                    if widgets::pill_button(ui, label.into_owned(), kind).clicked() {
-                        self.current_tab = tab;
-                    }
-                }
-            });
-        });
-
-        ui.add_space(4.0);
-
-        let current_tab = self.current_tab;
-
-        // The Hotkeys sub-tab edits the live config directly (immediate apply), so
-        // it renders its own body without the options grid or the Save/Revert footer.
-        if current_tab == ConfigEditorTab::Hotkeys {
+        // Hotkeys renders its own body (no options grid).
+        if tab == ConfigEditorTab::Hotkeys {
             super::hotkeys_editor::ui_hotkeys(ui, ctx);
             return;
         }
 
+        let scale = get_scale(ctx);
         let id = self.id;
+        // Distinct grid id per tab so egui_taffy doesn't reuse layout state across
+        // tabs whose cell sets differ.
+        let grid_id = match tab {
+            ConfigEditorTab::General => "grid_general",
+            ConfigEditorTab::Graphics => "grid_graphics",
+            ConfigEditorTab::Gameplay => "grid_gameplay",
+            ConfigEditorTab::Hotkeys => "grid_hotkeys",
+        };
         egui::Frame::NONE
             .inner_margin(egui::Margin::symmetric(8, 0))
             .show(ui, |ui| {
-                ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Wrap);
-                tui(ui, id.with("options_grid"))
-                    .reserve_width(cfg_grid_width(scale))
+                ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend);
+                tui(ui, id.with(grid_id))
+                    .reserve_available_width()
                     .style(cfg_grid_style(scale))
                     .show(|tui| {
-                        Self::run_options_grid(&mut self.config, tui, current_tab);
+                        Self::run_options_grid(&mut self.config, tui, tab);
                     });
             });
+
+        // General hosts the live overlay controls (the old Overlay tab is gone).
+        if tab == ConfigEditorTab::General {
+            Self::ui_overlays_section(ui);
+        }
+    }
+
+    /// Live overlay controls relocated from the removed Overlay tab: global
+    /// opacity + per-panel show/hide and reset-position. These are runtime overlay
+    /// prefs (apply immediately, not part of the Save/Cancel working copy). The
+    /// global lock toggle was dropped per design; per-panel show/hide stays until
+    /// the overlay-toggle-hotkeys plan replaces it.
+    fn ui_overlays_section(ui: &mut egui::Ui) {
+        ui.add_space(8.0);
+        widgets::section_header(ui, t!("config_editor.overlays_heading").into_owned());
+        let mut opacity = overlay::opacity();
+        ui.horizontal(|ui| {
+            ui.label(t!("config_editor.overlay_opacity"));
+            if ui
+                .add(egui::Slider::new(&mut opacity, 0.1..=1.0).fixed_decimals(2))
+                .changed()
+            {
+                overlay::set_opacity(opacity);
+            }
+        });
+
+        let overlays = overlay::get_plugin_overlays();
+        if overlays.is_empty() {
+            ui.weak(t!("config_editor.overlays_none"));
+            return;
+        }
+        for ov in &overlays {
+            let title = overlay::display_title(&ov.id);
+            let mut visible = overlay::is_overlay_visible(&ov.id);
+            ui.horizontal(|ui| {
+                if widgets::toggle_ui(ui, &mut visible).changed() {
+                    overlay::set_overlay_visible(&ov.id, visible);
+                }
+                ui.label(&title);
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    if widgets::ghost_button(ui, t!("config_editor.overlay_reset").into_owned())
+                        .on_hover_text(t!("config_editor.overlay_reset_hint"))
+                        .clicked()
+                    {
+                        overlay::reset_panel(&ov.id);
+                    }
+                });
+            });
+        }
     }
 
     /// Translations tab body: the translation-related options grid.
@@ -694,9 +697,9 @@ impl ConfigEditor {
         egui::Frame::NONE
             .inner_margin(egui::Margin::symmetric(8, 0))
             .show(ui, |ui| {
-                ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Wrap);
-                tui(ui, id.with("translations_grid"))
-                    .reserve_width(cfg_grid_width(scale))
+                ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend);
+                tui(ui, id.with("grid_translations"))
+                    .reserve_available_width()
                     .style(cfg_grid_style(scale))
                     .show(|tui| {
                         Self::run_translations_grid(&mut self.config, tui);
@@ -704,60 +707,35 @@ impl ConfigEditor {
             });
     }
 
-    /// Shared footer (Restore Defaults · Revert · Save) for both config-editing tabs.
-    pub(crate) fn ui_footer(&mut self, ui: &mut egui::Ui) {
-        // The Hotkeys sub-tab applies edits immediately and has no working copy,
-        // so the Save/Revert/Restore footer does not apply to it.
-        if self.current_tab == ConfigEditorTab::Hotkeys {
-            return;
-        }
-
+    /// Always-present footer: right-aligned `Cancel · Save`. `enabled` is false on
+    /// tabs that don't edit the config working-copy (Plugins / About) — the
+    /// buttons render greyed there. Cancel discards unsaved edits (keeps the menu
+    /// open); Save persists the working copy and reloads.
+    pub(crate) fn ui_footer(&mut self, ui: &mut egui::Ui, enabled: bool) {
         ui.separator();
 
-        let mut reset_clicked = false;
-        let mut revert_clicked = false;
-        let w = cfg_width(ui);
+        let mut cancel_clicked = false;
         let id = self.id;
         let config = &self.config;
-        ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend);
-        tui(ui, id.with("footer"))
-            .reserve_width(w)
-            .style(taffy::Style {
-                display: taffy::Display::Flex,
-                flex_direction: taffy::FlexDirection::Row,
-                align_items: Some(taffy::AlignItems::Center),
-                justify_content: Some(taffy::JustifyContent::SpaceBetween),
-                gap: taffy::Size {
-                    width: length(8.0),
-                    height: length(4.0),
-                },
-                size: taffy::Size {
-                    width: length(w),
-                    height: auto(),
-                },
-                ..Default::default()
-            })
-            .show(|tui| {
-                auto_cell(tui, |ui| {
-                    if widgets::danger_button(ui, t!("config_editor.restore_defaults").into_owned()).clicked() {
-                        reset_clicked = true;
-                    }
-                });
-                // Right cluster: revert then save (save stays rightmost).
-                tui.style(taffy::Style {
+        ui.add_enabled_ui(enabled, |ui| {
+            ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend);
+            tui(ui, id.with("footer"))
+                .reserve_available_width()
+                .style(taffy::Style {
                     display: taffy::Display::Flex,
                     flex_direction: taffy::FlexDirection::Row,
                     align_items: Some(taffy::AlignItems::Center),
+                    justify_content: Some(taffy::JustifyContent::End),
                     gap: taffy::Size {
                         width: length(8.0),
                         height: length(0.0),
                     },
                     ..Default::default()
                 })
-                .add(|tui| {
+                .show(|tui| {
                     auto_cell(tui, |ui| {
-                        if widgets::secondary_button(ui, t!("config_editor.revert").into_owned()).clicked() {
-                            revert_clicked = true;
+                        if widgets::secondary_button(ui, t!("config_editor.cancel").into_owned()).clicked() {
+                            cancel_clicked = true;
                         }
                     });
                     auto_cell(tui, |ui| {
@@ -766,12 +744,9 @@ impl ConfigEditor {
                         }
                     });
                 });
-            });
+        });
 
-        if reset_clicked {
-            self.restore_defaults();
-        }
-        if revert_clicked {
+        if cancel_clicked {
             self.revert();
         }
     }

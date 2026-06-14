@@ -16,7 +16,7 @@ use crate::core::http::AsyncRequest;
 
 use super::scale::{get_scale, get_scale_salt};
 
-pub(crate) use config_editor::ConfigEditor;
+pub(crate) use config_editor::{ConfigEditor, ConfigEditorTab};
 pub(crate) use first_time_setup::FirstTimeSetupWindow;
 pub(crate) use license::LicenseWindow;
 pub(crate) use live_vocals_swap::LiveVocalsSwapWindow;
