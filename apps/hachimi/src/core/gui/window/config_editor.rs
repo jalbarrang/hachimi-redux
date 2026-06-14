@@ -17,7 +17,7 @@ use crate::il2cpp::hook::{
     UnityEngine_CoreModule::Texture::AnisoLevel,
 };
 
-use egui_taffy::taffy::prelude::{auto, fr, length};
+use egui_taffy::taffy::prelude::{auto, length};
 use egui_taffy::{taffy, tui, Tui, TuiBuilderLogic, TuiContainerResponse};
 
 use super::super::scale::get_scale;
@@ -28,24 +28,37 @@ use super::{random_id, save_and_reload_config, LiveVocalsSwapWindow, SimpleOkDia
 
 // ── egui_taffy layout helpers for the two-column settings grids ────────────
 
-/// Floored, clamped width so a window-resize drag can't change the taffy root
-/// size every frame (which would recompute + `request_discard` = flicker).
+// Fixed grid column widths (base, at scale 1.0). Both columns are definite so the
+// grid is a stable constant width: it does NOT depend on `available_width()`,
+// which jumps by the scrollbar width inside the menu's vertical ScrollArea and
+// would make the taffy root never settle (flicker + collapsed min-content text).
+const CFG_LABEL_W: f32 = 160.0;
+const CFG_CONTROL_W: f32 = 200.0;
+const CFG_GAP_X: f32 = 16.0;
+
+/// Stable total width of the settings grid at `scale`.
+fn cfg_grid_width(scale: f32) -> f32 {
+    (CFG_LABEL_W + CFG_GAP_X + CFG_CONTROL_W) * scale
+}
+
+/// Available width for the footer's space-between row (footer is short, so it
+/// never toggles the vertical scrollbar — `available_width` is stable here).
 fn cfg_width(ui: &egui::Ui) -> f32 {
     ui.available_width().floor().max(200.0)
 }
 
-/// Two-column grid: a fixed label column + a flexible control column.
-fn cfg_grid_style(width: f32, scale: f32) -> taffy::Style {
+/// Two-column grid with two fixed columns (label + control).
+fn cfg_grid_style(scale: f32) -> taffy::Style {
     let size = taffy::Size {
-        width: length(width),
+        width: length(cfg_grid_width(scale)),
         height: auto(),
     };
     taffy::Style {
         display: taffy::Display::Grid,
-        grid_template_columns: vec![length(150.0 * scale), fr(1.0)],
+        grid_template_columns: vec![length(CFG_LABEL_W * scale), length(CFG_CONTROL_W * scale)],
         gap: taffy::Size {
-            width: length(40.0 * scale),
-            height: length(4.0 * scale),
+            width: length(CFG_GAP_X * scale),
+            height: length(5.0 * scale),
         },
         align_items: Some(taffy::AlignItems::Center),
         size,
@@ -662,11 +675,10 @@ impl ConfigEditor {
         egui::Frame::NONE
             .inner_margin(egui::Margin::symmetric(8, 0))
             .show(ui, |ui| {
-                let w = cfg_width(ui);
                 ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Wrap);
                 tui(ui, id.with("options_grid"))
-                    .reserve_width(w)
-                    .style(cfg_grid_style(w, scale))
+                    .reserve_width(cfg_grid_width(scale))
+                    .style(cfg_grid_style(scale))
                     .show(|tui| {
                         Self::run_options_grid(&mut self.config, tui, current_tab);
                     });
@@ -682,11 +694,10 @@ impl ConfigEditor {
         egui::Frame::NONE
             .inner_margin(egui::Margin::symmetric(8, 0))
             .show(ui, |ui| {
-                let w = cfg_width(ui);
                 ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Wrap);
                 tui(ui, id.with("translations_grid"))
-                    .reserve_width(w)
-                    .style(cfg_grid_style(w, scale))
+                    .reserve_width(cfg_grid_width(scale))
+                    .style(cfg_grid_style(scale))
                     .show(|tui| {
                         Self::run_translations_grid(&mut self.config, tui);
                     });
