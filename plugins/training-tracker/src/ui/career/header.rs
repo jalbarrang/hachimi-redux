@@ -4,8 +4,8 @@
 
 use egui_taffy::taffy::prelude::{fr, length};
 use egui_taffy::taffy::style_helpers::auto;
-use egui_taffy::{taffy, tui, TuiBuilderLogic};
-use hachimi_plugin_sdk::egui::{self, Color32, CornerRadius, Pos2, Rect, RichText, Stroke, StrokeKind, Vec2};
+use egui_taffy::{taffy, tui, TuiBuilderLogic, TuiContainerResponse};
+use hachimi_plugin_sdk::egui::{self, Color32, CornerRadius, Pos2, Rect, RichText, Stroke, StrokeKind, Vec2, Vec2b};
 
 use super::super::dimens;
 use super::super::textures;
@@ -94,29 +94,25 @@ pub(super) fn draw(ui: &mut egui::Ui, snap: &CareerSnapshot) {
                     ..col(dimens::z(dimens::GAP_XS))
                 })
                 .add(|tui| {
-                    tui.ui(|ui| {
-                        ui.add(
-                            egui::Label::new(
-                                RichText::new(&name)
-                                    .size(dimens::z(dimens::FONT_NAME))
-                                    .strong()
-                                    .color(theme::FG),
-                            )
-                            .truncate(),
-                        );
-                    });
+                    // Truncating labels fill their assigned width and report it via
+                    // `.ui()`; that feeds back into layout, keeps the node dirty
+                    // every frame, and flickers the whole panel on repaint. Report
+                    // a constant size (width 0 + infinite.x) instead.
+                    truncating_label(
+                        tui,
+                        RichText::new(&name)
+                            .size(dimens::z(dimens::FONT_NAME))
+                            .strong()
+                            .color(theme::FG),
+                    );
                     if let Some(outfit) = &outfit {
-                        tui.ui(|ui| {
-                            ui.add(
-                                egui::Label::new(
-                                    RichText::new(outfit)
-                                        .size(dimens::z(dimens::FONT_OUTFIT))
-                                        .strong()
-                                        .color(theme::FG_MUTED),
-                                )
-                                .truncate(),
-                            );
-                        });
+                        truncating_label(
+                            tui,
+                            RichText::new(outfit)
+                                .size(dimens::z(dimens::FONT_OUTFIT))
+                                .strong()
+                                .color(theme::FG_MUTED),
+                        );
                     }
                     tui.ui(|ui| stars(ui, snap.star.clamp(0, 5)));
                 });
@@ -128,6 +124,23 @@ pub(super) fn draw(ui: &mut egui::Ui, snap: &CareerSnapshot) {
                 tui.ui(|ui| mood_pill(ui, snap));
             });
         });
+}
+
+/// A truncating label as a taffy leaf that reports a constant, width-independent
+/// size (so the truncated-to-available width is never fed back into layout, which
+/// would keep the node dirty and flicker the panel every repaint).
+fn truncating_label(tui: &mut egui_taffy::Tui, text: RichText) {
+    tui.ui_manual(|ui, _| {
+        ui.add(egui::Label::new(text).truncate());
+        let h = ui.min_size().y;
+        TuiContainerResponse {
+            inner: (),
+            min_size: Vec2::new(0.0, h),
+            intrinsic_size: None,
+            max_size: Vec2::new(0.0, h),
+            infinite: Vec2b::new(true, false),
+        }
+    });
 }
 
 /// Portrait square with the overlapping circular rank badge at the top-right.
