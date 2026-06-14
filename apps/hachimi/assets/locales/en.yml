@@ -82,8 +82,23 @@ notification:
   data_sync_failed: "%{name} sync failed: %{reason}"
   press_to_set_menu_key: "Press a key in the game window to set the open-menu hotkey."
   menu_open_key_set: "Open-menu hotkey set to %{key}"
+  press_to_set_hotkey: "Press a key (with optional Ctrl/Shift/Alt) in the game window to set this hotkey."
+  hotkey_set: "Hotkey set to %{key}"
   ipc_softreset_exec: "IPC remote soft-reset executed"
   atlas_workaround_reset: "Atlas files modified: workaround disabled."
+
+hotkeys:
+  description: "Rebind hotkeys here. Press Set, then a key (optionally with Ctrl/Shift/Alt). Clear unbinds an action; Reset restores its default."
+  empty: "No hotkeys are registered."
+  unbound: "Unbound"
+  unknown_plugin: "Plugin"
+  conflict_warning: "This key combination is bound to more than one action."
+  reserved_warning: "This key is used by the game or system; binding it without a modifier may cause issues."
+  set: "Set"
+  clear: "Clear"
+  reset: "Reset"
+  open_menu: "Open menu"
+  hide_ingame_ui: "Hide in-game UI"
 
 first_time_setup:
   title: "First Time Setup"
@@ -139,6 +154,7 @@ config_editor:
   general_tab: "\uf013 General"
   graphics_tab: "\uf03e Graphics"
   gameplay_tab: "\uf11b Gameplay"
+  hotkeys_tab: "\uf11c Hotkeys"
   language: "Language"
   restore_defaults: "Restore Defaults"
   revert: "Revert"

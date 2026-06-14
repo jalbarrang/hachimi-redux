@@ -31,6 +31,16 @@ pub fn register_ui() {
         // SAFETY-free: the slot index is carried as the userdata "pointer".
         register_panel(sdk, &id, draw_uma_overlay, slot as *mut c_void);
     }
+
+    // Unbound by default; the user assigns a chord from the host's Hotkeys tab.
+    sdk.register_hotkey(
+        "race-hud.toggle",
+        "Toggle Race HUD",
+        0,
+        0,
+        toggle_hud_hotkey,
+        std::ptr::null_mut(),
+    );
     // NOTE: the plugin never writes overlay visibility — show/hide is entirely the
     // user's choice (persisted by the host's Overlay tab). Visible slots always
     // render a card (placeholder when idle), so there are no invisible ghosts and
@@ -45,6 +55,23 @@ fn register_panel(sdk: &Sdk, id: &str, callback: extern "C" fn(*mut c_void, *mut
         hlog_warn!(target: "race-hud", "Overlay panel registration declined: {id}");
     } else {
         hlog_info!(target: "race-hud", "Overlay panel registered: {id} ({handle})");
+    }
+}
+
+extern "C" fn toggle_hud_hotkey(_userdata: *mut c_void) {
+    if panic::catch_unwind(toggle_all_panels).is_err() {
+        hlog_error!(target: "race-hud", "toggle_hud_hotkey panicked");
+    }
+}
+
+/// Flip every race-hud panel to the inverse of the timer's current visibility,
+/// so the whole HUD shows/hides together.
+fn toggle_all_panels() {
+    let sdk = Sdk::get();
+    let visible = !sdk.overlay_visible(TIMER_OVERLAY_ID);
+    sdk.overlay_set_visible(TIMER_OVERLAY_ID, visible);
+    for slot in 0..MAX_UMA_WIDGETS {
+        sdk.overlay_set_visible(&uma_overlay_id(slot), visible);
     }
 }
 

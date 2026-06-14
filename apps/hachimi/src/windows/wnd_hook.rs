@@ -24,7 +24,7 @@ use windows::{
 };
 
 use crate::{
-    core::{game::Region, Gui, Hachimi},
+    core::{game::Region, plugin::hotkeys, Gui, Hachimi},
     il2cpp::{hook::UnityEngine_CoreModule, symbols::Thread},
     windows::utils,
 };
@@ -37,9 +37,66 @@ pub fn get_target_hwnd() -> HWND {
     HWND(TARGET_HWND.load(atomic::Ordering::Relaxed) as *mut _)
 }
 
-static MENU_KEY_CAPTURE: atomic::AtomicBool = atomic::AtomicBool::new(false);
-pub fn start_menu_key_capture() {
-    MENU_KEY_CAPTURE.store(true, atomic::Ordering::Relaxed);
+/// Whether `vk` is a modifier key (Ctrl/Shift/Alt/Win), which must not act as the
+/// primary key of a hotkey chord.
+fn is_modifier_key(vk: u16) -> bool {
+    use windows::Win32::UI::Input::KeyboardAndMouse::{
+        VIRTUAL_KEY, VK_CONTROL, VK_LCONTROL, VK_LMENU, VK_LSHIFT, VK_LWIN, VK_MENU, VK_RCONTROL, VK_RMENU, VK_RSHIFT,
+        VK_RWIN, VK_SHIFT,
+    };
+    matches!(
+        VIRTUAL_KEY(vk),
+        VK_CONTROL
+            | VK_LCONTROL
+            | VK_RCONTROL
+            | VK_SHIFT
+            | VK_LSHIFT
+            | VK_RSHIFT
+            | VK_MENU
+            | VK_LMENU
+            | VK_RMENU
+            | VK_LWIN
+            | VK_RWIN
+    )
+}
+
+/// Current modifier bitmask from the live keyboard state.
+fn current_mods() -> u8 {
+    use windows::Win32::UI::Input::KeyboardAndMouse::{GetKeyState, VK_CONTROL, VK_MENU, VK_SHIFT};
+    let mut mods = 0u8;
+    // SAFETY: FFI / raw pointer operation required by IL2CPP interop
+    unsafe {
+        if GetKeyState(VK_CONTROL.0 as i32) < 0 {
+            mods |= hotkeys::MOD_CTRL;
+        }
+        if GetKeyState(VK_SHIFT.0 as i32) < 0 {
+            mods |= hotkeys::MOD_SHIFT;
+        }
+        if GetKeyState(VK_MENU.0 as i32) < 0 {
+            mods |= hotkeys::MOD_ALT;
+        }
+    }
+    mods
+}
+
+/// Persist a captured chord to the action whose "Set" is in progress, then notify.
+fn capture_key(chord: hotkeys::Chord) {
+    let Some(id) = hotkeys::take_capture() else {
+        return;
+    };
+    let hachimi = Hachimi::instance();
+    let mut new_config = hachimi.config.load().as_ref().clone();
+    new_config.hotkeys.insert(id, chord.into());
+    let _ = hachimi.save_config(&new_config);
+    hachimi.config.store(Arc::new(new_config));
+
+    let key_label = utils::chord_to_display_label(chord.mods, chord.vk);
+    let msg = t!("notification.hotkey_set", key = key_label);
+    std::thread::spawn(move || {
+        if let Some(gui) = Gui::instance() {
+            gui.lock().expect("lock poisoned").show_notification(&msg);
+        }
+    });
 }
 
 // Safety: only modified once on init
@@ -56,48 +113,41 @@ extern "system" fn wnd_proc(hwnd: HWND, umsg: c_uint, wparam: WPARAM, lparam: LP
         WM_KEYDOWN | WM_SYSKEYDOWN => {
             let current_key = wparam.0 as u16;
 
-            if current_key == 0x4B {
-                // Virtual keycode for "K", see the get_key method on gui_impl/input.rs
-                let hotkey_vk = Hachimi::instance().config.load().windows.hide_ingame_ui_hotkey_bind;
+            // Modifier keys never act as the primary key of a chord; let them pass
+            // through so the game (and chord detection on the next key) sees them.
+            if !is_modifier_key(current_key) {
+                let chord = hotkeys::Chord::new(current_mods(), current_key);
 
-                // SAFETY: FFI / raw pointer operation required by IL2CPP interop
-                if unsafe { windows::Win32::UI::Input::KeyboardAndMouse::GetKeyState(hotkey_vk as i32) < 0 } {
-                    if let Some(mut gui) = Gui::instance().map(|m| m.lock().expect("lock poisoned")) {
-                        gui.set_consuming_input(false);
+                if current_key == 0x4B {
+                    // Virtual keycode for "K", see the get_key method on gui_impl/input.rs.
+                    // Swallow K while the hide-UI hotkey is held so it doesn't reach the IME.
+                    if let Some(bind) = Hachimi::instance()
+                        .config
+                        .load()
+                        .hotkeys
+                        .get(crate::core::plugin::HOTKEY_HIDE_INGAME_UI)
+                        .copied()
+                    {
+                        // SAFETY: FFI / raw pointer operation required by IL2CPP interop
+                        let bind_held = bind.vk != 0
+                            && unsafe { windows::Win32::UI::Input::KeyboardAndMouse::GetKeyState(bind.vk as i32) < 0 };
+                        if bind_held {
+                            if let Some(mut gui) = Gui::instance().map(|m| m.lock().expect("lock poisoned")) {
+                                gui.set_consuming_input(false);
+                            }
+                            return LRESULT(0);
+                        }
                     }
+                }
+
+                if hotkeys::is_capturing() {
+                    capture_key(chord);
                     return LRESULT(0);
                 }
-            }
 
-            if MENU_KEY_CAPTURE.load(atomic::Ordering::Relaxed) {
-                MENU_KEY_CAPTURE.store(false, atomic::Ordering::Relaxed);
-                let hachimi = Hachimi::instance();
-                let mut new_config = hachimi.config.load().as_ref().clone();
-                new_config.windows.menu_open_key = current_key;
-                let _ = hachimi.save_config(&new_config);
-                hachimi.config.store(Arc::new(new_config));
-                let key_label =
-                    crate::windows::utils::vk_to_display_label(Hachimi::instance().config.load().windows.menu_open_key);
-                let msg = t!("notification.menu_open_key_set", key = key_label);
-                std::thread::spawn(move || {
-                    if let Some(gui) = Gui::instance() {
-                        gui.lock().expect("lock poisoned").show_notification(&msg);
-                    }
-                });
-                return LRESULT(0);
-            }
-            if current_key == Hachimi::instance().config.load().windows.menu_open_key {
-                let Some(mut gui) = Gui::instance().map(|m| m.lock().expect("lock poisoned")) else {
-                    // SAFETY: FFI / raw pointer operation required by IL2CPP interop
-                    return unsafe { orig_fn(hwnd, umsg, wparam, lparam) };
-                };
-
-                gui.toggle_menu();
-                return LRESULT(0);
-            } else if current_key == Hachimi::instance().config.load().windows.hide_ingame_ui_hotkey_bind
-                && Hachimi::instance().config.load().hide_ingame_ui_hotkey
-            {
-                Thread::main_thread().schedule(Gui::toggle_game_ui);
+                if hotkeys::dispatch(chord) {
+                    return LRESULT(0);
+                }
             }
         }
         WM_ACTIVATE => {
@@ -245,6 +295,8 @@ pub fn init() {
             return;
         }
         TARGET_HWND.store(hwnd.0 as isize, atomic::Ordering::Relaxed);
+
+        hotkeys::register_builtins();
 
         info!("Hooking WndProc");
         let wnd_proc_addr = GetWindowLongPtrW(hwnd, GWLP_WNDPROC);

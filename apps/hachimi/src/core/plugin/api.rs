@@ -514,6 +514,45 @@ unsafe extern "C" fn gui_overlay_set_visible(id: *const c_char, visible: bool) -
     }
 }
 
+unsafe extern "C" fn gui_overlay_get_visible(id: *const c_char) -> bool {
+    // SAFETY: FFI / raw pointer operation required by IL2CPP interop
+    unsafe {
+        if id.is_null() {
+            return true;
+        }
+        let Ok(id) = CStr::from_ptr(id).to_str() else {
+            return true;
+        };
+        super::overlay::is_overlay_visible(id)
+    }
+}
+
+unsafe extern "C" fn host_register_hotkey(
+    id: *const c_char,
+    label: *const c_char,
+    default_mods: u8,
+    default_vk: u16,
+    callback: Option<GuiMenuCallback>,
+    userdata: *mut c_void,
+) -> u64 {
+    // SAFETY: FFI / raw pointer operation required by IL2CPP interop
+    unsafe {
+        let (Some(callback), false, false) = (callback, id.is_null(), label.is_null()) else {
+            return 0;
+        };
+        let (Ok(id), Ok(label)) = (CStr::from_ptr(id).to_str(), CStr::from_ptr(label).to_str()) else {
+            return 0;
+        };
+        super::hotkeys::register_plugin(
+            id.to_owned(),
+            label.to_owned(),
+            super::hotkeys::Chord::new(default_mods, default_vk),
+            callback,
+            userdata,
+        )
+    }
+}
+
 fn build_host_vtable() -> Vtable {
     Vtable {
         hachimi_instance,
@@ -561,6 +600,8 @@ fn build_host_vtable() -> Vtable {
         gui_overlay_set_visible,
         host_data_path,
         host_view_name,
+        host_register_hotkey,
+        gui_overlay_get_visible,
     }
 }
 

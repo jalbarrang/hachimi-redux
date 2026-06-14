@@ -9,7 +9,7 @@ mod language;
 mod localized_data;
 
 pub use assets::{AssetInfo, AssetMetadata};
-pub use config::{Config, OsOption};
+pub use config::{Config, HotkeyBind, OsOption};
 pub use language::Language;
 pub use localized_data::{LocalizedData, LocalizedDataConfig, PenaltiesConfig, SkillFormatting, UITextConfig};
 
@@ -185,7 +185,10 @@ impl Hachimi {
         if fs::metadata(&config_path).is_ok() {
             let json = fs::read_to_string(&config_path)?;
             match serde_json::from_str::<Config>(&json) {
-                Ok(config) => Ok(config),
+                Ok(mut config) => {
+                    config.migrate_legacy_hotkeys();
+                    Ok(config)
+                }
                 Err(e) => {
                     eprintln!("Failed to parse config: {}", e);
                     CONFIG_LOAD_ERROR.store(true, std::sync::atomic::Ordering::Release);

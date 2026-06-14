@@ -43,6 +43,16 @@ impl Gui {
         let mut style = egui::Style::default();
         Self::apply_theme(&context, &mut style, &config);
 
+        // egui paints red "Unaligned" markers wherever a widget lands off the pixel
+        // grid. The overlay's content zoom scales fonts/spacing by fractional factors,
+        // which pushes layout off-grid and floods the panel with the marker. Disable it.
+        // The `debug` field (and the marker) only exist in debug builds; release builds
+        // default it off already.
+        #[cfg(debug_assertions)]
+        {
+            style.debug.show_unaligned = false;
+        }
+
         context.set_style(style.clone());
 
         let default_style = style.clone();

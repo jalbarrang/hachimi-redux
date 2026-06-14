@@ -3,7 +3,9 @@
 use std::ffi::{c_void, CString};
 use std::sync::OnceLock;
 
-use hachimi_plugin_abi::{log_level, set_vtable, vt, GuiMenuSectionCallback, InitResult, PluginEventFn, Vtable};
+use hachimi_plugin_abi::{
+    log_level, set_vtable, vt, GuiMenuCallback, GuiMenuSectionCallback, InitResult, PluginEventFn, Vtable,
+};
 
 use crate::ApiVersion;
 
@@ -262,7 +264,47 @@ impl Sdk {
         unsafe { (vt().gui_overlay_set_visible)(id_c.as_ptr(), visible) }
     }
 
-    /// Remove a menu item/section/overlay registration by its handle.
+    // ── Hotkeys (host API v13) ──
+
+    /// Register a named hotkey *action* into the host's central Hotkeys tab.
+    ///
+    /// `id` should be plugin-namespaced (e.g. `myplugin.toggle`); `label` is shown
+    /// in the UI. `default_mods` is a modifier bitmask (Ctrl=1, Shift=2, Alt=4) and
+    /// `default_vk` the default Win32 virtual-key code (`0` = unbound). `callback`
+    /// fires when the user-bound chord is pressed. The host owns and persists the
+    /// bind; the user rebinds it from the Hotkeys tab.
+    ///
+    /// Returns a non-zero handle (remove via [`Self::unregister`]), or 0 on failure
+    /// or when the host is older than API v13.
+    pub fn register_hotkey(
+        &self,
+        id: &str,
+        label: &str,
+        default_mods: u8,
+        default_vk: u16,
+        callback: GuiMenuCallback,
+        userdata: *mut c_void,
+    ) -> u64 {
+        if !self.version.at_least(13) {
+            return 0;
+        }
+        let (Ok(id_c), Ok(label_c)) = (CString::new(id), CString::new(label)) else {
+            return 0;
+        };
+        // SAFETY: host vtable slot valid after init (v13+); host copies id/label.
+        unsafe {
+            (vt().host_register_hotkey)(
+                id_c.as_ptr(),
+                label_c.as_ptr(),
+                default_mods,
+                default_vk,
+                Some(callback),
+                userdata,
+            )
+        }
+    }
+
+    /// Remove a menu item/section/overlay/hotkey registration by its handle.
     pub fn unregister(&self, handle: u64) -> bool {
         // SAFETY: handle was issued by a `gui_register_*` slot.
         unsafe { (vt().gui_unregister)(handle) }

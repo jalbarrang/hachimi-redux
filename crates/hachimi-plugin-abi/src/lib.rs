@@ -282,6 +282,34 @@ pub struct Vtable {
         callback: Option<GuiMenuSectionCallback>,
         userdata: *mut c_void,
     ) -> u64,
+
+    // ── Central hotkeys (API v13) ──
+    /// Register a named hotkey *action* into the host's central Hotkeys tab.
+    ///
+    /// `id` is a stable, plugin-namespaced action id (e.g. `myplugin.toggle`);
+    /// `label` is a human/localization-key string shown in the UI. `default_mods`
+    /// is a modifier bitmask (Ctrl=1, Shift=2, Alt=4) and `default_vk` the default
+    /// Win32 virtual-key code (`0` = unbound by default). `callback` fires on the
+    /// host's input thread when the user-bound chord is pressed.
+    ///
+    /// The host owns and persists the active bind; the user rebinds/clears/resets
+    /// it from the Hotkeys tab. Returns a non-zero registration handle (remove it
+    /// via `gui_unregister`), or 0 on failure.
+    pub host_register_hotkey: unsafe extern "C" fn(
+        id: *const c_char,
+        label: *const c_char,
+        default_mods: u8,
+        default_vk: u16,
+        callback: Option<GuiMenuCallback>,
+        userdata: *mut c_void,
+    ) -> u64,
+
+    // ── Overlay visibility query (API v14) ──
+    /// Return whether the overlay registered with `id` is currently visible.
+    /// Returns `true` for an unknown id (matches the host's "unknown = visible"
+    /// default), letting plugins implement a toggle alongside
+    /// `gui_overlay_set_visible`.
+    pub gui_overlay_get_visible: unsafe extern "C" fn(id: *const c_char) -> bool,
 }
 
 /// Subdirectory (under the game data dir) where the host caches GameTora data

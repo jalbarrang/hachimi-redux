@@ -38,4 +38,25 @@ impl Sdk {
         // SAFETY: overlay id registered earlier with the same string.
         unsafe { (vt().gui_overlay_set_visible)(id_c.as_ptr(), visible) }
     }
+
+    /// Query whether an overlay is currently visible (host API v14+).
+    ///
+    /// Returns `true` for an unknown id or when the host is older than v14,
+    /// matching the host's "unknown = visible" default.
+    pub fn overlay_visible(&self, id: &str) -> bool {
+        if !self.version().at_least(14) {
+            return true;
+        }
+        let Ok(id_c) = CString::new(id) else {
+            return true;
+        };
+        // SAFETY: host vtable slot valid after init (v14+); host copies the id.
+        unsafe { (vt().gui_overlay_get_visible)(id_c.as_ptr()) }
+    }
+
+    /// Flip an overlay's visibility. Requires host API v14+ to read the current
+    /// state; on older hosts this hides the overlay (the safe default).
+    pub fn toggle_overlay(&self, id: &str) -> bool {
+        self.overlay_set_visible(id, !self.overlay_visible(id))
+    }
 }

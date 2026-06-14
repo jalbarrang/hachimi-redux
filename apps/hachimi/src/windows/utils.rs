@@ -146,6 +146,27 @@ pub fn show_error(e: impl AsRef<str>) {
     }
 }
 
+/// Human-readable label for a hotkey chord: modifier names joined with the
+/// primary key (e.g. `Ctrl + Shift + F1`). Returns a localized "Unbound" string
+/// when `vk == 0`. Modifier bits: Ctrl=1, Shift=2, Alt=4.
+pub fn chord_to_display_label(mods: u8, vk: u16) -> String {
+    if vk == 0 {
+        return t!("hotkeys.unbound").into_owned();
+    }
+    let mut parts: Vec<String> = Vec::new();
+    if mods & 0b001 != 0 {
+        parts.push(t!("key_names.ctrl").into_owned());
+    }
+    if mods & 0b010 != 0 {
+        parts.push(t!("key_names.shift").into_owned());
+    }
+    if mods & 0b100 != 0 {
+        parts.push(t!("key_names.alt").into_owned());
+    }
+    parts.push(vk_to_display_label(vk));
+    parts.join(" + ")
+}
+
 pub fn vk_to_display_label(vk: u16) -> String {
     if (0x41..=0x5A).contains(&vk) {
         // A-Z

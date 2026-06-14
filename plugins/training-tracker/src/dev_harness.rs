@@ -219,6 +219,15 @@ pub fn run() -> eframe::Result {
     eframe::run_native(
         "training-tracker-overlay-preview",
         options,
-        Box::new(|_cc| Ok(Box::new(Harness))),
+        Box::new(|cc| {
+            // egui stamps red "Unaligned" markers wherever a widget lands off the
+            // pixel grid; the overlay's fractional content zoom triggers this. Match
+            // the in-game GUI and suppress the diagnostic in the preview too. The
+            // `debug` field only exists in debug builds (off by default in release).
+            #[cfg(debug_assertions)]
+            cc.egui_ctx.style_mut(|style| style.debug.show_unaligned = false);
+            let _ = &cc;
+            Ok(Box::new(Harness))
+        }),
     )
 }

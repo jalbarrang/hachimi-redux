@@ -1,5 +1,7 @@
 //! User configuration schema (`config.json`) and its defaults.
 
+use std::collections::BTreeMap;
+
 use fnv::FnvHashSet;
 use serde::{Deserialize, Serialize};
 
@@ -91,6 +93,12 @@ pub struct Config {
     pub disable_skill_name_translation: bool,
     #[serde(default)]
     pub hide_ingame_ui_hotkey: bool,
+    /// Hotkey binds keyed by stable action id (e.g. `hachimi.open_menu`). The
+    /// central hotkey registry resolves each registered action's effective chord
+    /// from here, falling back to its registered default when absent. Cleared
+    /// (`vk == 0`) means the action is unbound.
+    #[serde(default)]
+    pub hotkeys: BTreeMap<String, HotkeyBind>,
     #[serde(default)]
     pub language: Language,
     #[serde(default = "Config::default_meta_index_url")]
@@ -181,12 +189,50 @@ impl Config {
     pub fn default_window_rounding() -> f32 {
         10.0
     }
+
+    /// Seed the `hotkeys` map for the built-in host actions from the legacy
+    /// single-key config fields, when those entries are not already present. This
+    /// preserves binds for configs written before the central Hotkeys tab existed.
+    pub fn migrate_legacy_hotkeys(&mut self) {
+        #[cfg(target_os = "windows")]
+        {
+            self.hotkeys
+                .entry("hachimi.open_menu".to_owned())
+                .or_insert(HotkeyBind {
+                    mods: 0,
+                    vk: self.windows.menu_open_key,
+                });
+
+            // The legacy hide-UI hotkey had a separate enable flag; a disabled
+            // hotkey maps to the unified "unbound" state (vk == 0).
+            self.hotkeys
+                .entry("hachimi.hide_ingame_ui".to_owned())
+                .or_insert(HotkeyBind {
+                    mods: 0,
+                    vk: if self.hide_ingame_ui_hotkey {
+                        self.windows.hide_ingame_ui_hotkey_bind
+                    } else {
+                        0
+                    },
+                });
+        }
+    }
 }
 
 impl Default for Config {
     fn default() -> Self {
         default_serde_instance().expect("default instance")
     }
+}
+
+/// A persisted hotkey bind: modifier bitmask (Ctrl=1, Shift=2, Alt=4) plus a
+/// primary Win32 virtual-key code. `vk == 0` means unbound.
+#[derive(Deserialize, Serialize, Clone, Copy, Default, PartialEq, Eq)]
+pub struct HotkeyBind {
+    #[serde(default)]
+    pub mods: u8,
+    #[serde(default)]
+    pub vk: u16,
 }
 
 #[derive(Deserialize, Default, Clone)]

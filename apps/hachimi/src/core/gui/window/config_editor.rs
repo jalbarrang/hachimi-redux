@@ -35,14 +35,16 @@ enum ConfigEditorTab {
     General,
     Graphics,
     Gameplay,
+    Hotkeys,
 }
 
 impl ConfigEditorTab {
-    fn display_list() -> [(ConfigEditorTab, Cow<'static, str>); 3] {
+    fn display_list() -> [(ConfigEditorTab, Cow<'static, str>); 4] {
         [
             (ConfigEditorTab::General, t!("config_editor.general_tab")),
             (ConfigEditorTab::Graphics, t!("config_editor.graphics_tab")),
             (ConfigEditorTab::Gameplay, t!("config_editor.gameplay_tab")),
+            (ConfigEditorTab::Hotkeys, t!("config_editor.hotkeys_tab")),
         ]
     }
 }
@@ -163,22 +165,6 @@ impl ConfigEditor {
                 {
                     ui.label(t!("config_editor.discord_rpc"));
                     ui.checkbox(&mut config.windows.discord_rpc, "");
-                    ui.end_row();
-
-                    ui.label(t!("config_editor.menu_open_key"));
-                    ui.horizontal(|ui| {
-                        ui.label(crate::windows::utils::vk_to_display_label(config.windows.menu_open_key));
-                        if widgets::secondary_button(ui, t!("config_editor.menu_open_key_set").into_owned()).clicked() {
-                            crate::windows::wnd_hook::start_menu_key_capture();
-                            thread::spawn(|| {
-                                Gui::instance()
-                                    .expect("unexpected failure")
-                                    .lock()
-                                    .expect("unexpected failure")
-                                    .show_notification(&t!("notification.press_to_set_menu_key"));
-                            });
-                        }
-                    });
                     ui.end_row();
                 }
 
@@ -427,23 +413,9 @@ impl ConfigEditor {
                     ],
                 );
                 ui.end_row();
-
-                ui.label(t!("config_editor.hide_ingame_ui_hotkey"));
-                if ui.checkbox(&mut config.hide_ingame_ui_hotkey, "").clicked() && config.hide_ingame_ui_hotkey {
-                    thread::spawn(|| {
-                        Gui::instance()
-                            .expect("unexpected failure")
-                            .lock()
-                            .expect("unexpected failure")
-                            .show_window(Box::new(SimpleOkDialog::new(
-                                &t!("info"),
-                                &t!("config_editor.hide_ingame_ui_hotkey_info"),
-                                || {},
-                            )));
-                    });
-                }
-                ui.end_row();
             }
+            // Rendered separately by `ui_hotkeys`; never reaches the options grid.
+            ConfigEditorTab::Hotkeys => {}
         }
 
         // Column widths workaround
@@ -574,6 +546,14 @@ impl ConfigEditor {
         ui.add_space(4.0);
 
         let current_tab = self.current_tab;
+
+        // The Hotkeys sub-tab edits the live config directly (immediate apply), so
+        // it renders its own body without the options grid or the Save/Revert footer.
+        if current_tab == ConfigEditorTab::Hotkeys {
+            super::hotkeys_editor::ui_hotkeys(ui, ctx);
+            return;
+        }
+
         egui::Frame::NONE
             .inner_margin(egui::Margin::symmetric(8, 0))
             .show(ui, |ui| {
@@ -607,6 +587,12 @@ impl ConfigEditor {
 
     /// Shared footer (Restore Defaults · Revert · Save) for both config-editing tabs.
     pub(crate) fn ui_footer(&mut self, ui: &mut egui::Ui) {
+        // The Hotkeys sub-tab applies edits immediately and has no working copy,
+        // so the Save/Revert/Restore footer does not apply to it.
+        if self.current_tab == ConfigEditorTab::Hotkeys {
+            return;
+        }
+
         ui.separator();
 
         let mut reset_clicked = false;

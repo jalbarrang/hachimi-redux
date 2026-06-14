@@ -18,6 +18,22 @@ pub fn register_ui() {
     } else {
         hlog_info!(target: "debug-viewer", "Overlay panel registered ({})", handle);
     }
+
+    // Unbound by default; the user assigns a chord from the host's Hotkeys tab.
+    sdk.register_hotkey(
+        "debug-viewer.toggle",
+        "Toggle Debug Window",
+        0,
+        0,
+        toggle_overlay_hotkey,
+        std::ptr::null_mut(),
+    );
+}
+
+extern "C" fn toggle_overlay_hotkey(_userdata: *mut c_void) {
+    if panic::catch_unwind(|| Sdk::get().toggle_overlay(OVERLAY_ID)).is_err() {
+        hlog_error!(target: "debug-viewer", "toggle_overlay_hotkey panicked");
+    }
 }
 
 extern "C" fn draw_overlay(ui: *mut c_void, _userdata: *mut c_void) {

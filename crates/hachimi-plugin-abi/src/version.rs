@@ -17,7 +17,14 @@
 /// v12: added `gui_register_overlay_ex` (register an L2 panel with presentation
 /// flags, e.g. [`crate::overlay_flags::CHROMELESS`] to drop the host window chrome
 /// so the plugin's own visuals float bare).
-pub const API_VERSION: i32 = 12;
+///
+/// v13: added `host_register_hotkey` (register a named hotkey action into the
+/// host's central Hotkeys tab; the user rebinds it there and the host persists the
+/// chord). Unregister via `gui_unregister`.
+///
+/// v14: added `gui_overlay_get_visible` (query an overlay's current visibility),
+/// letting plugins implement a toggle alongside `gui_overlay_set_visible`.
+pub const API_VERSION: i32 = 14;
 
 /// Number of function pointers in `Vtable`.
-pub const VTABLE_SLOT_COUNT: usize = 45;
+pub const VTABLE_SLOT_COUNT: usize = 47;

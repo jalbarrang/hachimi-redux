@@ -9,10 +9,16 @@ use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 pub mod api;
 pub mod career;
 pub mod events;
+pub mod hotkeys;
 pub mod menu;
 pub mod notification;
 pub mod overlay;
 pub mod types;
+
+/// Stable action id for the built-in "open Control Center" hotkey.
+pub const HOTKEY_OPEN_MENU: &str = "hachimi.open_menu";
+/// Stable action id for the built-in "hide in-game UI" hotkey.
+pub const HOTKEY_HIDE_INGAME_UI: &str = "hachimi.hide_ingame_ui";
 
 pub use hachimi_plugin_abi::Vtable;
 pub use hachimi_plugin_abi::API_VERSION;
@@ -36,6 +42,7 @@ pub(crate) fn next_handle() -> u64 {
 pub(crate) fn unregister(handle: u64) -> bool {
     let mut removed = menu::remove_by_handle(handle);
     removed |= overlay::remove_by_handle(handle);
+    removed |= hotkeys::remove_by_handle(handle);
     removed
 }
 
@@ -81,6 +88,7 @@ pub(crate) fn teardown_owner(owner: u32) {
     events::shutdown_and_remove_owner(owner);
     menu::remove_by_owner(owner);
     overlay::remove_by_owner(owner);
+    hotkeys::remove_by_owner(owner);
 }
 
 /// Unload a single plugin by library name. Windows-only; returns `false` if not loaded.
