@@ -131,8 +131,6 @@ fn item_center() -> taffy::Style {
     }
 }
 
-
-
 /// Apply overlay chrome and draw tracking toggle + tab bar when tracking is on.
 pub(super) fn draw_shell(ui: &mut egui::Ui, tracking: bool) -> bool {
     draw_tracking_toggle(ui, tracking);
@@ -143,13 +141,11 @@ pub(super) fn draw_shell(ui: &mut egui::Ui, tracking: bool) -> bool {
     }
 
     ui.separator();
-    // TEMPORARY flicker diagnostic.
-    let ctx = ui.ctx().clone();
-    super::flicker_diag::watch(&ctx, "shell:zoom", || draw_zoom_control(ui));
+    draw_zoom_control(ui);
     // Hide the tab row when only one tab is enabled — the overlay becomes a single
     // clean panel showing just that tab's body.
     if tabs::enabled_count() > 1 {
-        super::flicker_diag::watch(&ctx, "shell:tab_bar", || draw_tab_bar(ui));
+        draw_tab_bar(ui);
         ui.separator();
     }
     true

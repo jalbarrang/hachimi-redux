@@ -38,6 +38,14 @@ impl Gui {
         let context = egui::Context::default();
         egui_extras::install_image_loaders(&context);
 
+        // egui_taffy lays out via `request_discard` (it re-runs the UI within the
+        // same frame until the taffy layout settles). That only works when the
+        // render loop performs egui multi-pass (see `frame::run`); `max_passes`
+        // caps how many passes a single frame may take. >1 is required or every
+        // taffy surface (menu + plugin overlays) flickers as it settles one step
+        // per frame instead of per frame-internal pass.
+        context.options_mut(|o| o.max_passes = std::num::NonZeroUsize::new(3).expect("nonzero"));
+
         context.set_fonts(Self::get_font_definitions());
 
         let mut style = egui::Style::default();

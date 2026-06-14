@@ -97,8 +97,21 @@ impl Gui {
         }
         self.context.set_style(style);
 
-        self.context.begin_pass(input);
+        // Drive egui multi-pass: `Context::run` re-runs the UI within this frame
+        // (up to `Options::max_passes`) until the layout settles, presenting only
+        // the final pass. egui_taffy depends on this — a single begin/end pass
+        // would present the unsettled layout and flicker every taffy surface.
+        // `ctx` is a cloned `Context` (a separate borrow) so the closure can still
+        // take `&mut self`; the UI is built via `self.context`, the same context.
+        let ctx = self.context.clone();
+        ctx.run(input, |_ctx| self.run_ui_pass())
+    }
 
+    /// Build one egui pass of the GUI. Called (potentially) multiple times per
+    /// frame by [`egui::Context::run`] so egui_taffy layouts can settle via
+    /// `request_discard`. Keep this idempotent across passes — once-per-frame work
+    /// (e.g. `update_fps`) lives in [`Self::run`], before the multi-pass loop.
+    fn run_ui_pass(&mut self) {
         if self.menu_visible {
             self.run_menu();
         }
@@ -110,6 +123,8 @@ impl Gui {
         // Plugin notifications can be enqueued from any thread at any time — including
         // at plugin init on game start, before the Control Center is ever opened.
         // Drain every frame, independent of `menu_visible`, so they always surface.
+        // (A second pass drains empty; the queued notifications persist in
+        // `self.notifications` and re-render, so this stays correct under multipass.)
         for message in crate::core::plugin::notification::drain() {
             self.show_notification(&message);
         }
@@ -151,8 +166,6 @@ impl Gui {
         // to swallow mouse input for panels but let clicks fall through to the game.
         let l2_wants = !self.menu_visible && !overlay::is_locked() && self.context.is_pointer_over_area();
         super::L2_WANTS_POINTER.store(l2_wants, Ordering::Relaxed);
-
-        self.context.end_pass()
     }
 
     pub(crate) fn run_windows(&mut self) {
