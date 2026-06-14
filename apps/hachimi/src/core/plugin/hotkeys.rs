@@ -93,6 +93,10 @@ pub struct HotkeyInfo {
 
 static HOTKEYS: Lazy<Mutex<Vec<Hotkey>>> = Lazy::new(|| Mutex::new(Vec::new()));
 static CAPTURE: Lazy<Mutex<Option<String>>> = Lazy::new(|| Mutex::new(None));
+/// A completed capture `(action id, chord)`, produced on the WndProc thread by
+/// [`finish_capture`] and consumed by the settings UI ([`take_capture_result`]),
+/// which applies it to the config working copy (deferred Save/Cancel).
+static CAPTURE_RESULT: Lazy<Mutex<Option<(String, Chord)>>> = Lazy::new(|| Mutex::new(None));
 
 fn register(id: String, label: String, default: Chord, action: Action) -> u64 {
     if id.is_empty() {
@@ -240,6 +244,22 @@ pub fn take_capture() -> Option<String> {
 /// Whether a capture is currently in progress.
 pub fn is_capturing() -> bool {
     CAPTURE.lock().expect("lock poisoned").is_some()
+}
+
+/// Complete an in-progress capture (called from the WndProc hook on key press):
+/// stash `(id, chord)` for the settings UI to apply to its working copy. Returns
+/// the action id (for the "hotkey set" notification), or `None` if no capture was
+/// active. Does NOT write the live config — the rebind only persists on Save.
+pub fn finish_capture(chord: Chord) -> Option<String> {
+    let id = take_capture()?;
+    *CAPTURE_RESULT.lock().expect("lock poisoned") = Some((id.clone(), chord));
+    Some(id)
+}
+
+/// Consume a completed capture result, if any. The settings UI polls this each
+/// frame and writes it into the config working copy.
+pub fn take_capture_result() -> Option<(String, Chord)> {
+    CAPTURE_RESULT.lock().expect("lock poisoned").take()
 }
 
 /// Register the built-in host hotkeys. Called once after config is loaded.

@@ -610,9 +610,9 @@ impl ConfigEditor {
         self.current_tab = tab;
         self.sync();
 
-        // Hotkeys renders its own body (no options grid).
+        // Hotkeys renders its own body (no options grid) against the working copy.
         if tab == ConfigEditorTab::Hotkeys {
-            super::hotkeys_editor::ui_hotkeys(ui, ctx);
+            super::hotkeys_editor::ui_hotkeys(ui, ctx, &mut self.config);
             return;
         }
 

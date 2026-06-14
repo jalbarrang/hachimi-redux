@@ -1,10 +1,7 @@
 use std::{
     os::raw::c_uint,
     ptr,
-    sync::{
-        atomic::{self, AtomicIsize},
-        Arc,
-    },
+    sync::atomic::{self, AtomicIsize},
 };
 
 use windows::{
@@ -79,16 +76,13 @@ fn current_mods() -> u8 {
     mods
 }
 
-/// Persist a captured chord to the action whose "Set" is in progress, then notify.
+/// Stash a captured chord for the action whose "Set" is in progress, then notify.
+/// The rebind goes into the settings UI's working copy (applied on the next GUI
+/// frame) and only persists when the user clicks Save — not written live here.
 fn capture_key(chord: hotkeys::Chord) {
-    let Some(id) = hotkeys::take_capture() else {
+    if hotkeys::finish_capture(chord).is_none() {
         return;
-    };
-    let hachimi = Hachimi::instance();
-    let mut new_config = hachimi.config.load().as_ref().clone();
-    new_config.hotkeys.insert(id, chord.into());
-    let _ = hachimi.save_config(&new_config);
-    hachimi.config.store(Arc::new(new_config));
+    }
 
     let key_label = utils::chord_to_display_label(chord.mods, chord.vk);
     let msg = t!("notification.hotkey_set", key = key_label);

@@ -6,15 +6,16 @@
 //! row supports Set (key capture), Clear (unbind), and Reset (restore default),
 //! and surfaces conflict + reserved-key warnings without blocking the user.
 //!
-//! Unlike the General/Graphics/Gameplay grids, edits here apply immediately (key
-//! capture is asynchronous in the WndProc hook), so this body is rendered without
-//! the shared Save/Revert footer.
+//! Edits go into the config-editor working copy (the same one the General/
+//! Graphics/Gameplay grids share) and persist only on Save / discard on Cancel.
+//! Key capture is asynchronous (WndProc hook); the captured chord is stashed and
+//! applied to the working copy on the next GUI frame.
 
 use std::collections::HashMap;
 
 use rust_i18n::t;
 
-use crate::core::hachimi::HotkeyBind;
+use crate::core::hachimi::{Config, HotkeyBind};
 use crate::core::plugin::hotkeys::{self, Chord, HotkeyInfo};
 use crate::core::Hachimi;
 use crate::windows::utils::chord_to_display_label;
@@ -22,7 +23,6 @@ use crate::windows::utils::chord_to_display_label;
 use super::super::scale::get_scale;
 use super::super::widgets;
 use super::super::Gui;
-use super::save_and_reload_config;
 
 /// Virtual keys we warn about when bound without a modifier (game/system critical).
 const RESERVED_VKS: &[u16] = &[
@@ -36,9 +36,14 @@ const RESERVED_VKS: &[u16] = &[
     0x20, // VK_SPACE
 ];
 
-/// Render the Hotkeys sub-tab.
-pub(crate) fn ui_hotkeys(ui: &mut egui::Ui, ctx: &egui::Context) {
+/// Render the Hotkeys tab against the config-editor working copy.
+pub(crate) fn ui_hotkeys(ui: &mut egui::Ui, ctx: &egui::Context, config: &mut Config) {
     let scale = get_scale(ctx);
+
+    // Apply any completed async key-capture into the working copy.
+    if let Some((id, chord)) = hotkeys::take_capture_result() {
+        config.hotkeys.insert(id, chord.into());
+    }
 
     let infos = hotkeys::snapshot();
     if infos.is_empty() {
@@ -47,9 +52,7 @@ pub(crate) fn ui_hotkeys(ui: &mut egui::Ui, ctx: &egui::Context) {
         return;
     }
 
-    let config = Hachimi::instance().config.load();
-
-    // Effective chord per action id (persisted bind, else registered default).
+    // Effective chord per action id (working-copy bind, else registered default).
     let effective: HashMap<String, Chord> = infos
         .iter()
         .map(|info| {
@@ -92,12 +95,39 @@ pub(crate) fn ui_hotkeys(ui: &mut egui::Ui, ctx: &egui::Context) {
             let chord = effective.get(&info.id).copied().unwrap_or_default();
             let conflict = chord.is_bound() && chord_counts.get(&(chord.mods, chord.vk)).copied().unwrap_or(0) > 1;
             let reserved = chord.is_bound() && chord.mods == 0 && RESERVED_VKS.contains(&chord.vk);
-            hotkey_row(ui, scale, info, chord, conflict, reserved);
+            match hotkey_row(ui, scale, info, chord, conflict, reserved) {
+                Some(RowAction::Set) => {
+                    hotkeys::start_capture(info.id.clone());
+                    notify_capture_start();
+                }
+                Some(RowAction::Clear) => {
+                    config.hotkeys.insert(info.id.clone(), HotkeyBind::default());
+                }
+                Some(RowAction::Reset) => {
+                    config.hotkeys.insert(info.id.clone(), info.default.into());
+                }
+                None => {}
+            }
         }
     }
 }
 
-fn hotkey_row(ui: &mut egui::Ui, scale: f32, info: &HotkeyInfo, chord: Chord, conflict: bool, reserved: bool) {
+/// Which button a hotkey row's controls reported this frame.
+enum RowAction {
+    Set,
+    Clear,
+    Reset,
+}
+
+fn hotkey_row(
+    ui: &mut egui::Ui,
+    scale: f32,
+    info: &HotkeyInfo,
+    chord: Chord,
+    conflict: bool,
+    reserved: bool,
+) -> Option<RowAction> {
+    let mut action = None;
     ui.horizontal(|ui| {
         ui.add_sized(
             [180.0 * scale, 20.0 * scale],
@@ -115,25 +145,18 @@ fn hotkey_row(ui: &mut egui::Ui, scale: f32, info: &HotkeyInfo, chord: Chord, co
 
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             if widgets::secondary_button(ui, t!("hotkeys.reset").into_owned()).clicked() {
-                apply_bind(&info.id, info.default.into());
+                action = Some(RowAction::Reset);
             }
             if widgets::secondary_button(ui, t!("hotkeys.clear").into_owned()).clicked() {
-                apply_bind(&info.id, HotkeyBind::default());
+                action = Some(RowAction::Clear);
             }
             if widgets::secondary_button(ui, t!("hotkeys.set").into_owned()).clicked() {
-                hotkeys::start_capture(info.id.clone());
-                notify_capture_start();
+                action = Some(RowAction::Set);
             }
             ui.label(chord_to_display_label(chord.mods, chord.vk));
         });
     });
-}
-
-/// Save a new bind for `id` and reload config so the change takes effect live.
-fn apply_bind(id: &str, bind: HotkeyBind) {
-    let mut config = Hachimi::instance().config.load().as_ref().clone();
-    config.hotkeys.insert(id.to_owned(), bind);
-    save_and_reload_config(config);
+    action
 }
 
 /// Show the "press a key" prompt for an in-progress capture.
