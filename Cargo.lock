@@ -1356,7 +1356,6 @@ dependencies = [
  "egui-directx11",
  "egui-scale",
  "egui_extras",
- "egui_taffy",
  "fnv",
  "hachimi-plugin-abi",
  "http",

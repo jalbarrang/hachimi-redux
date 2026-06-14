@@ -24,7 +24,6 @@ widestring = "1.1"
 egui = { version = "0.33.3", default-features = false, features = ["serde"] }
 egui-scale = "0.3.0"
 egui_extras = { version = "0.33.3", default-features = false, features = ["image"] }
-egui_taffy = "=0.10.0"
 image = { version = "0.25.9", default-features = false, features = ["png"] }
 png = "0.17"
 sqlparser = "0.43"
