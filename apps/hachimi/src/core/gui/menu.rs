@@ -10,10 +10,28 @@ use rust_i18n::t;
 
 use crate::core::utils::SendPtr;
 
+use egui_taffy::taffy::prelude::{auto, length};
+use egui_taffy::{taffy, tui, TuiBuilderLogic};
+
 use super::scale::get_scale;
 use super::widgets::{self, PillButtonKind};
 use super::window::{BoxedWindow, ConfigEditorTab};
 use super::{Gui, DISABLED_GAME_UIS};
+
+/// Flex-column item that fills the remaining height of the menu shell (the
+/// scrolling content region). `min_size.height = 0` lets it shrink below its
+/// content so the inner `ScrollArea` gets a bounded height to scroll within.
+fn shell_content_style() -> taffy::Style {
+    taffy::Style {
+        flex_grow: 1.0,
+        flex_basis: length(0.0),
+        min_size: taffy::Size {
+            width: auto(),
+            height: length(0.0),
+        },
+        ..Default::default()
+    }
+}
 
 /// Fixed top-level tabs of the Control Center. The former Config sub-tabs
 /// (General/Graphics/Gameplay/Hotkeys) are now top-level; Overlay was removed.
@@ -67,63 +85,94 @@ impl Gui {
 
         let response = egui::Modal::new(egui::Id::new("hachimi_control_center")).show(&ctx, |ui| {
             ui.set_width(550.0 * scale);
-            ui.set_max_height(ctx.input(|i| i.viewport_rect().height()) * 0.85);
+            let shell_h = ctx.input(|i| i.viewport_rect().height()) * 0.85;
+            ui.set_max_height(shell_h);
+            ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend);
 
-            // Header row: icon + title + version, close button on the right.
-            widgets::card_frame(ui).show(ui, |ui| {
-                ui.horizontal(|ui| {
-                    ui.add(Self::icon(&ctx));
-                    ui.heading(t!("hachimi"));
-                    widgets::category_tag(ui, env!("HACHIMI_DISPLAY_VERSION"));
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        if widgets::ghost_button(ui, "\u{f00d}")
-                            .on_hover_text(t!("menu.close_menu"))
-                            .clicked()
-                        {
-                            keep_open = false;
-                        }
+            // Header / tab bar / scrolling content / pinned footer, laid out as a
+            // taffy flex column so the content region fills the remaining height
+            // (each region takes exactly the space it needs; content takes the rest).
+            tui(ui, ui.id().with("menu_shell"))
+                .reserve_available_width()
+                .style(taffy::Style {
+                    display: taffy::Display::Flex,
+                    flex_direction: taffy::FlexDirection::Column,
+                    align_items: Some(taffy::AlignItems::Stretch),
+                    gap: taffy::Size {
+                        width: length(0.0),
+                        height: length(8.0 * scale),
+                    },
+                    size: taffy::Size {
+                        width: auto(),
+                        height: length(shell_h),
+                    },
+                    max_size: taffy::Size {
+                        width: auto(),
+                        height: length(shell_h),
+                    },
+                    ..Default::default()
+                })
+                .show(|tui| {
+                    // Header row: icon + title + version, close button on the right.
+                    tui.ui(|ui| {
+                        widgets::card_frame(ui).show(ui, |ui| {
+                            ui.horizontal(|ui| {
+                                ui.add(Self::icon(&ctx));
+                                ui.heading(t!("hachimi"));
+                                widgets::category_tag(ui, env!("HACHIMI_DISPLAY_VERSION"));
+                                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                                    if widgets::ghost_button(ui, "\u{f00d}")
+                                        .on_hover_text(t!("menu.close_menu"))
+                                        .clicked()
+                                    {
+                                        keep_open = false;
+                                    }
+                                });
+                            });
+                        });
+                    });
+
+                    // Top tab bar: a single horizontally-scrollable row (content height).
+                    tui.ui(|ui| {
+                        egui::ScrollArea::horizontal()
+                            .id_salt("l1_tabs_scroll")
+                            .auto_shrink([false, true])
+                            .show(ui, |ui| {
+                                ui.horizontal(|ui| {
+                                    ui.spacing_mut().item_spacing.x = 6.0 * scale;
+                                    self.tab_button(ui, ControlTab::General, &t!("config_editor.general_tab"));
+                                    self.tab_button(ui, ControlTab::Graphics, &t!("config_editor.graphics_tab"));
+                                    self.tab_button(ui, ControlTab::Gameplay, &t!("config_editor.gameplay_tab"));
+                                    self.tab_button(ui, ControlTab::Hotkeys, &t!("config_editor.hotkeys_tab"));
+                                    self.tab_button(ui, ControlTab::Translations, "\u{f1ab} Translations");
+                                    self.tab_button(ui, ControlTab::Plugins, "\u{f12e} Plugins");
+                                    self.tab_button(ui, ControlTab::About, "\u{f129} About");
+                                });
+                            });
+                    });
+
+                    // Scrolling content fills the remaining height.
+                    tui.style(shell_content_style()).ui(|ui| {
+                        egui::ScrollArea::vertical()
+                            .auto_shrink([false, false])
+                            .show(ui, |ui| match self.menu_tab {
+                                ControlTab::General => self.config_editor.ui_body(ui, &ctx, ConfigEditorTab::General),
+                                ControlTab::Graphics => self.config_editor.ui_body(ui, &ctx, ConfigEditorTab::Graphics),
+                                ControlTab::Gameplay => self.config_editor.ui_body(ui, &ctx, ConfigEditorTab::Gameplay),
+                                ControlTab::Hotkeys => self.config_editor.ui_body(ui, &ctx, ConfigEditorTab::Hotkeys),
+                                ControlTab::Translations => self.run_translations_tab(ui, &ctx, &mut show_notification),
+                                ControlTab::Plugins => self.run_plugins_tab(ui, &ctx, &mut show_notification),
+                                ControlTab::About => {
+                                    self.run_about_tab(ui, &ctx, &mut show_notification, &mut show_window)
+                                }
+                            });
+                    });
+
+                    // Pinned footer: Save/Cancel (greyed where the tab doesn't edit config).
+                    tui.ui(|ui| {
+                        self.config_editor.ui_footer(ui, self.menu_tab.edits_config());
                     });
                 });
-            });
-
-            ui.add_space(8.0 * scale);
-
-            // Top tab bar: a single horizontally-scrollable row.
-            egui::ScrollArea::horizontal()
-                .id_salt("l1_tabs_scroll")
-                .auto_shrink([false, false])
-                .show(ui, |ui| {
-                    ui.horizontal(|ui| {
-                        ui.spacing_mut().item_spacing.x = 6.0 * scale;
-                        self.tab_button(ui, ControlTab::General, &t!("config_editor.general_tab"));
-                        self.tab_button(ui, ControlTab::Graphics, &t!("config_editor.graphics_tab"));
-                        self.tab_button(ui, ControlTab::Gameplay, &t!("config_editor.gameplay_tab"));
-                        self.tab_button(ui, ControlTab::Hotkeys, &t!("config_editor.hotkeys_tab"));
-                        self.tab_button(ui, ControlTab::Translations, "\u{f1ab} Translations");
-                        self.tab_button(ui, ControlTab::Plugins, "\u{f12e} Plugins");
-                        self.tab_button(ui, ControlTab::About, "\u{f129} About");
-                    });
-                });
-            ui.add_space(8.0 * scale);
-
-            // Pin the footer at the bottom: cap the scrolling content to leave it room.
-            let footer_h = 48.0 * scale;
-            let content_h = (ui.available_height() - footer_h).max(120.0 * scale);
-            egui::ScrollArea::vertical()
-                .max_height(content_h)
-                .auto_shrink([false, false])
-                .show(ui, |ui| match self.menu_tab {
-                    ControlTab::General => self.config_editor.ui_body(ui, &ctx, ConfigEditorTab::General),
-                    ControlTab::Graphics => self.config_editor.ui_body(ui, &ctx, ConfigEditorTab::Graphics),
-                    ControlTab::Gameplay => self.config_editor.ui_body(ui, &ctx, ConfigEditorTab::Gameplay),
-                    ControlTab::Hotkeys => self.config_editor.ui_body(ui, &ctx, ConfigEditorTab::Hotkeys),
-                    ControlTab::Translations => self.run_translations_tab(ui, &ctx, &mut show_notification),
-                    ControlTab::Plugins => self.run_plugins_tab(ui, &ctx, &mut show_notification),
-                    ControlTab::About => self.run_about_tab(ui, &ctx, &mut show_notification, &mut show_window),
-                });
-
-            // Always-present footer: Save/Cancel (greyed where the tab doesn't edit config).
-            self.config_editor.ui_footer(ui, self.menu_tab.edits_config());
         });
 
         // Close on backdrop click / Escape, or via the header button.
