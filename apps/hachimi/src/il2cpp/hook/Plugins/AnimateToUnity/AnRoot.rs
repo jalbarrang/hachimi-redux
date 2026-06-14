@@ -13,7 +13,9 @@ use crate::{
             Plugins::AnimateToUnity::AnKeyParameter, UnityEngine_AssetBundleModule::AssetBundle,
             UnityEngine_CoreModule::Object,
         },
-        symbols::{get_field_from_name, get_field_object_value, IList},
+        symbols::{
+            get_field_from_name, get_field_object_value, get_field_value, get_method_addr, set_field_value, IList,
+        },
         types::*,
         utils::replace_texture_with_diff,
     },
@@ -48,6 +50,24 @@ static mut _TOPOBJECT_FIELD: *mut FieldInfo = 0 as _;
 pub fn get__topObject(this: *mut Il2CppObject) -> *mut Il2CppObject {
     // SAFETY: FFI / raw pointer operation required by IL2CPP interop
     get_field_object_value(this, unsafe { _TOPOBJECT_FIELD })
+}
+
+// System.Single _deltaTime — the per-frame time step that drives every
+// AnimateToUnity (flash) motion. Scaling it speeds up / slows down all flash
+// animations (stat up/down popups, condition gains, inspiration, etc.).
+static mut _DELTATIME_FIELD: *mut FieldInfo = 0 as _;
+
+type UpdateTimeFn = extern "C" fn(this: *mut Il2CppObject);
+extern "C" fn _UpdateTime(this: *mut Il2CppObject) {
+    get_orig_fn!(_UpdateTime, UpdateTimeFn)(this);
+
+    let scale = Hachimi::instance().config.load().flash_animation_scale;
+    if scale != 1.0 {
+        // SAFETY: FFI / raw pointer operation required by IL2CPP interop
+        let delta_time: f32 = get_field_value(this, unsafe { _DELTATIME_FIELD });
+        // SAFETY: FFI / raw pointer operation required by IL2CPP interop
+        set_field_value(this, unsafe { _DELTATIME_FIELD }, &(delta_time * scale));
+    }
 }
 
 #[derive(Deserialize)]
@@ -270,5 +290,9 @@ pub fn init(Plugins: *const Il2CppImage) {
         _PARAMETER_FIELD = get_field_from_name(AnRoot, c"_parameter");
         _MESHPARAMETERGROUP_FIELD = get_field_from_name(AnRoot, c"_meshParameterGroup");
         _TOPOBJECT_FIELD = get_field_from_name(AnRoot, c"_topObject");
+        _DELTATIME_FIELD = get_field_from_name(AnRoot, c"_deltaTime");
     }
+
+    let _UpdateTime_addr = get_method_addr(AnRoot, c"_UpdateTime", 0);
+    new_hook!(_UpdateTime_addr, _UpdateTime);
 }

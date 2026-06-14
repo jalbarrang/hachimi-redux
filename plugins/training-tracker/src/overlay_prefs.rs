@@ -7,7 +7,7 @@
 
 use std::sync::atomic::{AtomicU32, Ordering};
 
-pub(crate) const MIN_ZOOM: f32 = 0.7;
+pub(crate) const MIN_ZOOM: f32 = 0.4;
 pub(crate) const MAX_ZOOM: f32 = 2.5;
 const DEFAULT_ZOOM: f32 = 1.0;
 

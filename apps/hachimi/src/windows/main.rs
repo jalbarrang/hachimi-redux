@@ -22,7 +22,21 @@ const DLL_PROCESS_DETACH: c_ulong = 0;
 pub fn load_libraries() -> Vec<Plugin> {
     let mut plugins = Vec::new();
     let config = Hachimi::instance().config.load();
-    for name in config.windows.load_libraries.iter() {
+
+    // Build the effective load list: every `load_libraries` entry, followed by any
+    // `legacy_libraries` entry not already listed. Legacy plugins therefore load on
+    // their own (no need to also list them in `load_libraries`), and are appended
+    // after the regular plugins to keep a deterministic order. Listing a name in
+    // both arrays still works — it loads once, via the legacy compatibility path.
+    let mut seen = std::collections::HashSet::new();
+    let load_order = config
+        .windows
+        .load_libraries
+        .iter()
+        .chain(config.windows.legacy_libraries.iter())
+        .filter(|name| seen.insert(name.as_str()));
+
+    for name in load_order {
         // Opt-in compatibility path for manifest-less, legacy-ABI plugins.
         let legacy = config.windows.legacy_libraries.iter().any(|l| l == name);
         if let Some(plugin) = load_plugin_library(name, plugins.len() as u32 + 1, legacy) {

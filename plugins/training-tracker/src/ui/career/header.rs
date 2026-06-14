@@ -2,7 +2,8 @@
 //! name, outfit, stars) and the condition cluster (year·date·turn, energy, mood).
 //! Mirrors the top row of the dashboard `CareerPanel`.
 
-use egui_taffy::taffy::prelude::length;
+use egui_taffy::taffy::prelude::{fr, length};
+use egui_taffy::taffy::style_helpers::auto;
 use egui_taffy::{taffy, tui, TuiBuilderLogic};
 use hachimi_plugin_sdk::egui::{self, Color32, CornerRadius, Pos2, Rect, RichText, Stroke, StrokeKind, Vec2};
 
@@ -33,11 +34,34 @@ fn row(gap: f32) -> taffy::Style {
         ..Default::default()
     }
 }
+fn grid_2col(gap: f32, width: f32) -> taffy::Style {
+    let size = taffy::Size {
+        width: length(width),
+        height: auto(),
+    };
+    taffy::Style {
+        display: taffy::Display::Grid,
+        grid_template_columns: vec![fr(1.), fr(1.)],
+        gap: length(gap),
+        size,
+        max_size: size,
+        align_items: Some(taffy::AlignItems::Center),
+        ..Default::default()
+    }
+}
+fn col_end(gap: f32) -> taffy::Style {
+    taffy::Style {
+        display: taffy::Display::Flex,
+        flex_direction: taffy::FlexDirection::Column,
+        align_items: Some(taffy::AlignItems::End),
+        gap: length(gap),
+        ..Default::default()
+    }
+}
 
 /// Header laid out with egui_taffy (flexbox) instead of nested horizontal/vertical:
-/// an identity row (portrait column + name/outfit/stars column) above a wrapping
-/// row of condition pills. Custom-painted bits (portrait, pills) are egui nodes;
-/// taffy owns direction / gap / alignment / wrap.
+/// a full-width two-column grid: identity (portrait + name/outfit/stars) on the
+/// left, condition pills stacked and right-aligned on the right.
 pub(super) fn draw(ui: &mut egui::Ui, snap: &CareerSnapshot) {
     let card = gametora_data::character_card(snap.card_id as i64);
     let name = card
@@ -50,13 +74,13 @@ pub(super) fn draw(ui: &mut egui::Ui, snap: &CareerSnapshot) {
     // Reserve the deterministic column width, not the (auto_sized-inflated)
     // available width — egui_taffy's reserve_*_width does set_min_width(), so a
     // huge value would force the header and the window wide.
+    let width = super::super::overlay::content_width();
     tui(ui, ui.id().with("career_header"))
-        .reserve_width(super::super::overlay::content_width())
-        .style(col(6.0))
+        .reserve_width(width)
+        .style(grid_2col(8.0, width))
         .show(|tui| {
-            // Identity row.
+            // Left column: portrait + name / outfit / stars.
             tui.style(row(8.0)).add(|tui| {
-                // Portrait column: portrait + eval value.
                 tui.style(col(2.0)).add(|tui| {
                     tui.ui(|ui| portrait_with_badge(ui, snap));
                     if let Some(ev) = snap.evaluation_value {
@@ -65,8 +89,6 @@ pub(super) fn draw(ui: &mut egui::Ui, snap: &CareerSnapshot) {
                         });
                     }
                 });
-                // Name / outfit / stars column — grows to fill the row so the name
-                // gets real width (otherwise it truncates to "…" / stars stack).
                 tui.style(taffy::Style {
                     flex_grow: 1.0,
                     flex_basis: length(0.0),
@@ -87,13 +109,8 @@ pub(super) fn draw(ui: &mut egui::Ui, snap: &CareerSnapshot) {
                     tui.ui(|ui| stars(ui, snap.star.clamp(0, 5)));
                 });
             });
-
-            // Condition pills, wrapping.
-            tui.style(taffy::Style {
-                flex_wrap: taffy::FlexWrap::Wrap,
-                ..row(6.0)
-            })
-            .add(|tui| {
+            // Right column: condition pills, right-aligned.
+            tui.style(col_end(6.0)).add(|tui| {
                 tui.ui(|ui| date_pill(ui, snap));
                 tui.ui(|ui| energy_pill(ui, snap));
                 tui.ui(|ui| mood_pill(ui, snap));

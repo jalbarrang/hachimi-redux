@@ -3,7 +3,9 @@
 //! rainbow-ready highlight when a card can friendship-train. Mirrors the
 //! dashboard `CareerPanel` Bonds grid.
 
-use hachimi_plugin_sdk::egui::{self, Align, Layout, RichText, Vec2};
+use egui_taffy::taffy::prelude::{auto, fr, length};
+use egui_taffy::{taffy, tui, TuiBuilderLogic, TuiContainerResponse};
+use hachimi_plugin_sdk::egui::{self, Align, Layout, RichText, Vec2, Vec2b};
 
 use super::theme;
 use crate::gametora_data;
@@ -38,12 +40,28 @@ pub(super) fn draw(ui: &mut egui::Ui, snap: &CareerSnapshot) {
     // Supports before guests, then highest bond first.
     bonds.sort_by(|a, b| (a.is_support.cmp(&b.is_support).reverse()).then(b.value.cmp(&a.value)));
 
-    // Single full-width column at the overlay's narrow width.
+    // Two side-by-side columns, filled column-major: the first half goes down the
+    // left column, the rest down the right.
     let w = super::super::overlay::content_width();
-    for bond in &bonds {
-        row(ui, bond, w);
-        ui.add_space(4.0);
-    }
+    let gap = 6.0;
+    let col_w = ((w - gap) / 2.0).max(60.0);
+    let mid = bonds.len().div_ceil(2);
+    ui.horizontal_top(|ui| {
+        ui.spacing_mut().item_spacing.x = gap;
+        bond_column(ui, &bonds, 0..mid, col_w);
+        bond_column(ui, &bonds, mid..bonds.len(), col_w);
+    });
+}
+
+/// One vertical column of bond rows at a pinned width.
+fn bond_column(ui: &mut egui::Ui, bonds: &[Bond], range: std::ops::Range<usize>, col_w: f32) {
+    ui.allocate_ui_with_layout(Vec2::new(col_w, 0.0), Layout::top_down(Align::Min), |ui| {
+        ui.set_width(col_w);
+        for idx in range {
+            row(ui, &bonds[idx], col_w, idx);
+            ui.add_space(4.0);
+        }
+    });
 }
 
 fn collect(snap: &CareerSnapshot) -> Vec<Bond> {
@@ -91,25 +109,85 @@ fn collect(snap: &CareerSnapshot) -> Vec<Bond> {
 }
 
 /// A bond row: `[name (fills, truncates) | type chip | bond value | On chip]`.
-/// Deterministic widths only — no right_to_left/left_to_right nesting, which broke
-/// (rows escaped the column) under the auto_sized window.
-fn row(ui: &mut egui::Ui, bond: &Bond, w: f32) {
+/// Laid out with an egui_taffy grid: the name column is the single `fr(1.)`
+/// flexible track and truncates, while the right cluster uses `auto()` tracks
+/// sized to their content.
+fn row(ui: &mut egui::Ui, bond: &Bond, w: f32, idx: usize) {
     theme::row_frame(bond.rainbow_ready).show(ui, |ui| {
-        // Fill the column (minus the frame's horizontal inner margin).
-        ui.set_width((w - 20.0).max(40.0));
-        ui.horizontal(|ui| {
-            ui.spacing_mut().item_spacing.x = 6.0;
-            // Reserve the right cluster's budget; the name takes the rest and truncates.
-            let right = 96.0;
-            let name_w = (ui.available_width() - right).max(28.0);
-            ui.allocate_ui_with_layout(Vec2::new(name_w, 18.0), Layout::left_to_right(Align::Center), |ui| {
-                ui.add(egui::Label::new(RichText::new(&bond.name).small().strong().color(theme::FG)).truncate());
+        // Fill the column (minus the frame's symmetric 10px horizontal margin).
+        let inner = (w - 20.0).max(40.0);
+        ui.set_width(inner);
+        // Cells get ~0 measured width during taffy's layout pass; force text to
+        // extend so non-truncating labels don't wrap one glyph per line.
+        ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend);
+        // Unique per row: a shared id would make every row collide on one
+        // persistent Taffy state and thrash it dirty every frame.
+        tui(ui, ui.id().with("bond_row").with(idx))
+            .reserve_width(inner)
+            .style(taffy::Style {
+                display: taffy::Display::Grid,
+                // Name flexes; the three right-cluster cells size to content.
+                grid_template_columns: vec![fr(1.), auto(), auto(), auto()],
+                gap: taffy::Size {
+                    width: length(6.0),
+                    height: length(0.0),
+                },
+                align_items: Some(taffy::AlignItems::Center),
+                size: taffy::Size {
+                    width: length(inner),
+                    height: auto(),
+                },
+                ..Default::default()
+            })
+            .show(|tui| {
+                // Name cell: left-aligned, takes the flexible track, truncates.
+                // Report a constant, width-independent size via `ui_manual`: a
+                // truncating label fills whatever width Taffy assigns it, so
+                // reporting `ui.min_size()` (what `.ui()` does) feeds the assigned
+                // width back into fr-track sizing and makes Taffy recompute every
+                // frame (the `request_discard` spam) while the track collapses to
+                // `...`. min/max width 0 + `infinite.x` lets it grow into the
+                // flexible track without the feedback loop.
+                tui.style(cell(taffy::JustifyContent::Start)).add(|tui| {
+                    tui.ui_manual(|ui, _| {
+                        ui.add(
+                            egui::Label::new(RichText::new(&bond.name).small().strong().color(theme::FG)).truncate(),
+                        );
+                        let h = ui.min_size().y;
+                        TuiContainerResponse {
+                            inner: (),
+                            min_size: Vec2::new(0.0, h),
+                            intrinsic_size: None,
+                            max_size: Vec2::new(0.0, h),
+                            infinite: Vec2b::new(true, false),
+                        }
+                    });
+                });
+                tui.style(cell(taffy::JustifyContent::Center))
+                    .add(|tui| tui.ui(|ui| type_chip(ui, bond)));
+                tui.style(cell(taffy::JustifyContent::Center))
+                    .add(|tui| tui.ui(|ui| bond_value(ui, bond.value)));
+                tui.style(cell(taffy::JustifyContent::Center))
+                    .add(|tui| tui.ui(|ui| on_chip(ui, bond.on_facility)));
             });
-            type_chip(ui, bond);
-            bond_value(ui, bond.value);
-            on_chip(ui, bond.on_facility);
-        });
     });
+}
+
+/// A grid cell: a flex row with the given main-axis justification, vertically
+/// centered. `min_size.width = 0` lets the name track shrink so it truncates
+/// instead of forcing the grid wider than its column.
+fn cell(justify: taffy::JustifyContent) -> taffy::Style {
+    taffy::Style {
+        display: taffy::Display::Flex,
+        flex_direction: taffy::FlexDirection::Row,
+        align_items: Some(taffy::AlignItems::Center),
+        justify_content: Some(justify),
+        min_size: taffy::Size {
+            width: length(0.0),
+            height: auto(),
+        },
+        ..Default::default()
+    }
 }
 
 /// Card specialty: stat chip for trainable types, glyph for pal/friend/group.

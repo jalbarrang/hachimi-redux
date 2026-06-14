@@ -68,7 +68,24 @@ missing_errors_doc = "allow"
 missing_panics_doc = "allow"
 doc_markdown = "allow"
 
+[features]
+# Desktop preview harness: pulls in eframe so the overlay can be rendered in a
+# native window with mocked career data, with no game/IL2CPP/SDK involved. Never
+# enabled for the shipped cdylib — only `cargo run --example overlay_preview
+# --features dev-harness`.
+dev-harness = ["dep:eframe"]
+
+[[example]]
+name = "overlay_preview"
+required-features = ["dev-harness"]
+
 [dependencies]
+# Standalone egui app runner — only compiled for the dev-harness preview, kept out
+# of the cdylib. Same egui 0.33.x as the host SDK so the `Ui` type unifies.
+eframe = { version = "0.33", optional = true, default-features = false, features = [
+    "default_fonts",
+    "glow",
+] }
 # Flexbox/grid layout for egui (Taffy engine). Pinned to the release that targets
 # egui 0.33 so it unifies with the host's egui (a mismatched egui would break the
 # shared Ui type across the host↔plugin boundary).

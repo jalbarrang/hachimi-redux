@@ -41,8 +41,30 @@ pub fn texture(ctx: &egui::Context, rel: &str) -> Option<TextureHandle> {
     loaded
 }
 
+/// Dev-harness override for the icon root directory. When set (by the desktop
+/// preview), `icons/{rel}` is resolved under this dir instead of via the host
+/// `host_data_path` (which requires a live SDK).
+#[cfg(feature = "dev-harness")]
+static HARNESS_ICON_ROOT: OnceLock<std::path::PathBuf> = OnceLock::new();
+
+/// Point the texture loader at an on-disk `icons/` root for the preview harness.
+#[cfg(feature = "dev-harness")]
+pub(crate) fn set_harness_icon_root(root: std::path::PathBuf) {
+    let _ = HARNESS_ICON_ROOT.set(root);
+}
+
+/// Resolve the absolute path for an icon, preferring the harness override when
+/// present and otherwise asking the host for its staged data path.
+fn resolve_icon_path(rel: &str) -> Option<std::path::PathBuf> {
+    #[cfg(feature = "dev-harness")]
+    if let Some(root) = HARNESS_ICON_ROOT.get() {
+        return Some(root.join(rel));
+    }
+    Sdk::try_get()?.host_data_path(&format!("icons/{rel}"))
+}
+
 fn load(ctx: &egui::Context, rel: &str) -> Option<TextureHandle> {
-    let path = Sdk::try_get()?.host_data_path(&format!("icons/{rel}"))?;
+    let path = resolve_icon_path(rel)?;
     let bytes = std::fs::read(&path).ok()?;
     let img = decode_png_rgba(&bytes)?;
     Some(ctx.load_texture(format!("tt_career_{rel}"), img, TextureOptions::LINEAR))

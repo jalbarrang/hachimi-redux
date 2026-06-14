@@ -13,8 +13,8 @@ use std::sync::atomic::{AtomicU8, Ordering};
 #[derive(Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
 pub(crate) enum Tab {
-    Training = 0,
-    Skills = 1,
+    // Discriminants 0 (Training) and 1 (Skills) are retired but intentionally left
+    // as gaps so persisted enable-mask bits for Shop/Scenario/Career don't shift.
     Shop = 2,
     Scenario = 3,
     /// Unified dashboard-style career view (header + training + bonds + skills).
@@ -23,10 +23,8 @@ pub(crate) enum Tab {
 
 impl Tab {
     /// All tabs in display order, paired with their tab-bar label.
-    pub(crate) const ALL: [(Tab, &'static str); 5] = [
+    pub(crate) const ALL: [(Tab, &'static str); 3] = [
         (Tab::Career, "Career"),
-        (Tab::Training, "Training"),
-        (Tab::Skills, "Skills"),
         (Tab::Shop, "Shop"),
         (Tab::Scenario, "Scenario"),
     ];
@@ -37,17 +35,15 @@ impl Tab {
 
     fn from_index(i: u8) -> Tab {
         match i {
-            1 => Tab::Skills,
             2 => Tab::Shop,
             3 => Tab::Scenario,
-            4 => Tab::Career,
-            _ => Tab::Training,
+            _ => Tab::Career,
         }
     }
 }
 
-/// Bitmask with every tab enabled (the default).
-pub(crate) const ALL_ENABLED_MASK: u8 = 0b1_1111;
+/// Bitmask with every (live) tab enabled (the default): Shop|Scenario|Career.
+pub(crate) const ALL_ENABLED_MASK: u8 = 0b1_1100;
 
 // Default to the unified Career view so the dashboard-style panel is what users
 // see first; it is also force-enabled (see `set_enabled_mask`).
@@ -61,7 +57,7 @@ pub(crate) fn selected_tab() -> Tab {
     if is_enabled(stored) {
         return stored;
     }
-    enabled_tabs().first().copied().unwrap_or(Tab::Training)
+    enabled_tabs().first().copied().unwrap_or(Tab::Career)
 }
 
 pub(crate) fn set_selected_tab(tab: Tab) {

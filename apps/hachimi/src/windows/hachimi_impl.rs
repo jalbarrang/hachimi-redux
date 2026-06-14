@@ -61,8 +61,9 @@ pub struct Config {
     pub load_libraries: Vec<String>,
     /// Opt-in allowlist of manifest-less, legacy-ABI plugins (e.g. upstream
     /// Hachimi data-dumpers) that may load through the compatibility path. Entries
-    /// must also appear in `load_libraries`. These plugins only see the stable
-    /// vtable prefix; the host cannot track or unload their IL2CPP hooks.
+    /// here load on their own — they need not also appear in `load_libraries`
+    /// (though listing them in both is harmless; they load once). These plugins only
+    /// see the stable vtable prefix; the host cannot track or unload their IL2CPP hooks.
     #[serde(default)]
     pub legacy_libraries: Vec<String>,
     #[serde(default = "Config::default_menu_open_key")]

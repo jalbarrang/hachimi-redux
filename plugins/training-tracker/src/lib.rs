@@ -9,6 +9,10 @@
 #[macro_use]
 extern crate hachimi_plugin_abi;
 
+// Recommendation/planner scoring engine: retained for reuse (and still wired into
+// menu settings, config persistence, and snapshot reads) but its scoring/
+// suggestion API was consumed only by the removed Training tab.
+#[allow(dead_code)]
 mod bond_progress;
 // Foundation module: presets/objective/saved-profile API is consumed by the CM
 // scorer (cm-scoring-refactor) and UI; stat_targets + config use the rest now.
@@ -27,6 +31,9 @@ mod config;
 #[allow(dead_code)]
 mod course_data;
 mod deck_bonuses;
+// Desktop preview harness (eframe). Compiled only with `--features dev-harness`.
+#[cfg(feature = "dev-harness")]
+pub mod dev_harness;
 mod diagnostics;
 mod eval_data;
 mod evaluation;
@@ -35,16 +42,19 @@ mod hooks;
 mod memory_reader;
 mod overlay_cache;
 mod overlay_prefs;
+#[allow(dead_code)]
 mod planner;
 // Weather/Season/TimeOfDay race context. The selectors are hidden from the UI
 // for now; the enums + profile fields persist so they can be surfaced later.
 #[allow(dead_code)]
 mod race_context;
 mod rank_table;
+#[allow(dead_code)]
 mod recommend;
 mod shop_hooks;
 mod skill_shop;
 mod skill_shop_prefs;
+#[allow(dead_code)]
 mod stat_targets;
 mod tabs;
 mod telemetry;

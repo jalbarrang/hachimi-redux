@@ -12,7 +12,6 @@ use hachimi_plugin_sdk::{egui, ui_from_ptr, Sdk};
 
 use crate::memory_reader;
 
-mod bonds;
 mod career;
 mod constants;
 // Race-condition icon toggles (weather/season/time). Currently hidden from the
@@ -23,10 +22,11 @@ mod menu;
 mod overlay;
 mod scenario;
 mod skill_shop_tab;
-mod skills;
 mod snapshot;
 mod textures;
-mod training;
+// Shared formatting/color helpers; several were consumed only by the removed
+// Training/Skills tabs but are kept for reuse.
+#[allow(dead_code)]
 mod util;
 
 // Public API re-export (unused within crate; kept for external callers).
@@ -69,6 +69,18 @@ extern "C" fn draw_overlay(ui: *mut c_void, _userdata: *mut c_void) {
     }
 }
 
+/// Render the overlay panel directly into a caller-provided `Ui`. Used by the
+/// desktop dev-harness to draw the exact same panel in a plain eframe window.
+#[cfg(feature = "dev-harness")]
+pub fn draw_overlay_for_harness(ui: &mut egui::Ui) {
+    draw_overlay_inner(ui);
+}
+
+/// Re-export so the dev-harness can point the texture loader at an on-disk icon
+/// root (the `textures` submodule is otherwise private to `ui`).
+#[cfg(feature = "dev-harness")]
+pub(crate) use textures::set_harness_icon_root;
+
 fn draw_overlay_inner(ui: &mut egui::Ui) {
     let tracking = memory_reader::TRACKING.load(Ordering::Relaxed);
 
@@ -79,6 +91,10 @@ fn draw_overlay_inner(ui: &mut egui::Ui) {
     // grows without bound. Zoom scales the whole panel (font + spacing + width).
     let scale = overlay::apply_scale(ui);
     let width = constants::OVERLAY_BASE_WIDTH * scale;
+    // Cap the overlay height so the host's auto-sizing window stops growing with
+    // content (which made it scroll the whole panel). Tab bodies scroll inside the
+    // remaining height instead. Clamp to the viewport so it never exceeds screen.
+    let max_height = (ui.ctx().content_rect().height() * 0.9).min(constants::OVERLAY_MAX_HEIGHT * scale);
 
     // Hard-allocate a fixed-width column. The host renders a chromeless panel in an
     // auto-sizing window whose `available_width` is large; any content that follows
@@ -87,6 +103,9 @@ fn draw_overlay_inner(ui: &mut egui::Ui) {
     // region pins `available_width` so the window auto-sizes down to us.
     ui.allocate_ui_with_layout(egui::vec2(width, 0.0), egui::Layout::top_down(egui::Align::Min), |ui| {
         ui.set_width(width);
+        // Bound available_height for the body so per-tab scroll areas actually
+        // scroll instead of inflating the panel.
+        ui.set_max_height(max_height);
         // Our own rounded background panel is the overlay's whole visual.
         overlay::panel_frame().show(ui, |ui| {
             if !overlay::draw_shell(ui, tracking) {
@@ -94,8 +113,6 @@ fn draw_overlay_inner(ui: &mut egui::Ui) {
             }
             match crate::tabs::selected_tab() {
                 crate::tabs::Tab::Career => career::draw_tab(ui),
-                crate::tabs::Tab::Training => training::draw(ui),
-                crate::tabs::Tab::Skills => skills::draw(ui),
                 crate::tabs::Tab::Shop => skill_shop_tab::draw(ui),
                 crate::tabs::Tab::Scenario => scenario::draw(ui),
             }

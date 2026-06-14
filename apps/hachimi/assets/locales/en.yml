@@ -175,6 +175,8 @@ config_editor:
   gui_scale: "Overlay scale"
   gui_landscape_ratio: "Landscape overlay scale ratio"
   ui_animation_scale: "UI animation scale"
+  loading_fade_scale: "Loading fade speed"
+  flash_animation_scale: "Flash animation speed"
   graphics_quality: "Graphics quality"
   vsync: "VSync"
   auto_full_screen: "Auto full screen"

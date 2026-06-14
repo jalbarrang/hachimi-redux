@@ -7,6 +7,8 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering as AtomicOrdering};
 use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+// Only the real (non-harness) refresh path schedules work on the host main thread.
+#[cfg(not(feature = "dev-harness"))]
 use hachimi_plugin_sdk::Sdk;
 
 use crate::deck_bonuses;
@@ -69,6 +71,20 @@ fn elapsed_since_last_refresh_ms() -> u64 {
 }
 
 fn schedule_refresh() {
+    // The desktop dev-harness has no SDK / Unity main thread; data is injected once
+    // via `set_test_data`. Never schedule a real IL2CPP refresh there.
+    #[cfg(feature = "dev-harness")]
+    {
+        return;
+    }
+    #[cfg(not(feature = "dev-harness"))]
+    {
+        schedule_refresh_inner();
+    }
+}
+
+#[cfg(not(feature = "dev-harness"))]
+fn schedule_refresh_inner() {
     if SHUTTING_DOWN.load(AtomicOrdering::Acquire) {
         return;
     }
@@ -294,6 +310,31 @@ pub fn shutdown() {
     PENDING.store(false, AtomicOrdering::Release);
     PENDING_SINCE_MS.store(0, AtomicOrdering::Release);
     LAST_REFRESH_MS.store(0, AtomicOrdering::Release);
+}
+
+/// Inject fully-formed overlay data for the desktop dev-harness, bypassing all
+/// IL2CPP reads. The overlay's `snapshot()/skills()/evaluations()/...` accessors
+/// then return exactly this, so the UI can be rendered in a plain eframe window.
+#[cfg(feature = "dev-harness")]
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn set_test_data(
+    snapshot: CareerSnapshot,
+    skills: Vec<AcquiredSkillInfo>,
+    evaluations: Vec<EvaluationInfo>,
+    skill_shop: Vec<SkillShopEntry>,
+    skill_points: Option<i32>,
+    support_ids: Vec<(i32, i32)>,
+) {
+    if let Ok(mut guard) = CACHE.lock() {
+        guard.snapshot = Some(snapshot);
+        guard.skills = skills;
+        guard.evaluations = evaluations;
+        guard.skill_shop = skill_shop;
+        guard.skill_points = skill_points;
+        guard.support_ids = support_ids;
+    }
+    // Mark a refresh as just-completed so the throttle never tries to schedule one.
+    LAST_REFRESH_MS.store(now_ms(), AtomicOrdering::Relaxed);
 }
 
 #[cfg(test)]

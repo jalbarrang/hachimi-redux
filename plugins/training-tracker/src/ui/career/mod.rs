@@ -13,6 +13,7 @@ mod training;
 
 use hachimi_plugin_sdk::egui;
 
+use super::overlay;
 use crate::memory_reader::CareerSnapshot;
 use crate::overlay_cache;
 
@@ -20,11 +21,10 @@ use crate::overlay_cache;
 /// or a waiting note when no career is active.
 pub(super) fn draw_tab(ui: &mut egui::Ui) {
     overlay_cache::maybe_request_refresh();
-    // No inner scroll area: the host's chromeless window scrolls vertically itself
-    // (height-capped to the viewport). An inner ScrollArea here fought that and
-    // flickered/collapsed.
+    // The overlay is now height-capped (see `ui::mod`), so the Career body scrolls
+    // internally within the remaining height instead of growing the host window.
     match overlay_cache::snapshot() {
-        Some(s) if s.is_playing => draw(ui, &s),
+        Some(s) if s.is_playing => overlay::scroll_list(ui, |ui| draw(ui, &s)),
         _ => {
             ui.label(
                 egui::RichText::new("Waiting for an active career\u{2026}")

@@ -1,5 +1,7 @@
 //! L2 overlay shell: tracking toggle, tab bar, scroll helper, content scaling.
 
+use egui_taffy::taffy::prelude::{auto, length};
+use egui_taffy::{taffy, tui, TuiBuilderLogic};
 use hachimi_plugin_sdk::{egui, Sdk};
 
 use crate::memory_reader;
@@ -36,7 +38,7 @@ pub(super) fn scale() -> f32 {
 /// full-width elements: under the host's `auto_sized` window `available_width` is
 /// measured with a huge value and would inflate the panel (and the window).
 pub(super) fn content_width() -> f32 {
-    (OVERLAY_BASE_WIDTH * scale() - 2.0 * PANEL_INNER_MARGIN).max(80.0)
+    OVERLAY_BASE_WIDTH * scale() - 2.0 * PANEL_INNER_MARGIN
 }
 
 /// The overlay's own background panel (the whole visual, since the host renders
@@ -51,11 +53,13 @@ pub(super) fn panel_frame() -> egui::Frame {
 }
 
 /// Scaled base font size for callers that set an explicit text size.
+#[allow(dead_code)]
 pub(super) fn font_size() -> f32 {
     OVERLAY_FONT_SIZE * scale()
 }
 
 /// Add vertical space that scales with the panel.
+#[allow(dead_code)]
 pub(super) fn space(ui: &mut egui::Ui, base: f32) {
     ui.add_space(base * scale());
 }
@@ -66,22 +70,79 @@ pub(super) fn space(ui: &mut egui::Ui, base: f32) {
 /// slider's own size) only changes when the drag ends. This stops the slider from
 /// rescaling under the cursor mid-drag, which made it jitter/overshoot.
 fn draw_zoom_control(ui: &mut egui::Ui) {
-    ui.horizontal(|ui| {
-        ui.label("\u{1f50d} Zoom");
-        let mut z = overlay_prefs::pending_zoom();
-        let slider = egui::Slider::new(&mut z, overlay_prefs::MIN_ZOOM..=overlay_prefs::MAX_ZOOM)
-            .fixed_decimals(2)
-            .show_value(true);
-        let resp = ui.add(slider);
-        if resp.changed() {
-            overlay_prefs::set_pending_zoom(z);
-        }
-        // Commit on release (drag) or on a discrete change (click / keyboard).
-        if resp.drag_stopped() || (resp.changed() && !resp.dragged()) {
-            overlay_prefs::commit_zoom();
-            crate::config::persist();
-        }
-    });
+    let w = content_width();
+    ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend);
+    tui(ui, ui.id().with("zoom_ctrl"))
+        .reserve_width(w)
+        .style(row_style(w))
+        .show(|tui| {
+            tui.style(item_center()).add(|tui| {
+                tui.ui(|ui| {
+                    ui.label("\u{1f50d} Zoom");
+                });
+            });
+            // Slider fills the remaining width of the row.
+            tui.style(item_grow()).add(|tui| {
+                tui.ui(|ui| {
+                    let mut z = overlay_prefs::pending_zoom();
+                    let slider = egui::Slider::new(&mut z, overlay_prefs::MIN_ZOOM..=overlay_prefs::MAX_ZOOM)
+                        // Log scale so the multiplicative range is symmetric: 0.4 .. 2.5
+                        // places 1.0 (100%) at the visual center (sqrt(0.4 * 2.5) == 1.0).
+                        .logarithmic(true)
+                        .custom_formatter(|v, _| format!("{:.0}%", v * 100.0))
+                        .show_value(true);
+                    let resp = ui.add(slider);
+                    if resp.changed() {
+                        overlay_prefs::set_pending_zoom(z);
+                    }
+                    // Commit on release (drag) or on a discrete change (click / keyboard).
+                    if resp.drag_stopped() || (resp.changed() && !resp.dragged()) {
+                        overlay_prefs::commit_zoom();
+                        crate::config::persist();
+                    }
+                });
+            });
+        });
+}
+
+/// A pinned-width flex row, vertically centered, wrapping, with a small gap.
+fn row_style(width: f32) -> taffy::Style {
+    taffy::Style {
+        display: taffy::Display::Flex,
+        flex_direction: taffy::FlexDirection::Row,
+        flex_wrap: taffy::FlexWrap::Wrap,
+        align_items: Some(taffy::AlignItems::Center),
+        gap: taffy::Size {
+            width: length(6.0),
+            height: length(4.0),
+        },
+        size: taffy::Size {
+            width: length(width),
+            height: auto(),
+        },
+        ..Default::default()
+    }
+}
+
+fn item_center() -> taffy::Style {
+    taffy::Style {
+        display: taffy::Display::Flex,
+        align_items: Some(taffy::AlignItems::Center),
+        ..Default::default()
+    }
+}
+
+fn item_grow() -> taffy::Style {
+    taffy::Style {
+        display: taffy::Display::Flex,
+        flex_grow: 1.0,
+        align_items: Some(taffy::AlignItems::Center),
+        min_size: taffy::Size {
+            width: length(0.0),
+            height: auto(),
+        },
+        ..Default::default()
+    }
 }
 
 /// Apply overlay chrome and draw tracking toggle + tab bar when tracking is on.
@@ -112,33 +173,51 @@ fn draw_start_hint(ui: &mut egui::Ui) {
 
 /// Horizontal tab bar (text labels) — only the user-enabled tabs are shown.
 fn draw_tab_bar(ui: &mut egui::Ui) {
-    ui.horizontal(|ui| {
-        for (tab, label) in Tab::ALL {
-            if !tabs::is_enabled(tab) {
-                continue;
+    let w = content_width();
+    ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend);
+    tui(ui, ui.id().with("tab_bar"))
+        .reserve_width(w)
+        .style(row_style(w))
+        .show(|tui| {
+            for (tab, label) in Tab::ALL {
+                if !tabs::is_enabled(tab) {
+                    continue;
+                }
+                tui.style(item_center()).add(|tui| {
+                    tui.ui(|ui| {
+                        if ui.selectable_label(selected_tab() == tab, label).clicked() {
+                            set_selected_tab(tab);
+                        }
+                    });
+                });
             }
-            if ui.selectable_label(selected_tab() == tab, label).clicked() {
-                set_selected_tab(tab);
-            }
-        }
-    });
+        });
 }
 
 /// Compact Start/Stop memory-tracking button for the overlay (above the tabs).
 fn draw_tracking_toggle(ui: &mut egui::Ui, tracking: bool) {
-    let sdk = Sdk::get();
+    // `try_get` (not `get`) so the desktop dev-harness, which never initializes the
+    // SDK, can still render this control without panicking. In the real host the
+    // SDK is always present, so notifications behave exactly as before.
+    let sdk = Sdk::try_get();
     if tracking {
         if ui.button("\u{23f9} Stop Tracking").clicked() {
             memory_reader::stop_tracking();
-            sdk.show_notification("Memory tracking stopped");
+            if let Some(sdk) = sdk {
+                sdk.show_notification("Memory tracking stopped");
+            }
         }
     } else if ui.button("\u{25b6} Start Tracking").clicked() {
         match memory_reader::start_tracking() {
             Ok(()) => {
-                sdk.show_notification("Memory tracking started!");
+                if let Some(sdk) = sdk {
+                    sdk.show_notification("Memory tracking started!");
+                }
             }
             Err(e) => {
-                sdk.show_notification(&format!("Failed: {}", e));
+                if let Some(sdk) = sdk {
+                    sdk.show_notification(&format!("Failed: {}", e));
+                }
                 hlog_error!("start_tracking failed: {}", e);
             }
         }

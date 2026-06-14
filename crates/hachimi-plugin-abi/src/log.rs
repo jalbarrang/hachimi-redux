@@ -13,13 +13,18 @@ pub mod log_level {
 #[macro_export]
 macro_rules! hlog {
     (target: $target:literal, $level:expr, $($arg:tt)*) => {{
-        let msg = format!($($arg)*);
-        let msg_c = std::ffi::CString::new(msg).unwrap_or_default();
-        let target = std::ffi::CStr::from_bytes_with_nul($target.as_bytes()).unwrap_or_default();
-        #[allow(unused_unsafe)]
-        // SAFETY: Plugin FFI interop with Hachimi vtable
-        unsafe {
-            ($crate::vt().log)($level, target.as_ptr(), msg_c.as_ptr());
+        // Skip entirely when the host vtable isn't installed (e.g. the desktop
+        // dev-harness, or any call before `hachimi_init`) so logging can never
+        // panic / deref a null vtable.
+        if let Some(vt) = $crate::try_vt() {
+            let msg = format!($($arg)*);
+            let msg_c = std::ffi::CString::new(msg).unwrap_or_default();
+            let target = std::ffi::CStr::from_bytes_with_nul($target.as_bytes()).unwrap_or_default();
+            #[allow(unused_unsafe)]
+            // SAFETY: Plugin FFI interop with Hachimi vtable
+            unsafe {
+                (vt.log)($level, target.as_ptr(), msg_c.as_ptr());
+            }
         }
     }};
     ($level:expr, $($arg:tt)*) => {

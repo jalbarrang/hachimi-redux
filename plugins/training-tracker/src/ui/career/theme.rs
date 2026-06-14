@@ -5,7 +5,9 @@
 //!
 //! Everything here is pure egui painting — no game/IL2CPP access.
 
-use hachimi_plugin_sdk::egui::{self, Color32, CornerRadius, Pos2, Rect, Stroke, StrokeKind, Ui, Vec2};
+use egui_taffy::taffy::prelude::length;
+use egui_taffy::{taffy, tui, TaffyContainerUi, TuiBuilderLogic};
+use hachimi_plugin_sdk::egui::{self, Color32, CornerRadius, Pos2, Rect, RichText, Stroke, StrokeKind, Ui, Vec2};
 
 use super::super::textures;
 use crate::career_meta;
@@ -29,8 +31,10 @@ pub const STAT_POWER: Color32 = Color32::from_rgb(0xff, 0xb0, 0x4d);
 pub const STAT_GUTS: Color32 = Color32::from_rgb(0xff, 0x7a, 0x90);
 pub const STAT_WIT: Color32 = Color32::from_rgb(0x4d, 0xdc, 0xb0);
 
-const STRIP_TOP: Color32 = Color32::from_rgb(0x58, 0xc4, 0x54);
-const STRIP_BOTTOM: Color32 = Color32::from_rgb(0x3f, 0xae, 0x3c);
+// Darkened a notch from the old (0x58c454 / 0x3fae3c) so white label text reads
+// clearly against the strip.
+const STRIP_TOP: Color32 = Color32::from_rgb(0x40, 0x9c, 0x3c);
+const STRIP_BOTTOM: Color32 = Color32::from_rgb(0x2c, 0x82, 0x2a);
 
 /// Gold used for the rank-badge ring and filled stars.
 pub const GOLD: Color32 = Color32::from_rgb(0xf0, 0xa8, 0x18);
@@ -105,12 +109,64 @@ pub fn section_strip(ui: &mut Ui, label: &str, trailing: &str) {
     // Deterministic width (not ui.available_width(), which inflates under the
     // host's auto_sized window) so the strip can't grow the panel.
     let width = super::super::overlay::content_width();
-    let (rect, _) = ui.allocate_exact_size(Vec2::new(width, height), egui::Sense::hover());
-    let painter = ui.painter();
+    // Cells get ~0 measured width during taffy's layout pass; extend so the label
+    // doesn't wrap one glyph per line.
+    ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend);
+    let size = taffy::Size {
+        width: length(width),
+        height: length(height),
+    };
+    let strip_style = taffy::Style {
+        display: taffy::Display::Flex,
+        flex_direction: taffy::FlexDirection::Row,
+        align_items: Some(taffy::AlignItems::Center),
+        justify_content: Some(taffy::JustifyContent::SpaceBetween),
+        padding: taffy::Rect {
+            left: length(12.0),
+            right: length(14.0),
+            top: length(0.0),
+            bottom: length(0.0),
+        },
+        gap: taffy::Size {
+            width: length(8.0),
+            height: length(0.0),
+        },
+        size,
+        max_size: size,
+        ..Default::default()
+    };
+    tui(ui, ui.id().with("section_strip").with(label))
+        .reserve_width(width)
+        .style(taffy::Style {
+            size,
+            max_size: size,
+            ..Default::default()
+        })
+        .show(|tui| {
+            tui.style(strip_style)
+                .add_with_background_ui(strip_background, |tui, _| {
+                    tui.ui(|ui| {
+                        ui.label(RichText::new(label).size(height * 0.55).strong().color(Color32::WHITE));
+                    });
+                    if !trailing.is_empty() {
+                        tui.ui(|ui| {
+                            ui.label(
+                                RichText::new(trailing)
+                                    .size(height * 0.46)
+                                    .color(Color32::from_white_alpha(220)),
+                            );
+                        });
+                    }
+                });
+        });
+}
 
-    // Base gradient + rounded clip.
+/// Paint the green striped section-strip background into its taffy container:
+/// vertical gradient, masked diagonal highlight stripes, and a top inner line.
+fn strip_background(ui: &mut egui::Ui, container: &TaffyContainerUi) {
+    let rect = container.full_container();
     vgrad(ui, rect, STRIP_TOP, STRIP_BOTTOM, 6);
-    // Diagonal highlight stripes, masked toward the right.
+    let painter = ui.painter();
     let clip = painter.with_clip_rect(rect);
     let step = 14.0;
     let mut x = rect.left() - rect.height();
@@ -121,7 +177,6 @@ pub fn section_strip(ui: &mut Ui, label: &str, trailing: &str) {
         clip.line_segment([top, bot], Stroke::new(3.0, Color32::from_white_alpha(alpha)));
         x += step;
     }
-    // Top inner highlight line.
     painter.line_segment(
         [
             Pos2::new(rect.left() + 4.0, rect.top() + 1.0),
@@ -129,24 +184,6 @@ pub fn section_strip(ui: &mut Ui, label: &str, trailing: &str) {
         ],
         Stroke::new(1.0, Color32::from_white_alpha(40)),
     );
-
-    // Label (left) + trailing caption (right).
-    painter.text(
-        Pos2::new(rect.left() + 12.0, rect.center().y),
-        egui::Align2::LEFT_CENTER,
-        label,
-        egui::FontId::proportional(height * 0.6),
-        Color32::WHITE,
-    );
-    if !trailing.is_empty() {
-        painter.text(
-            Pos2::new(rect.right() - 14.0, rect.center().y),
-            egui::Align2::RIGHT_CENTER,
-            trailing,
-            egui::FontId::proportional(height * 0.46),
-            Color32::from_white_alpha(220),
-        );
-    }
 }
 
 /// A small raised pill chip; `add` draws its inline contents.

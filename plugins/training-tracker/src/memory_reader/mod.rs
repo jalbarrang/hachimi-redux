@@ -26,6 +26,7 @@ mod command_info;
 mod eval_master;
 mod evaluations;
 mod il2cpp;
+#[allow(dead_code)]
 mod presentation;
 mod reserve;
 mod scenario;
@@ -38,7 +39,10 @@ pub use chain::{get_chara_ptr, start_tracking, stop_tracking};
 pub use eval_master::probe as probe_eval_master;
 pub use evaluations::{read_evaluations, EvaluationInfo};
 pub use il2cpp::read_list_field;
-pub use presentation::{mood_label, motivation_color};
+pub use presentation::mood_label;
+// Only referenced by a unit test now (the Training tab that used it was removed).
+#[allow(unused_imports)]
+pub use presentation::motivation_color;
 pub use reserve::{read_reserved_races, ReservedRace};
 pub use scenario::{ScenarioState, TrackblazerOwnedItem, TrackblazerShop, TrackblazerShopItem, Worth};
 pub use skills::{read_acquired_skill_list, read_acquired_skills, AcquiredSkillInfo};

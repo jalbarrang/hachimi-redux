@@ -226,6 +226,14 @@ impl ConfigEditor {
                 ui.add(egui::Slider::new(&mut config.ui_animation_scale, 0.1..=10.0).step_by(0.1));
                 ui.end_row();
 
+                ui.label(t!("config_editor.loading_fade_scale"));
+                ui.add(egui::Slider::new(&mut config.loading_fade_scale, 0.1..=10.0).step_by(0.1));
+                ui.end_row();
+
+                ui.label(t!("config_editor.flash_animation_scale"));
+                ui.add(egui::Slider::new(&mut config.flash_animation_scale, 0.1..=10.0).step_by(0.1));
+                ui.end_row();
+
                 ui.label(t!("config_editor.render_scale"));
                 ui.add(egui::Slider::new(&mut config.render_scale, 0.1..=10.0).step_by(0.1));
                 ui.end_row();

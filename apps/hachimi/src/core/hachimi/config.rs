@@ -100,6 +100,10 @@ pub struct Config {
     pub physics_update_mode: Option<SpringUpdateMode>,
     #[serde(default = "Config::default_ui_animation_scale")]
     pub ui_animation_scale: f32,
+    #[serde(default = "Config::default_loading_fade_scale")]
+    pub loading_fade_scale: f32,
+    #[serde(default = "Config::default_flash_animation_scale")]
+    pub flash_animation_scale: f32,
     #[serde(default)]
     pub disabled_hooks: FnvHashSet<String>,
 
@@ -148,6 +152,12 @@ impl Config {
         "https://gitlab.com/umatl/hachimi-meta/-/raw/main/meta.json".to_owned()
     }
     fn default_ui_animation_scale() -> f32 {
+        1.0
+    }
+    fn default_loading_fade_scale() -> f32 {
+        1.0
+    }
+    fn default_flash_animation_scale() -> f32 {
         1.0
     }
     fn default_live_vocals_swap() -> [i32; 6] {
