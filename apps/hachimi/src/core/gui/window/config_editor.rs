@@ -34,6 +34,16 @@ use super::{random_id, save_and_reload_config, LiveVocalsSwapWindow, SimpleOkDia
 /// egui_taffy (its README grid example); relies on egui multi-pass (see
 /// `frame::run`) to settle, and on `wrap_mode = Extend` so labels render on one
 /// line instead of a glyph-per-line column.
+/// Deterministic width for a config body grid: the menu shell width minus the
+/// body `Frame` margins (8+8) and the vertical scrollbar. Pinned via
+/// `reserve_width` instead of `reserve_available_width` — the latter reads the
+/// modal's current width and feeds it back into layout, so a tab whose content
+/// is wider than the shell makes the modal grow on each pass (the narrow-on-open
+/// + stretch-on-tab-change bug).
+fn body_grid_width(scale: f32) -> f32 {
+    (super::super::menu::SHELL_WIDTH * scale - 36.0).max(120.0)
+}
+
 fn cfg_grid_style(scale: f32) -> taffy::Style {
     taffy::Style {
         display: taffy::Display::Grid,
@@ -631,7 +641,7 @@ impl ConfigEditor {
             .show(ui, |ui| {
                 ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend);
                 tui(ui, id.with(grid_id))
-                    .reserve_available_width()
+                    .reserve_width(body_grid_width(scale))
                     .style(cfg_grid_style(scale))
                     .show(|tui| {
                         Self::run_options_grid(&mut self.config, tui, tab);
@@ -699,7 +709,7 @@ impl ConfigEditor {
             .show(ui, |ui| {
                 ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend);
                 tui(ui, id.with("grid_translations"))
-                    .reserve_available_width()
+                    .reserve_width(body_grid_width(scale))
                     .style(cfg_grid_style(scale))
                     .show(|tui| {
                         Self::run_translations_grid(&mut self.config, tui);
@@ -717,10 +727,11 @@ impl ConfigEditor {
         let mut cancel_clicked = false;
         let id = self.id;
         let config = &self.config;
+        let footer_w = (super::super::menu::SHELL_WIDTH * get_scale(ui.ctx()) - 16.0).max(120.0);
         ui.add_enabled_ui(enabled, |ui| {
             ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend);
             tui(ui, id.with("footer"))
-                .reserve_available_width()
+                .reserve_width(footer_w)
                 .style(taffy::Style {
                     display: taffy::Display::Flex,
                     flex_direction: taffy::FlexDirection::Row,

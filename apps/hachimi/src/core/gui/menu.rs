@@ -13,6 +13,13 @@ use crate::core::utils::SendPtr;
 use egui_taffy::taffy::prelude::{auto, length};
 use egui_taffy::{taffy, tui, TuiBuilderLogic};
 
+/// Base (unscaled) width of the Control Center modal shell. Multiplied by the
+/// GUI scale to get the deterministic pixel width. Shared with `config_editor`
+/// so the body grids reserve a pinned width derived from this same value
+/// (NOT `reserve_available_width`, which feeds the modal's own width back into
+/// layout and stretches the panel on tab change).
+pub(crate) const SHELL_WIDTH: f32 = 550.0;
+
 use super::scale::get_scale;
 use super::widgets::{self, PillButtonKind};
 use super::window::{BoxedWindow, ConfigEditorTab};
@@ -88,7 +95,7 @@ impl Gui {
             // into the auto-sizing Modal and make the panel jitter/stretch between
             // first open and tab changes). Width is fixed; height caps at 85% of
             // the viewport.
-            let shell_w = 550.0 * scale;
+            let shell_w = SHELL_WIDTH * scale;
             let shell_h = ctx.input(|i| i.viewport_rect().height()) * 0.85;
             ui.set_width(shell_w);
             ui.set_max_height(shell_h);

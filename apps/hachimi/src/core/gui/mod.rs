@@ -2,7 +2,7 @@
 
 mod frame;
 mod instance;
-mod menu;
+pub(crate) mod menu;
 mod notification;
 mod overlays;
 mod scale;
