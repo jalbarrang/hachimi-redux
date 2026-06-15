@@ -21,6 +21,7 @@ use egui_taffy::{taffy, tui, TuiBuilderLogic};
 pub(crate) const SHELL_WIDTH: f32 = 600.0;
 
 use super::scale::get_scale;
+use super::theme::ThemeTokens;
 use super::widgets::{self, PillButtonKind};
 use super::window::{BoxedWindow, ConfigEditor, ConfigEditorTab};
 use super::{Gui, DISABLED_GAME_UIS};
@@ -102,78 +103,90 @@ pub(crate) fn render_control_center(
 
     let mut keep_open = true;
 
-    tui(ui, ui.id().with("menu_shell"))
-        .reserve_width(shell_w)
-        .style(taffy::Style {
-            display: taffy::Display::Flex,
-            flex_direction: taffy::FlexDirection::Column,
-            align_items: Some(taffy::AlignItems::Stretch),
-            gap: taffy::Size {
-                width: length(0.0),
-                height: length(8.0 * scale),
-            },
-            size: taffy::Size {
-                width: length(shell_w),
-                height: length(shell_h),
-            },
-            max_size: taffy::Size {
-                width: length(shell_w),
-                height: length(shell_h),
-            },
-            ..Default::default()
-        })
-        .show(|tui| {
-            // Header row: icon + title + version, close button on the right.
-            tui.ui(|ui| {
-                widgets::card_frame(ui).show(ui, |ui| {
-                    ui.horizontal(|ui| {
-                        host.draw_icon(ui, ctx);
-                        ui.heading(t!("hachimi"));
-                        widgets::category_tag(ui, env!("HACHIMI_DISPLAY_VERSION"));
-                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            if widgets::ghost_button(ui, "\u{f00d}")
-                                .on_hover_text(t!("menu.close_menu"))
-                                .clicked()
-                            {
-                                keep_open = false;
-                            }
+    let tokens = ThemeTokens::from_ui(ui);
+    egui::Frame::new()
+        .fill(tokens.window)
+        .show(ui, |ui| {
+            // Menu shell
+            tui(ui, ui.id().with("menu_shell"))
+                .reserve_width(shell_w)
+                .style(taffy::Style {
+                    display: taffy::Display::Flex,
+                    flex_direction: taffy::FlexDirection::Column,
+                    align_items: Some(taffy::AlignItems::Stretch),
+                    gap: taffy::Size {
+                        width: length(0.0),
+                        height: length(8.0 * scale),
+                    },
+                    size: taffy::Size {
+                        width: length(shell_w),
+                        height: length(shell_h),
+                    },
+                    max_size: taffy::Size {
+                        width: length(shell_w),
+                        height: length(shell_h),
+                    },
+                    ..Default::default()
+                })
+                .show(|tui| {
+                    // Header row: icon + title + version, close button on the right.
+                    tui.ui(|ui| {
+                        ui.set_min_width(ui.available_width());
+                        widgets::card_frame(ui)
+                        .show(ui, |ui| {
+                            ui.horizontal(|ui| {
+                                ui.set_min_width(ui.available_width());
+                                host.draw_icon(ui, ctx);
+                                ui.heading(t!("hachimi"));
+                                widgets::category_tag(ui, env!("HACHIMI_DISPLAY_VERSION"));
+
+                                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                                    if widgets::ghost_button(ui, "\u{f00d}")
+                                        .on_hover_text(t!("menu.close_menu"))
+                                        .clicked()
+                                    {
+                                        keep_open = false;
+                                    }
+                                });
+                            });
                         });
                     });
-                });
-            });
 
-            // Top tab bar: a single horizontally-scrollable row (content height).
-            tui.ui(|ui| {
-                egui::ScrollArea::horizontal()
-                    .id_salt("l1_tabs_scroll")
-                    .auto_shrink([false, true])
-                    .show(ui, |ui| {
-                        ui.horizontal(|ui| {
-                            ui.spacing_mut().item_spacing.x = 6.0 * scale;
-                            shell_tab_button(ui, host, ControlTab::General, &t!("config_editor.general_tab"));
-                            shell_tab_button(ui, host, ControlTab::Graphics, &t!("config_editor.graphics_tab"));
-                            shell_tab_button(ui, host, ControlTab::Gameplay, &t!("config_editor.gameplay_tab"));
-                            shell_tab_button(ui, host, ControlTab::Hotkeys, &t!("config_editor.hotkeys_tab"));
-                            shell_tab_button(ui, host, ControlTab::Translations, "\u{f1ab} Translations");
-                            shell_tab_button(ui, host, ControlTab::Plugins, "\u{f12e} Plugins");
-                            shell_tab_button(ui, host, ControlTab::About, "\u{f129} About");
+                    // Top tab bar: a single horizontally-scrollable row (content height).
+                    tui.ui(|ui| {
+                        egui::ScrollArea::horizontal()
+                            .id_salt("l1_tabs_scroll")
+                            .auto_shrink([false, true])
+                            .show(ui, |ui| {
+                                ui.horizontal(|ui| {
+                                    ui.set_min_width(ui.available_width());
+                                    ui.spacing_mut().item_spacing.x = 6.0 * scale;
+
+                                    shell_tab_button(ui, host, ControlTab::General, &t!("config_editor.general_tab"));
+                                    shell_tab_button(ui, host, ControlTab::Graphics, &t!("config_editor.graphics_tab"));
+                                    shell_tab_button(ui, host, ControlTab::Gameplay, &t!("config_editor.gameplay_tab"));
+                                    shell_tab_button(ui, host, ControlTab::Hotkeys, &t!("config_editor.hotkeys_tab"));
+                                    shell_tab_button(ui, host, ControlTab::Translations, "\u{f1ab} Translations");
+                                    shell_tab_button(ui, host, ControlTab::Plugins, "\u{f12e} Plugins");
+                                    shell_tab_button(ui, host, ControlTab::About, "\u{f129} About");
+                                });
+                            });
+                    });
+
+                    // Scrolling content fills the remaining height.
+                    tui.style(shell_content_style()).ui(|ui| {
+                        egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
+                            let tab = host.active_tab();
+                            host.draw_body(ui, ctx, tab);
                         });
                     });
-            });
 
-            // Scrolling content fills the remaining height.
-            tui.style(shell_content_style()).ui(|ui| {
-                egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
-                    let tab = host.active_tab();
-                    host.draw_body(ui, ctx, tab);
+                    // Pinned footer: Save/Cancel (greyed where the tab doesn't edit config).
+                    tui.ui(|ui| {
+                        let tab = host.active_tab();
+                        host.config_editor().ui_footer(ui, tab.edits_config());
+                    });
                 });
-            });
-
-            // Pinned footer: Save/Cancel (greyed where the tab doesn't edit config).
-            tui.ui(|ui| {
-                let tab = host.active_tab();
-                host.config_editor().ui_footer(ui, tab.edits_config());
-            });
         });
 
     keep_open

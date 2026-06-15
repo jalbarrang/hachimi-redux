@@ -713,41 +713,45 @@ impl ConfigEditor {
     /// owning plugin's responsibility — the host does not auto-register them.)
     fn ui_overlays_section(ui: &mut egui::Ui) {
         ui.add_space(8.0);
-        widgets::section_header(ui, t!("config_editor.overlays_heading").into_owned());
-        let mut opacity = overlay::opacity();
-        ui.horizontal(|ui| {
-            ui.label(t!("config_editor.overlay_opacity"));
-            if ui
-                .add(egui::Slider::new(&mut opacity, 0.1..=1.0).fixed_decimals(2))
-                .changed()
-            {
-                overlay::set_opacity(opacity);
-            }
-        });
-
-        let overlays = overlay::get_plugin_overlays();
-        if overlays.is_empty() {
-            ui.weak(t!("config_editor.overlays_none"));
-            return;
-        }
-        for ov in &overlays {
-            let title = overlay::display_title(&ov.id);
-            let mut visible = overlay::is_overlay_visible(&ov.id);
-            ui.horizontal(|ui| {
-                if widgets::toggle_ui(ui, &mut visible).changed() {
-                    overlay::set_overlay_visible(&ov.id, visible);
-                }
-                ui.label(&title);
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    if widgets::ghost_button(ui, t!("config_editor.overlay_reset").into_owned())
-                        .on_hover_text(t!("config_editor.overlay_reset_hint"))
-                        .clicked()
+        egui::Frame::NONE
+            .inner_margin(egui::Margin::symmetric(8, 0))
+            .show(ui, |ui| {
+                widgets::section_header(ui, t!("config_editor.overlays_heading").into_owned());
+                let mut opacity = overlay::opacity();
+                ui.horizontal(|ui| {
+                    ui.label(t!("config_editor.overlay_opacity"));
+                    if ui
+                        .add(egui::Slider::new(&mut opacity, 0.1..=1.0).fixed_decimals(2))
+                        .changed()
                     {
-                        overlay::reset_panel(&ov.id);
+                        overlay::set_opacity(opacity);
                     }
                 });
+
+                let overlays = overlay::get_plugin_overlays();
+                if overlays.is_empty() {
+                    ui.weak(t!("config_editor.overlays_none"));
+                    return;
+                }
+                for ov in &overlays {
+                    let title = overlay::display_title(&ov.id);
+                    let mut visible = overlay::is_overlay_visible(&ov.id);
+                    ui.horizontal(|ui| {
+                        if widgets::toggle_ui(ui, &mut visible).changed() {
+                            overlay::set_overlay_visible(&ov.id, visible);
+                        }
+                        ui.label(&title);
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            if widgets::ghost_button(ui, t!("config_editor.overlay_reset").into_owned())
+                                .on_hover_text(t!("config_editor.overlay_reset_hint"))
+                                .clicked()
+                            {
+                                overlay::reset_panel(&ov.id);
+                            }
+                        });
+                    });
+                }
             });
-        }
     }
 
     /// Translations tab body: the translation-related options grid.

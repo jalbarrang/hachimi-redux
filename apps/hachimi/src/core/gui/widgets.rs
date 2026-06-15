@@ -16,10 +16,10 @@ pub(crate) enum PillButtonKind {
 
 pub(crate) fn card_frame(ui: &egui::Ui) -> egui::Frame {
     let tokens = ThemeTokens::from_ui(ui);
+
     egui::Frame::new()
         .fill(tokens.surface)
         .stroke(egui::Stroke::new(1.0, tokens.line))
-        .corner_radius(tokens.card_radius)
         .inner_margin(egui::Margin::symmetric(12, 10))
 }
 
@@ -71,21 +71,20 @@ pub(crate) fn danger_button(ui: &mut egui::Ui, text: impl Into<String>) -> egui:
 
 /// Accent section banner. Used in place of the old heading + separator.
 pub(crate) fn section_banner(ui: &mut egui::Ui, text: impl Into<String>) -> egui::Response {
-    let tokens = ThemeTokens::from_ui(ui);
+    let green = egui::Color32::from_rgb(64, 160, 76);
+    let ink = egui::Color32::WHITE;
     let desired = egui::vec2(ui.available_width(), 28.0);
     let (rect, response) = ui.allocate_exact_size(desired, egui::Sense::hover());
 
     if ui.is_rect_visible(rect) {
         let painter = ui.painter();
-        painter.rect_filled(rect, tokens.pill_radius, tokens.accent);
+        painter.rect_filled(rect, 0.0, green);
 
-        let galley = ui.painter().layout_no_wrap(
-            text.into(),
-            egui::TextStyle::Button.resolve(ui.style()),
-            tokens.accent_ink,
-        );
-        let text_pos = rect.center() - galley.size() / 2.0;
-        painter.galley(text_pos, galley, tokens.accent_ink);
+        let galley = ui
+            .painter()
+            .layout_no_wrap(text.into(), egui::TextStyle::Button.resolve(ui.style()), ink);
+        let text_pos = egui::pos2(rect.left() + 8.0, rect.center().y - galley.size().y / 2.0);
+        painter.galley(text_pos, galley, ink);
     }
 
     response
