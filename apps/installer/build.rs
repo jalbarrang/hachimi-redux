@@ -22,14 +22,25 @@ fn detect_hachimi_version() {
         return;
     }
 
-    let map = pelite::FileMap::open("hachimi.dll").expect("hachimi.dll in project root");
-    let version_info = read_pe_version_info(map.as_ref()).expect("version info in hachimi.dll");
-    println!(
-        "cargo:rustc-env=HACHIMI_VERSION={}",
-        version_info
-            .value(LANG_NEUTRAL_UNICODE, "ProductVersion")
-            .expect("ProductVersion in version info")
-    );
+    // hachimi.dll is only staged for real installer builds. During normal dev
+    // and rust-analyzer's build-script runs it's absent, so fall back to the
+    // crate version instead of panicking and breaking analysis.
+    let version = match pelite::FileMap::open("hachimi.dll") {
+        Ok(map) => read_pe_version_info(map.as_ref())
+            .and_then(|info| {
+                info.value(LANG_NEUTRAL_UNICODE, "ProductVersion")
+                    .map(|v| v.to_string())
+            })
+            .unwrap_or_else(|| {
+                println!("cargo:warning=ProductVersion missing from hachimi.dll; using crate version");
+                env!("CARGO_PKG_VERSION").to_owned()
+            }),
+        Err(_) => {
+            println!("cargo:warning=hachimi.dll not found in project root; using crate version for HACHIMI_VERSION");
+            env!("CARGO_PKG_VERSION").to_owned()
+        }
+    };
+    println!("cargo:rustc-env=HACHIMI_VERSION={version}");
 }
 
 fn compile_resources() {
