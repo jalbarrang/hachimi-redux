@@ -139,9 +139,6 @@ pub fn register_plugin_overlay_ex(
         .entry(id.clone())
         .or_default();
     let handle = super::next_handle();
-    // Auto-register a (key-unbound) toggle hotkey for this overlay so it can be
-    // shown/hidden via the Hotkeys tab. Owner-scoped to the registering plugin.
-    super::hotkeys::register_overlay_toggle(&id);
     PLUGIN_OVERLAYS.lock().expect("lock poisoned").push(PluginOverlay {
         handle,
         owner: super::current_owner(),
@@ -162,20 +159,12 @@ pub(crate) fn remove_by_owner(owner: u32) {
         .retain(|o| o.owner != owner);
 }
 
-/// Remove an overlay by handle. Returns whether anything was removed. Also
-/// removes the overlay's auto-registered toggle hotkey (which has its own,
-/// distinct handle, so it isn't caught by the registry's handle removal).
+/// Remove an overlay by handle. Returns whether anything was removed.
 pub(crate) fn remove_by_handle(handle: u64) -> bool {
     let mut overlays = PLUGIN_OVERLAYS.lock().expect("lock poisoned");
-    let removed_id = overlays.iter().find(|o| o.handle == handle).map(|o| o.id.clone());
     let before = overlays.len();
     overlays.retain(|o| o.handle != handle);
-    let removed = overlays.len() != before;
-    drop(overlays);
-    if let Some(id) = removed_id.filter(|_| removed) {
-        super::hotkeys::remove_by_id(&format!("overlay.toggle.{id}"));
-    }
-    removed
+    overlays.len() != before
 }
 
 pub(crate) fn get_plugin_overlays() -> Vec<PluginOverlay> {

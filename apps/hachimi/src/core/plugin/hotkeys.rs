@@ -65,15 +65,12 @@ impl From<Chord> for HotkeyBind {
 }
 
 /// What runs when a hotkey fires.
-#[derive(Clone)]
+#[derive(Clone, Copy)]
 enum Action {
     /// A built-in host action.
     Host(fn()),
     /// A plugin-provided C callback.
     Plugin { callback: GuiMenuCallback, userdata: usize },
-    /// Toggle a plugin overlay's visibility (host-executed, owner-scoped to the
-    /// plugin that owns the overlay).
-    ToggleOverlay { overlay_id: String },
 }
 
 struct Hotkey {
@@ -125,24 +122,6 @@ pub fn register_host(id: &str, label: &str, default: Chord, action: fn()) -> u64
     register(id.to_owned(), label.to_owned(), default, Action::Host(action))
 }
 
-/// Register a toggle-visibility hotkey for a plugin overlay. Attributed to the
-/// current owner (the registering plugin) so it groups under that plugin in the
-/// Hotkeys tab and is reclaimed on unload. Unbound by default — the user binds a
-/// key in the Hotkeys tab. Id is `overlay.toggle.<overlay_id>` (stable, so a
-/// persisted bind survives restarts).
-pub(crate) fn register_overlay_toggle(overlay_id: &str) -> u64 {
-    let id = format!("overlay.toggle.{overlay_id}");
-    let label = super::overlay::display_title(overlay_id);
-    register(
-        id,
-        label,
-        Chord::default(),
-        Action::ToggleOverlay {
-            overlay_id: overlay_id.to_owned(),
-        },
-    )
-}
-
 /// Register a plugin hotkey. Attributed to the current owner so it is removed on
 /// unload. Returns a non-zero handle, or 0 on failure.
 pub fn register_plugin(
@@ -166,11 +145,6 @@ pub fn register_plugin(
 /// Remove all hotkeys owned by `owner`.
 pub(crate) fn remove_by_owner(owner: u32) {
     HOTKEYS.lock().expect("lock poisoned").retain(|h| h.owner != owner);
-}
-
-/// Remove a hotkey by its action id (used when a single overlay unregisters).
-pub(crate) fn remove_by_id(id: &str) {
-    HOTKEYS.lock().expect("lock poisoned").retain(|h| h.id != id);
 }
 
 /// Remove a hotkey by handle. Returns whether anything was removed.
@@ -234,7 +208,7 @@ pub fn dispatch(pressed: Chord) -> bool {
         hotkeys
             .iter()
             .filter(|h| effective_chord(&h.id, h.default).matches(pressed))
-            .map(|h| (h.owner, h.action.clone()))
+            .map(|h| (h.owner, h.action))
             .collect()
     };
 
@@ -251,13 +225,6 @@ pub fn dispatch(pressed: Chord) -> bool {
                 let _scope = OwnerScope::enter(owner);
                 let _ = catch_unwind(AssertUnwindSafe(|| callback(userdata as *mut c_void)))
                     .inspect_err(|_| error!("plugin hotkey callback panicked (owner {})", owner));
-            }
-            Action::ToggleOverlay { overlay_id } => {
-                let _ = catch_unwind(AssertUnwindSafe(|| {
-                    let visible = super::overlay::is_overlay_visible(&overlay_id);
-                    super::overlay::set_overlay_visible(&overlay_id, !visible);
-                }))
-                .inspect_err(|_| error!("overlay toggle hotkey panicked"));
             }
         }
     }

@@ -84,8 +84,13 @@ impl Gui {
         let mut keep_open = true;
 
         let response = egui::Modal::new(egui::Id::new("hachimi_control_center")).show(&ctx, |ui| {
-            ui.set_width(550.0 * scale);
+            // Deterministic shell size (NOT available_width/height, which feed back
+            // into the auto-sizing Modal and make the panel jitter/stretch between
+            // first open and tab changes). Width is fixed; height caps at 85% of
+            // the viewport.
+            let shell_w = 550.0 * scale;
             let shell_h = ctx.input(|i| i.viewport_rect().height()) * 0.85;
+            ui.set_width(shell_w);
             ui.set_max_height(shell_h);
             ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend);
 
@@ -93,7 +98,7 @@ impl Gui {
             // taffy flex column so the content region fills the remaining height
             // (each region takes exactly the space it needs; content takes the rest).
             tui(ui, ui.id().with("menu_shell"))
-                .reserve_available_width()
+                .reserve_width(shell_w)
                 .style(taffy::Style {
                     display: taffy::Display::Flex,
                     flex_direction: taffy::FlexDirection::Column,
@@ -103,11 +108,11 @@ impl Gui {
                         height: length(8.0 * scale),
                     },
                     size: taffy::Size {
-                        width: auto(),
+                        width: length(shell_w),
                         height: length(shell_h),
                     },
                     max_size: taffy::Size {
-                        width: auto(),
+                        width: length(shell_w),
                         height: length(shell_h),
                     },
                     ..Default::default()
