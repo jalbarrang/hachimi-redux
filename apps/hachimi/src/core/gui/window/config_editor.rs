@@ -109,6 +109,10 @@ pub(crate) struct ConfigEditor {
     config: hachimi::Config,
     id: egui::Id,
     current_tab: ConfigEditorTab,
+    /// Desktop-preview mode: no `Hachimi::instance()` backing store. `sync`/
+    /// `revert`/Save become inert and game-data combos use static placeholders,
+    /// so the editor renders against a plain in-memory config off-game.
+    detached: bool,
 }
 
 /// Which config body to render. Driven by the L1 Control Center tab (the former
@@ -129,12 +133,38 @@ impl ConfigEditor {
             config: (**Hachimi::instance().config.load()).clone(),
             id: random_id(),
             current_tab: ConfigEditorTab::General,
+            detached: false,
+        }
+    }
+
+    /// Read the working-copy config (preview harness uses this to mirror the GUI
+    /// scale into the egui context).
+    #[cfg(feature = "dev-harness")]
+    pub(crate) fn working_config(&self) -> &hachimi::Config {
+        &self.config
+    }
+
+    /// Build a detached editor for the desktop preview harness: backed by the
+    /// given in-memory config, with no `Hachimi::instance()` coupling.
+    #[cfg(feature = "dev-harness")]
+    pub(crate) fn new_detached(config: hachimi::Config) -> ConfigEditor {
+        ConfigEditor {
+            last_ptr_config: 0,
+            config,
+            id: random_id(),
+            current_tab: ConfigEditorTab::General,
+            detached: true,
         }
     }
 
     /// Discard unsaved edits: reset the working copy to the currently saved config
     /// and re-apply its language locale (the language combo applies locale live).
     fn revert(&mut self) {
+        if self.detached {
+            self.config = hachimi::Config::default();
+            self.config.language.set_locale();
+            return;
+        }
         let handle = Hachimi::instance().config.load();
         self.last_ptr_config = Arc::as_ptr(&handle) as usize;
         self.config = (**handle).clone();
@@ -167,7 +197,7 @@ impl ConfigEditor {
         }
     }
 
-    fn run_options_grid(config: &mut hachimi::Config, tui: &mut Tui, tab: ConfigEditorTab) {
+    fn run_options_grid(config: &mut hachimi::Config, tui: &mut Tui, tab: ConfigEditorTab, harness: bool) {
         match tab {
             ConfigEditorTab::General => {
                 label_cell(tui, t!("config_editor.language"));
@@ -496,6 +526,25 @@ impl ConfigEditor {
                 });
 
                 label_cell(tui, t!("config_editor.homescreen_bgseason"));
+                // Season labels come from the game's TextId table via IL2CPP; the
+                // desktop harness has no game, so use static English placeholders.
+                let (spring, summer, fall, winter, cherry) = if harness {
+                    (
+                        "Spring".to_owned(),
+                        "Summer".to_owned(),
+                        "Fall".to_owned(),
+                        "Winter".to_owned(),
+                        "Cherry Blossom".to_owned(),
+                    )
+                } else {
+                    (
+                        get_localized_string("Common0108"),
+                        get_localized_string("Common0109"),
+                        get_localized_string("Common0110"),
+                        get_localized_string("Common0111"),
+                        get_localized_string("Common0112"),
+                    )
+                };
                 auto_cell(tui, |ui| {
                     Gui::run_combo(
                         ui,
@@ -503,12 +552,11 @@ impl ConfigEditor {
                         &mut config.homescreen_bgseason,
                         &[
                             (BgSeason::None, &t!("default")),
-                            // Season text from TextId enum
-                            (BgSeason::Spring, get_localized_string("Common0108").as_str()),
-                            (BgSeason::Summer, get_localized_string("Common0109").as_str()),
-                            (BgSeason::Fall, get_localized_string("Common0110").as_str()),
-                            (BgSeason::Winter, get_localized_string("Common0111").as_str()),
-                            (BgSeason::CherryBlossom, get_localized_string("Common0112").as_str()),
+                            (BgSeason::Spring, spring.as_str()),
+                            (BgSeason::Summer, summer.as_str()),
+                            (BgSeason::Fall, fall.as_str()),
+                            (BgSeason::Winter, winter.as_str()),
+                            (BgSeason::CherryBlossom, cherry.as_str()),
                         ],
                     );
                 });
@@ -601,6 +649,9 @@ impl ConfigEditor {
 impl ConfigEditor {
     /// Sync the working copy if the saved config changed underneath us.
     fn sync(&mut self) {
+        if self.detached {
+            return;
+        }
         let global_handle = Hachimi::instance().config.load();
         let global_ptr = Arc::as_ptr(&global_handle) as usize;
         if global_ptr != self.last_ptr_config {
@@ -640,11 +691,12 @@ impl ConfigEditor {
             .inner_margin(egui::Margin::symmetric(8, 0))
             .show(ui, |ui| {
                 ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend);
+                let harness = self.detached;
                 tui(ui, id.with(grid_id))
                     .reserve_width(body_grid_width(scale))
                     .style(cfg_grid_style(scale))
                     .show(|tui| {
-                        Self::run_options_grid(&mut self.config, tui, tab);
+                        Self::run_options_grid(&mut self.config, tui, tab, harness);
                     });
             });
 
@@ -726,6 +778,7 @@ impl ConfigEditor {
 
         let mut cancel_clicked = false;
         let id = self.id;
+        let detached = self.detached;
         let config = &self.config;
         let footer_w = (super::super::menu::SHELL_WIDTH * get_scale(ui.ctx()) - 16.0).max(120.0);
         ui.add_enabled_ui(enabled, |ui| {
@@ -750,7 +803,7 @@ impl ConfigEditor {
                         }
                     });
                     auto_cell(tui, |ui| {
-                        if widgets::primary_button(ui, t!("save").into_owned()).clicked() {
+                        if widgets::primary_button(ui, t!("save").into_owned()).clicked() && !detached {
                             save_and_reload_config(config.clone());
                         }
                     });

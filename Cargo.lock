@@ -1352,6 +1352,7 @@ dependencies = [
  "chrono",
  "cstr",
  "discord-rich-presence",
+ "eframe",
  "egui",
  "egui-directx11",
  "egui-scale",

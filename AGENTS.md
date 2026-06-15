@@ -6,6 +6,7 @@
 - **Platform:** Windows Steam the Honse game only (no Android).
 - **Core:** `cargo build --release -p hachimi` → `hachimi.dll` → game dir as `cri_mana_vpx.dll`.
 - **Plugins:** `cargo build --release -p hachimi-training-tracker` → game dir; `config.json` → `windows.load_libraries`.
+- **Menu preview (no game):** `cargo run -p hachimi --example menu_preview --features dev-harness` renders the real Control Center shell + config tabs in an eframe window (default config; Plugins/About are stubs). Lives behind the `dev-harness` feature; never built by CI/default.
 - **UI / hooks:** egui 0.33, `egui-directx11`, minhook, pelite, `windows` crate.
 - **Workspace:** default members exclude `apps/installer` (use `-p hachimi_installer` after artifact staging).
 - **CI commands:** `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`, `cargo test --lib` (no game process). Run fmt/clippy in `plugins/training-tracker/` when editing that crate.

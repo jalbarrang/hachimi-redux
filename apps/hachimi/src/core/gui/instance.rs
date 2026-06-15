@@ -140,7 +140,7 @@ impl Gui {
         INSTANCE.get()
     }
 
-    fn get_font_definitions() -> egui::FontDefinitions {
+    pub(crate) fn get_font_definitions() -> egui::FontDefinitions {
         let mut fonts = egui::FontDefinitions::default();
         let proportional_fonts = fonts
             .families

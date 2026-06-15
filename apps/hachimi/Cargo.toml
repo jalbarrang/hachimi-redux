@@ -10,7 +10,25 @@ publish = false
 name = "hachimi"
 crate-type = ["cdylib", "lib"]
 
+[features]
+# Desktop preview harness: pulls in eframe so the Control Center menu can be
+# rendered in a native window with a default config, no game/IL2CPP involved.
+# Never enabled for the shipped cdylib or CI — only `cargo run -p hachimi
+# --example menu_preview --features dev-harness`.
+dev-harness = ["dep:eframe"]
+
+[[example]]
+name = "menu_preview"
+required-features = ["dev-harness"]
+
 [dependencies]
+# Standalone egui app runner — only compiled for the dev-harness preview, kept
+# out of the cdylib. Same egui 0.33.x as the rest of the crate so the `Ui` type
+# unifies with the real menu code.
+eframe = { version = "0.33", optional = true, default-features = false, features = [
+    "default_fonts",
+    "glow",
+] }
 hachimi-plugin-abi = { path = "../../crates/hachimi-plugin-abi", version = "0.1.0" }
 log = "0.4"
 cstr = "0.2"

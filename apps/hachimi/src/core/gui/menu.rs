@@ -18,11 +18,11 @@ use egui_taffy::{taffy, tui, TuiBuilderLogic};
 /// so the body grids reserve a pinned width derived from this same value
 /// (NOT `reserve_available_width`, which feeds the modal's own width back into
 /// layout and stretches the panel on tab change).
-pub(crate) const SHELL_WIDTH: f32 = 550.0;
+pub(crate) const SHELL_WIDTH: f32 = 600.0;
 
 use super::scale::get_scale;
 use super::widgets::{self, PillButtonKind};
-use super::window::{BoxedWindow, ConfigEditorTab};
+use super::window::{BoxedWindow, ConfigEditor, ConfigEditorTab};
 use super::{Gui, DISABLED_GAME_UIS};
 
 /// Flex-column item that fills the remaining height of the menu shell (the
@@ -69,6 +69,165 @@ impl ControlTab {
     }
 }
 
+/// Host abstraction for the Control Center shell so the live `Gui` modal and the
+/// desktop `dev_harness` preview share the exact same shell / tab-bar / footer
+/// layout (`render_control_center`). The host owns the active tab, the config
+/// working copy (for the footer), the title icon, and per-tab body drawing.
+pub(crate) trait ControlCenterHost {
+    fn active_tab(&self) -> ControlTab;
+    fn set_active_tab(&mut self, tab: ControlTab);
+    fn config_editor(&mut self) -> &mut ConfigEditor;
+    fn draw_icon(&mut self, ui: &mut egui::Ui, ctx: &egui::Context);
+    fn draw_body(&mut self, ui: &mut egui::Ui, ctx: &egui::Context, tab: ControlTab);
+}
+
+/// Render the Control Center shell (header / tab bar / scrolling content / pinned
+/// footer) into `ui`, dispatching tab bodies through `host`. Shared by the live
+/// `Gui` modal and the desktop preview harness. Returns whether the menu should
+/// stay open (the header close button clears it).
+pub(crate) fn render_control_center(
+    ui: &mut egui::Ui,
+    ctx: &egui::Context,
+    scale: f32,
+    host: &mut dyn ControlCenterHost,
+) -> bool {
+    // Deterministic shell size (NOT available_width/height, which feed back into
+    // the auto-sizing container and make the panel jitter/stretch). Width fixed;
+    // height caps at 85% of the viewport.
+    let shell_w = SHELL_WIDTH * scale;
+    let shell_h = ctx.input(|i| i.viewport_rect().height()) * 0.85;
+    ui.set_width(shell_w);
+    ui.set_max_height(shell_h);
+    ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend);
+
+    let mut keep_open = true;
+
+    tui(ui, ui.id().with("menu_shell"))
+        .reserve_width(shell_w)
+        .style(taffy::Style {
+            display: taffy::Display::Flex,
+            flex_direction: taffy::FlexDirection::Column,
+            align_items: Some(taffy::AlignItems::Stretch),
+            gap: taffy::Size {
+                width: length(0.0),
+                height: length(8.0 * scale),
+            },
+            size: taffy::Size {
+                width: length(shell_w),
+                height: length(shell_h),
+            },
+            max_size: taffy::Size {
+                width: length(shell_w),
+                height: length(shell_h),
+            },
+            ..Default::default()
+        })
+        .show(|tui| {
+            // Header row: icon + title + version, close button on the right.
+            tui.ui(|ui| {
+                widgets::card_frame(ui).show(ui, |ui| {
+                    ui.horizontal(|ui| {
+                        host.draw_icon(ui, ctx);
+                        ui.heading(t!("hachimi"));
+                        widgets::category_tag(ui, env!("HACHIMI_DISPLAY_VERSION"));
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            if widgets::ghost_button(ui, "\u{f00d}")
+                                .on_hover_text(t!("menu.close_menu"))
+                                .clicked()
+                            {
+                                keep_open = false;
+                            }
+                        });
+                    });
+                });
+            });
+
+            // Top tab bar: a single horizontally-scrollable row (content height).
+            tui.ui(|ui| {
+                egui::ScrollArea::horizontal()
+                    .id_salt("l1_tabs_scroll")
+                    .auto_shrink([false, true])
+                    .show(ui, |ui| {
+                        ui.horizontal(|ui| {
+                            ui.spacing_mut().item_spacing.x = 6.0 * scale;
+                            shell_tab_button(ui, host, ControlTab::General, &t!("config_editor.general_tab"));
+                            shell_tab_button(ui, host, ControlTab::Graphics, &t!("config_editor.graphics_tab"));
+                            shell_tab_button(ui, host, ControlTab::Gameplay, &t!("config_editor.gameplay_tab"));
+                            shell_tab_button(ui, host, ControlTab::Hotkeys, &t!("config_editor.hotkeys_tab"));
+                            shell_tab_button(ui, host, ControlTab::Translations, "\u{f1ab} Translations");
+                            shell_tab_button(ui, host, ControlTab::Plugins, "\u{f12e} Plugins");
+                            shell_tab_button(ui, host, ControlTab::About, "\u{f129} About");
+                        });
+                    });
+            });
+
+            // Scrolling content fills the remaining height.
+            tui.style(shell_content_style()).ui(|ui| {
+                egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
+                    let tab = host.active_tab();
+                    host.draw_body(ui, ctx, tab);
+                });
+            });
+
+            // Pinned footer: Save/Cancel (greyed where the tab doesn't edit config).
+            tui.ui(|ui| {
+                let tab = host.active_tab();
+                host.config_editor().ui_footer(ui, tab.edits_config());
+            });
+        });
+
+    keep_open
+}
+
+fn shell_tab_button(ui: &mut egui::Ui, host: &mut dyn ControlCenterHost, tab: ControlTab, label: &str) {
+    let kind = if host.active_tab() == tab {
+        PillButtonKind::Primary
+    } else {
+        PillButtonKind::Secondary
+    };
+    if widgets::pill_button(ui, label, kind).clicked() {
+        host.set_active_tab(tab);
+    }
+}
+
+impl ControlCenterHost for Gui {
+    fn active_tab(&self) -> ControlTab {
+        self.menu_tab
+    }
+
+    fn set_active_tab(&mut self, tab: ControlTab) {
+        self.menu_tab = tab;
+    }
+
+    fn config_editor(&mut self) -> &mut ConfigEditor {
+        &mut self.config_editor
+    }
+
+    fn draw_icon(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
+        ui.add(Self::icon(ctx));
+    }
+
+    fn draw_body(&mut self, ui: &mut egui::Ui, ctx: &egui::Context, tab: ControlTab) {
+        let mut show_notification: Option<Cow<'_, str>> = None;
+        let mut show_window: Option<BoxedWindow> = None;
+        match tab {
+            ControlTab::General => self.config_editor.ui_body(ui, ctx, ConfigEditorTab::General),
+            ControlTab::Graphics => self.config_editor.ui_body(ui, ctx, ConfigEditorTab::Graphics),
+            ControlTab::Gameplay => self.config_editor.ui_body(ui, ctx, ConfigEditorTab::Gameplay),
+            ControlTab::Hotkeys => self.config_editor.ui_body(ui, ctx, ConfigEditorTab::Hotkeys),
+            ControlTab::Translations => self.run_translations_tab(ui, ctx, &mut show_notification),
+            ControlTab::Plugins => self.run_plugins_tab(ui, ctx, &mut show_notification),
+            ControlTab::About => self.run_about_tab(ui, ctx, &mut show_notification, &mut show_window),
+        }
+        if let Some(content) = show_notification {
+            self.show_notification(content.as_ref());
+        }
+        if let Some(window) = show_window {
+            self.show_window(window);
+        }
+    }
+}
+
 impl Gui {
     pub(crate) fn run_menu(&mut self) {
         if self.show_menu {
@@ -81,134 +240,22 @@ impl Gui {
         }
     }
 
-    /// Draw the modal shell with the top tab bar and dispatch to the active tab.
+    /// Draw the modal shell + tab bar and dispatch to the active tab. The shell
+    /// layout lives in the shared `render_control_center` so the desktop preview
+    /// harness renders the exact same chrome.
     fn run_control_center(&mut self) {
         let ctx = self.context.clone();
         let scale = get_scale(&ctx);
 
-        let mut show_notification: Option<Cow<'_, str>> = None;
-        let mut show_window: Option<BoxedWindow> = None;
         let mut keep_open = true;
-
         let response = egui::Modal::new(egui::Id::new("hachimi_control_center")).show(&ctx, |ui| {
-            // Deterministic shell size (NOT available_width/height, which feed back
-            // into the auto-sizing Modal and make the panel jitter/stretch between
-            // first open and tab changes). Width is fixed; height caps at 85% of
-            // the viewport.
-            let shell_w = SHELL_WIDTH * scale;
-            let shell_h = ctx.input(|i| i.viewport_rect().height()) * 0.85;
-            ui.set_width(shell_w);
-            ui.set_max_height(shell_h);
-            ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend);
-
-            // Header / tab bar / scrolling content / pinned footer, laid out as a
-            // taffy flex column so the content region fills the remaining height
-            // (each region takes exactly the space it needs; content takes the rest).
-            tui(ui, ui.id().with("menu_shell"))
-                .reserve_width(shell_w)
-                .style(taffy::Style {
-                    display: taffy::Display::Flex,
-                    flex_direction: taffy::FlexDirection::Column,
-                    align_items: Some(taffy::AlignItems::Stretch),
-                    gap: taffy::Size {
-                        width: length(0.0),
-                        height: length(8.0 * scale),
-                    },
-                    size: taffy::Size {
-                        width: length(shell_w),
-                        height: length(shell_h),
-                    },
-                    max_size: taffy::Size {
-                        width: length(shell_w),
-                        height: length(shell_h),
-                    },
-                    ..Default::default()
-                })
-                .show(|tui| {
-                    // Header row: icon + title + version, close button on the right.
-                    tui.ui(|ui| {
-                        widgets::card_frame(ui).show(ui, |ui| {
-                            ui.horizontal(|ui| {
-                                ui.add(Self::icon(&ctx));
-                                ui.heading(t!("hachimi"));
-                                widgets::category_tag(ui, env!("HACHIMI_DISPLAY_VERSION"));
-                                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                                    if widgets::ghost_button(ui, "\u{f00d}")
-                                        .on_hover_text(t!("menu.close_menu"))
-                                        .clicked()
-                                    {
-                                        keep_open = false;
-                                    }
-                                });
-                            });
-                        });
-                    });
-
-                    // Top tab bar: a single horizontally-scrollable row (content height).
-                    tui.ui(|ui| {
-                        egui::ScrollArea::horizontal()
-                            .id_salt("l1_tabs_scroll")
-                            .auto_shrink([false, true])
-                            .show(ui, |ui| {
-                                ui.horizontal(|ui| {
-                                    ui.spacing_mut().item_spacing.x = 6.0 * scale;
-                                    self.tab_button(ui, ControlTab::General, &t!("config_editor.general_tab"));
-                                    self.tab_button(ui, ControlTab::Graphics, &t!("config_editor.graphics_tab"));
-                                    self.tab_button(ui, ControlTab::Gameplay, &t!("config_editor.gameplay_tab"));
-                                    self.tab_button(ui, ControlTab::Hotkeys, &t!("config_editor.hotkeys_tab"));
-                                    self.tab_button(ui, ControlTab::Translations, "\u{f1ab} Translations");
-                                    self.tab_button(ui, ControlTab::Plugins, "\u{f12e} Plugins");
-                                    self.tab_button(ui, ControlTab::About, "\u{f129} About");
-                                });
-                            });
-                    });
-
-                    // Scrolling content fills the remaining height.
-                    tui.style(shell_content_style()).ui(|ui| {
-                        egui::ScrollArea::vertical()
-                            .auto_shrink([false, false])
-                            .show(ui, |ui| match self.menu_tab {
-                                ControlTab::General => self.config_editor.ui_body(ui, &ctx, ConfigEditorTab::General),
-                                ControlTab::Graphics => self.config_editor.ui_body(ui, &ctx, ConfigEditorTab::Graphics),
-                                ControlTab::Gameplay => self.config_editor.ui_body(ui, &ctx, ConfigEditorTab::Gameplay),
-                                ControlTab::Hotkeys => self.config_editor.ui_body(ui, &ctx, ConfigEditorTab::Hotkeys),
-                                ControlTab::Translations => self.run_translations_tab(ui, &ctx, &mut show_notification),
-                                ControlTab::Plugins => self.run_plugins_tab(ui, &ctx, &mut show_notification),
-                                ControlTab::About => {
-                                    self.run_about_tab(ui, &ctx, &mut show_notification, &mut show_window)
-                                }
-                            });
-                    });
-
-                    // Pinned footer: Save/Cancel (greyed where the tab doesn't edit config).
-                    tui.ui(|ui| {
-                        self.config_editor.ui_footer(ui, self.menu_tab.edits_config());
-                    });
-                });
+            keep_open = render_control_center(ui, &ctx, scale, self);
         });
 
         // Close on backdrop click / Escape, or via the header button.
         if response.should_close() || !keep_open {
             self.show_menu = false;
             self.menu_anim_time = None;
-        }
-
-        if let Some(content) = show_notification {
-            self.show_notification(content.as_ref());
-        }
-        if let Some(window) = show_window {
-            self.show_window(window);
-        }
-    }
-
-    fn tab_button(&mut self, ui: &mut egui::Ui, tab: ControlTab, label: &str) {
-        let kind = if self.menu_tab == tab {
-            PillButtonKind::Primary
-        } else {
-            PillButtonKind::Secondary
-        };
-        if widgets::pill_button(ui, label, kind).clicked() {
-            self.menu_tab = tab;
         }
     }
 

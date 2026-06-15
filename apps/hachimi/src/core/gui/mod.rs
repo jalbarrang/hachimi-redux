@@ -1,5 +1,7 @@
 //! In-game egui overlay: menu, dialogs, notifications, and plugin UI.
 
+#[cfg(feature = "dev-harness")]
+pub mod dev_harness;
 mod frame;
 mod instance;
 pub(crate) mod menu;
