@@ -21,7 +21,7 @@ jobs:
         run: |
           pushd ..
 
-          git clone --revision 44cdd653e2317d300fb8a6c9c36b03f23991e803 https://github.com/emilk/egui.git
+          git clone --revision 7288e4b2e5a305b239d0b16bbbed239bf56e64b4 https://github.com/emilk/egui.git
           cd egui
 
           $File = "crates/egui/src/containers/combo_box.rs"
@@ -29,7 +29,7 @@ jobs:
 
           cd ..
 
-          git clone --revision 903043939a076dc81e122a1c8451755bfb3979c8 https://github.com/Nekomaru-PKU/egui-directx11.git
+          git clone --revision bc05ae3326a4bab419c768e9dffb0d576d942c2b https://github.com/jalbarran-series/egui-directx11.git
           cd egui-directx11
 
           $fxc = Get-ChildItem -Path "C:\Program Files (x86)\Windows Kits" -Recurse -Filter "fxc.exe" | Where-Object { $_.FullName -like "*x64*" } | Select-Object -First 1

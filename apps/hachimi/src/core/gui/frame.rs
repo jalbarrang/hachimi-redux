@@ -59,6 +59,12 @@ impl Gui {
         }
     }
 
+    // `Context::run` is deprecated in egui 0.34 in favour of `run_ui`, but `run_ui`
+    // hands the closure a `&mut Ui` (a screen-spanning central area) instead of the
+    // `Context`. hachimi builds its own top-level panels/modal on `self.context`,
+    // which is incompatible with that auto-created Ui, so we keep `run` (still
+    // functional in 0.34) and scope the deprecation allow to this fn.
+    #[allow(deprecated)]
     pub fn run(&mut self) -> egui::FullOutput {
         if let Some(config) = take_pending_theme() {
             self.config = config.clone();
@@ -66,7 +72,7 @@ impl Gui {
 
             let mut style = self.default_style.clone();
             style.scale(self.gui_scale);
-            self.context.set_style(style)
+            self.context.set_global_style(style)
         }
 
         self.update_fps();
@@ -75,7 +81,7 @@ impl Gui {
         let live_scale = Hachimi::instance().config.load().gui_scale;
         if self.gui_scale != live_scale {
             self.gui_scale = live_scale;
-            if !self.context.is_using_pointer() {
+            if !self.context.egui_is_using_pointer() {
                 self.finalized_scale = live_scale;
             }
 
@@ -83,7 +89,7 @@ impl Gui {
             if live_scale != 1.0 {
                 style.scale(live_scale);
             }
-            self.context.set_style(style);
+            self.context.set_global_style(style);
         }
 
         self.context.data_mut(|d| {
@@ -95,7 +101,7 @@ impl Gui {
         if live_scale != 1.0 {
             style.scale(live_scale);
         }
-        self.context.set_style(style);
+        self.context.set_global_style(style);
 
         // Drive egui multi-pass: `Context::run` re-runs the UI within this frame
         // (up to `Options::max_passes`) until the layout settles, presenting only
@@ -143,7 +149,7 @@ impl Gui {
             use crate::il2cpp::{hook::UnityEngine_InputLegacyModule::Input::set_imeCompositionMode, symbols::Thread};
 
             let focused = self.context.memory(egui::Memory::focused);
-            let wants_kb = self.context.wants_keyboard_input();
+            let wants_kb = self.context.egui_wants_keyboard_input();
 
             if focused != self.last_focused {
                 if wants_kb {
@@ -164,7 +170,7 @@ impl Gui {
         // L2 gate: while the L1 modal is closed, the cursor is "over a panel" when it
         // hovers an egui area and overlays aren't globally locked. Used by the wnd hook
         // to swallow mouse input for panels but let clicks fall through to the game.
-        let l2_wants = !self.menu_visible && !overlay::is_locked() && self.context.is_pointer_over_area();
+        let l2_wants = !self.menu_visible && !overlay::is_locked() && self.context.is_pointer_over_egui();
         super::L2_WANTS_POINTER.store(l2_wants, Ordering::Relaxed);
     }
 
