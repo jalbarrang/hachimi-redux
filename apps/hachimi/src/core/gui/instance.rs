@@ -51,7 +51,7 @@ impl Gui {
             style.debug.show_unaligned = false;
         }
 
-        context.set_style(style.clone());
+        context.set_global_style(style.clone());
 
         let default_style = style.clone();
 
