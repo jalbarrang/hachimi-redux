@@ -13,6 +13,8 @@ use crate::core::gui::Gui;
 use crate::core::plugin::menu::{get_plugin_menu_icon, get_plugin_menu_items, get_plugin_menu_sections};
 use crate::core::plugin::OwnerScope;
 
+use super::layout::{auto_cell, flex_row, flex_wrap};
+
 impl Gui {
     pub(crate) fn run_plugins_tab(
         &mut self,
@@ -30,26 +32,30 @@ impl Gui {
             return;
         }
 
-        // Plugin action buttons (menu items) at the top.
         if !items.is_empty() {
-            ui.horizontal_wrapped(|ui| {
-                for item in &items {
-                    let clicked = match get_plugin_menu_icon(&item.label) {
-                        Some(icon) => {
-                            let size = 18.0 * scale;
-                            ui.add(egui::Image::new((icon.uri, icon.bytes)).fit_to_exact_size(egui::Vec2::splat(size)));
-                            widgets::secondary_button(ui, item.label.clone()).clicked()
+            flex_wrap(ui, ui.id().with("plugin_items"), scale, 8.0, |tui| {
+                for (i, item) in items.iter().enumerate() {
+                    auto_cell(tui, |ui| {
+                        let clicked = match get_plugin_menu_icon(&item.label) {
+                            Some(icon) => {
+                                let size = 18.0 * scale;
+                                ui.add(
+                                    egui::Image::new((icon.uri, icon.bytes)).fit_to_exact_size(egui::Vec2::splat(size)),
+                                );
+                                widgets::secondary_button(ui, item.label.clone()).clicked()
+                            }
+                            None => widgets::secondary_button(ui, item.label.clone()).clicked(),
+                        };
+                        if clicked {
+                            if let Some(callback) = item.callback {
+                                let _ = panic::catch_unwind(AssertUnwindSafe(|| {
+                                    callback(item.userdata as *mut c_void);
+                                }))
+                                .inspect_err(|_| error!("plugin menu item callback panicked: {}", item.label));
+                            }
                         }
-                        None => widgets::secondary_button(ui, item.label.clone()).clicked(),
-                    };
-                    if clicked {
-                        if let Some(callback) = item.callback {
-                            let _ = panic::catch_unwind(AssertUnwindSafe(|| {
-                                callback(item.userdata as *mut c_void);
-                            }))
-                            .inspect_err(|_| error!("plugin menu item callback panicked: {}", item.label));
-                        }
-                    }
+                        let _ = i;
+                    });
                 }
             });
             if !sections.is_empty() {
@@ -61,7 +67,6 @@ impl Gui {
             return;
         }
 
-        // Default selection: first section if nothing valid is selected.
         let selected_valid = self
             .plugins_selected
             .is_some_and(|h| sections.iter().any(|s| s.handle == h));
@@ -69,8 +74,7 @@ impl Gui {
             self.plugins_selected = Some(sections[0].handle);
         }
 
-        // Page sub-nav (chips).
-        ui.horizontal_wrapped(|ui| {
+        flex_wrap(ui, ui.id().with("plugin_pages"), scale, 6.0, |tui| {
             for (i, section) in sections.iter().enumerate() {
                 let label = page_label(section.title.as_deref(), i);
                 let selected = self.plugins_selected == Some(section.handle);
@@ -79,28 +83,33 @@ impl Gui {
                 } else {
                     PillButtonKind::Secondary
                 };
-                if widgets::pill_button(ui, label, kind).clicked() {
-                    self.plugins_selected = Some(section.handle);
-                }
+                auto_cell(tui, |ui| {
+                    if widgets::pill_button(ui, label, kind).clicked() {
+                        self.plugins_selected = Some(section.handle);
+                    }
+                });
             }
         });
         ui.separator();
 
-        // Active page body.
         let Some(section) = sections.iter().find(|s| Some(s.handle) == self.plugins_selected) else {
             return;
         };
 
         if let Some(title) = &section.title {
-            ui.horizontal(|ui| {
+            flex_row(ui, ui.id().with("plugin_page_title"), scale, 8.0, |tui| {
                 if let Some(icon) = &section.icon {
-                    let size = 18.0 * scale;
-                    ui.add(
-                        egui::Image::new((icon.uri.clone(), icon.bytes.clone()))
-                            .fit_to_exact_size(egui::Vec2::splat(size)),
-                    );
+                    auto_cell(tui, |ui| {
+                        let size = 18.0 * scale;
+                        ui.add(
+                            egui::Image::new((icon.uri.clone(), icon.bytes.clone()))
+                                .fit_to_exact_size(egui::Vec2::splat(size)),
+                        );
+                    });
                 }
-                widgets::section_banner(ui, title.clone());
+                auto_cell(tui, |ui| {
+                    widgets::section_banner(ui, title.clone());
+                });
             });
         }
 
@@ -112,7 +121,6 @@ impl Gui {
     }
 }
 
-/// Label for a page chip: the section title, else a generic numbered fallback.
 fn page_label(title: Option<&str>, index: usize) -> String {
     match title {
         Some(t) if !t.is_empty() => t.to_owned(),

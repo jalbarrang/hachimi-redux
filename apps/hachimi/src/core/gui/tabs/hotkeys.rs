@@ -1,15 +1,7 @@
-//! Hotkeys sub-tab body for the config editor: view and safely rebind every
-//! registered hotkey.
+//! L1 Hotkeys tab — view and safely rebind every registered hotkey.
 //!
 //! Reads the central hotkey registry (`core::plugin::hotkeys`) and the persisted
-//! binds in `Config::hotkeys`, grouping rows by owner (host vs each plugin). Each
-//! row supports Set (key capture), Clear (unbind), and Reset (restore default),
-//! and surfaces conflict + reserved-key warnings without blocking the user.
-//!
-//! Edits go into the config-editor working copy (the same one the General/
-//! Graphics/Gameplay grids share) and persist only on Save / discard on Cancel.
-//! Key capture is asynchronous (WndProc hook); the captured chord is stashed and
-//! applied to the working copy on the next GUI frame.
+//! binds in `Config::hotkeys`, grouping rows by owner (host vs each plugin).
 
 use std::collections::HashMap;
 
@@ -23,6 +15,7 @@ use crate::windows::utils::chord_to_display_label;
 use super::super::scale::get_scale;
 use super::super::widgets;
 use super::super::Gui;
+use super::layout::{auto_cell, flex_row, flex_spacer};
 
 /// Virtual keys we warn about when bound without a modifier (game/system critical).
 const RESERVED_VKS: &[u16] = &[
@@ -40,7 +33,6 @@ const RESERVED_VKS: &[u16] = &[
 pub(crate) fn ui_hotkeys(ui: &mut egui::Ui, ctx: &egui::Context, config: &mut Config) {
     let scale = get_scale(ctx);
 
-    // Apply any completed async key-capture into the working copy.
     if let Some((id, chord)) = hotkeys::take_capture_result() {
         config.hotkeys.insert(id, chord.into());
     }
@@ -52,7 +44,6 @@ pub(crate) fn ui_hotkeys(ui: &mut egui::Ui, ctx: &egui::Context, config: &mut Co
         return;
     }
 
-    // Effective chord per action id (working-copy bind, else registered default).
     let effective: HashMap<String, Chord> = infos
         .iter()
         .map(|info| {
@@ -61,7 +52,6 @@ pub(crate) fn ui_hotkeys(ui: &mut egui::Ui, ctx: &egui::Context, config: &mut Co
         })
         .collect();
 
-    // Count bound chords to flag conflicts (same chord on >1 action).
     let mut chord_counts: HashMap<(u8, u16), u32> = HashMap::new();
     for chord in effective.values() {
         if chord.is_bound() {
@@ -75,7 +65,6 @@ pub(crate) fn ui_hotkeys(ui: &mut egui::Ui, ctx: &egui::Context, config: &mut Co
 
     let owner_names = plugin_owner_names();
 
-    // Render the host group first, then each plugin group.
     let mut owners: Vec<u32> = infos.iter().map(|i| i.owner).collect();
     owners.sort_unstable();
     owners.dedup();
@@ -112,7 +101,6 @@ pub(crate) fn ui_hotkeys(ui: &mut egui::Ui, ctx: &egui::Context, config: &mut Co
     }
 }
 
-/// Which button a hotkey row's controls reported this frame.
 enum RowAction {
     Set,
     Clear,
@@ -128,38 +116,51 @@ fn hotkey_row(
     reserved: bool,
 ) -> Option<RowAction> {
     let mut action = None;
-    ui.horizontal(|ui| {
-        ui.add_sized(
-            [180.0 * scale, 20.0 * scale],
-            egui::Label::new(t!(info.label.as_str()).into_owned()).truncate(),
-        );
+    let label = t!(info.label.as_str()).into_owned();
+    let chord_label = chord_to_display_label(chord.mods, chord.vk);
 
-        // Warning glyph for conflicts / reserved keys.
+    flex_row(ui, ui.id().with(("hotkey", &info.id)), scale, 6.0, |tui| {
+        auto_cell(tui, |ui| {
+            ui.add_sized([180.0 * scale, 20.0 * scale], egui::Label::new(&label).truncate());
+        });
+
         if conflict {
-            ui.colored_label(egui::Color32::from_rgb(240, 180, 80), "\u{f071}")
-                .on_hover_text(t!("hotkeys.conflict_warning"));
+            auto_cell(tui, |ui| {
+                ui.colored_label(egui::Color32::from_rgb(240, 180, 80), "\u{f071}")
+                    .on_hover_text(t!("hotkeys.conflict_warning"));
+            });
         } else if reserved {
-            ui.colored_label(egui::Color32::from_rgb(240, 180, 80), "\u{f071}")
-                .on_hover_text(t!("hotkeys.reserved_warning"));
+            auto_cell(tui, |ui| {
+                ui.colored_label(egui::Color32::from_rgb(240, 180, 80), "\u{f071}")
+                    .on_hover_text(t!("hotkeys.reserved_warning"));
+            });
         }
 
-        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            if widgets::secondary_button(ui, t!("hotkeys.reset").into_owned()).clicked() {
-                action = Some(RowAction::Reset);
-            }
-            if widgets::secondary_button(ui, t!("hotkeys.clear").into_owned()).clicked() {
-                action = Some(RowAction::Clear);
-            }
+        flex_spacer(tui);
+
+        auto_cell(tui, |ui| {
+            ui.label(&chord_label);
+        });
+        auto_cell(tui, |ui| {
             if widgets::secondary_button(ui, t!("hotkeys.set").into_owned()).clicked() {
                 action = Some(RowAction::Set);
             }
-            ui.label(chord_to_display_label(chord.mods, chord.vk));
+        });
+        auto_cell(tui, |ui| {
+            if widgets::secondary_button(ui, t!("hotkeys.clear").into_owned()).clicked() {
+                action = Some(RowAction::Clear);
+            }
+        });
+        auto_cell(tui, |ui| {
+            if widgets::secondary_button(ui, t!("hotkeys.reset").into_owned()).clicked() {
+                action = Some(RowAction::Reset);
+            }
         });
     });
+
     action
 }
 
-/// Show the "press a key" prompt for an in-progress capture.
 fn notify_capture_start() {
     std::thread::spawn(|| {
         if let Some(gui) = Gui::instance() {
@@ -170,7 +171,6 @@ fn notify_capture_start() {
     });
 }
 
-/// Map of plugin owner id -> display name, for grouping headings.
 fn plugin_owner_names() -> HashMap<u32, String> {
     Hachimi::instance()
         .plugins

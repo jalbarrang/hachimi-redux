@@ -1,6 +1,10 @@
-//! Control Center tab bodies. Each tab is an `impl Gui` method living in its own
-//! file to keep `menu.rs` (the shell) small.
+//! Control Center tab bodies. Each tab is its own module with egui_taffy layout.
 
-mod about_tab;
-mod plugins;
-mod translations;
+pub(crate) mod about_tab;
+pub(crate) mod gameplay;
+pub(crate) mod general;
+pub(crate) mod graphics;
+pub(crate) mod hotkeys;
+pub(crate) mod layout;
+pub(crate) mod plugins;
+pub(crate) mod translations;

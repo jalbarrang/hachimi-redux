@@ -1,6 +1,5 @@
 mod config_editor;
 mod first_time_setup;
-mod hotkeys_editor;
 mod license;
 mod live_vocals_swap;
 mod persistent_message;
