@@ -59,12 +59,6 @@ impl Gui {
         }
     }
 
-    // `Context::run` is deprecated in egui 0.34 in favour of `run_ui`, but `run_ui`
-    // hands the closure a `&mut Ui` (a screen-spanning central area) instead of the
-    // `Context`. hachimi builds its own top-level panels/modal on `self.context`,
-    // which is incompatible with that auto-created Ui, so we keep `run` (still
-    // functional in 0.34) and scope the deprecation allow to this fn.
-    #[allow(deprecated)]
     pub fn run(&mut self) -> egui::FullOutput {
         if let Some(config) = take_pending_theme() {
             self.config = config.clone();
@@ -103,18 +97,22 @@ impl Gui {
         }
         self.context.set_global_style(style);
 
-        // Drive egui multi-pass: `Context::run` re-runs the UI within this frame
-        // (up to `Options::max_passes`) until the layout settles, presenting only
-        // the final pass. egui_taffy depends on this — a single begin/end pass
-        // would present the unsettled layout and flicker every taffy surface.
-        // `ctx` is a cloned `Context` (a separate borrow) so the closure can still
-        // take `&mut self`; the UI is built via `self.context`, the same context.
+        // Drive egui multi-pass: `run_ui` re-runs the UI within this frame (up to
+        // `Options::max_passes`) until the layout settles, presenting only the final
+        // pass. egui_taffy depends on this — a single begin/end pass would present
+        // the unsettled layout and flicker every taffy surface.
+        //
+        // `run_ui` hands the closure an empty background `Ui` that we ignore: every
+        // hachimi surface (Modal/Window/Area) is built on `self.context` and lives
+        // in its own layer, so nothing is drawn on that background Ui. `ctx` is a
+        // cloned `Context` (a separate borrow) so the closure can still take
+        // `&mut self`; the UI is built via `self.context`, the same context.
         let ctx = self.context.clone();
-        ctx.run(input, |_ctx| self.run_ui_pass())
+        ctx.run_ui(input, |_ui| self.run_ui_pass())
     }
 
     /// Build one egui pass of the GUI. Called (potentially) multiple times per
-    /// frame by [`egui::Context::run`] so egui_taffy layouts can settle via
+    /// frame by [`egui::Context::run_ui`] so egui_taffy layouts can settle via
     /// `request_discard`. Keep this idempotent across passes — once-per-frame work
     /// (e.g. `update_fps`) lives in [`Self::run`], before the multi-pass loop.
     fn run_ui_pass(&mut self) {
