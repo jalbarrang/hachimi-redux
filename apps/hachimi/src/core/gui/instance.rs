@@ -10,16 +10,6 @@ use super::tween::{Easing, TweenInOutWithDelay};
 use super::window::{ConfigEditor, FirstTimeSetupWindow};
 use super::{Gui, INSTANCE};
 
-macro_rules! add_font {
-    ($fonts:expr, $family_fonts:expr, $filename:literal) => {
-        $fonts.font_data.insert(
-            $filename.to_owned(),
-            egui::FontData::from_static(include_bytes!(concat!("../../../assets/fonts/", $filename))).into(),
-        );
-        $family_fonts.push($filename.to_owned());
-    };
-}
-
 impl Gui {
     pub fn apply_theme(ctx: &egui::Context, style: &mut egui::Style, config: &crate::core::hachimi::Config) {
         style.visuals = egui::Visuals::dark();
@@ -86,7 +76,7 @@ impl Gui {
             last_focused: None,
 
             show_menu: false,
-            menu_tab: super::menu::ControlTab::default(),
+            menu_tab: super::shell::ControlTab::default(),
             config_editor: ConfigEditor::new(),
             plugins_selected: None,
 
@@ -138,19 +128,5 @@ impl Gui {
 
     pub fn instance() -> Option<&'static Mutex<Gui>> {
         INSTANCE.get()
-    }
-
-    pub(crate) fn get_font_definitions() -> egui::FontDefinitions {
-        let mut fonts = egui::FontDefinitions::default();
-        let proportional_fonts = fonts
-            .families
-            .get_mut(&egui::FontFamily::Proportional)
-            .expect("unexpected failure");
-
-        add_font!(fonts, proportional_fonts, "Inter_24pt-Regular.ttf");
-        add_font!(fonts, proportional_fonts, "AlibabaPuHuiTi-3-45-Light.otf");
-        add_font!(fonts, proportional_fonts, "FontAwesome.otf");
-
-        fonts
     }
 }

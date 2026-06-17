@@ -6,14 +6,14 @@
 use egui_taffy::taffy::prelude::{auto, fr, length, min_content};
 use egui_taffy::{taffy, tui, Tui, TuiBuilderLogic, TuiContainerResponse};
 
-use super::super::menu;
+use super::super::{debug, shell};
 
 /// Deterministic width for a tab body root: the menu shell width. Pinned via
 /// `reserve_width` instead of `reserve_available_width` — the latter reads the
 /// modal's current width and feeds it back into layout, so a tab whose content
 /// is wider than the shell makes the modal grow on each pass.
 pub(crate) fn body_grid_width(scale: f32) -> f32 {
-    (menu::SHELL_WIDTH * scale).max(120.0)
+    (shell::SHELL_WIDTH * scale).max(120.0)
 }
 
 /// Width the scroll area reserves for its vertical bar (0 when floating).
@@ -139,11 +139,11 @@ pub(crate) fn flex_spacer(tui: &mut Tui) {
 /// Two-column settings grid wrapper (label column + control column).
 pub(crate) fn settings_grid<R>(ui: &mut egui::Ui, scale: f32, id: egui::Id, content: impl FnOnce(&mut Tui) -> R) -> R {
     let w = content_width(ui, scale);
-    menu::dbg_outline(ui, egui::Color32::from_rgb(0, 255, 0), "grid-host");
+    debug::dbg_outline(ui, egui::Color32::from_rgb(0, 255, 0), "grid-host");
 
     egui::Frame::NONE
         .show(ui, |ui| {
-            menu::dbg_outline(ui, egui::Color32::from_rgb(0, 200, 0), "grid-frame");
+            debug::dbg_outline(ui, egui::Color32::from_rgb(0, 200, 0), "grid-frame");
             ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend);
             tui(ui, id)
                 .reserve_width(w)

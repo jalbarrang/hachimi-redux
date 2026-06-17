@@ -12,8 +12,8 @@ use crate::core::plugin::hotkeys::{self, Chord, HotkeyInfo};
 use crate::core::Hachimi;
 use crate::windows::utils::chord_to_display_label;
 
+use super::super::components as widgets;
 use super::super::scale::get_scale;
-use super::super::widgets;
 use super::super::Gui;
 use super::layout::{auto_cell, flex_row, flex_spacer};
 

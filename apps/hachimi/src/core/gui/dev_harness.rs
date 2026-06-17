@@ -19,8 +19,8 @@
 
 use crate::core::hachimi::Config;
 
-use super::menu::{render_control_center, ControlCenterHost, ControlTab, SHELL_WIDTH};
 use super::scale::get_scale;
+use super::shell::{render_control_center, ControlCenterHost, ControlTab, SHELL_WIDTH};
 use super::window::{ConfigEditor, ConfigEditorTab};
 use super::Gui;
 

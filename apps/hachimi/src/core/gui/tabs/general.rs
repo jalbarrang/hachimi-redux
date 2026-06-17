@@ -9,8 +9,8 @@ use crate::core::plugin::overlay;
 
 use egui_taffy::Tui;
 
+use super::super::components as widgets;
 use super::super::scale::get_scale;
-use super::super::widgets;
 use super::super::window::{SimpleOkDialog, ThemeEditorWindow};
 use super::super::Gui;
 use super::layout::{auto_cell, content_width, fill_cell, label_cell};
@@ -123,11 +123,11 @@ pub(crate) fn options(config: &mut hachimi::Config, tui: &mut Tui) {
 /// Live overlay controls: global opacity + per-panel show/hide and reset-position.
 pub(crate) fn overlays(ui: &mut egui::Ui, _ctx: &egui::Context) {
     let scale = get_scale(ui.ctx());
-    super::super::menu::dbg_outline(ui, egui::Color32::from_rgb(255, 140, 0), "ov-outer");
+    super::super::debug::dbg_outline(ui, egui::Color32::from_rgb(255, 140, 0), "ov-outer");
 
     egui::Frame::NONE.show(ui, |ui| {
         ui.set_max_width(content_width(ui, scale));
-        super::super::menu::dbg_outline(ui, egui::Color32::from_rgb(200, 0, 0), "ov-inner");
+        super::super::debug::dbg_outline(ui, egui::Color32::from_rgb(200, 0, 0), "ov-inner");
         widgets::section_header(ui, t!("config_editor.overlays_heading").into_owned());
         let mut opacity = overlay::opacity();
         ui.horizontal(|ui| {

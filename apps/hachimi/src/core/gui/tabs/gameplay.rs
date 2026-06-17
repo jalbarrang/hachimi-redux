@@ -10,7 +10,7 @@ use crate::il2cpp::hook::umamusume::{CySpringController::SpringUpdateMode, TimeU
 
 use egui_taffy::Tui;
 
-use super::super::widgets;
+use super::super::components as widgets;
 use super::super::window::LiveVocalsSwapWindow;
 use super::super::Gui;
 use super::layout::{auto_cell, fill_cell, label_cell};

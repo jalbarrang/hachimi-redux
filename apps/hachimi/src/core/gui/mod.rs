@@ -1,20 +1,24 @@
 //! In-game egui overlay: menu, dialogs, notifications, and plugin UI.
 
+mod components;
+pub(crate) mod debug;
 #[cfg(feature = "dev-harness")]
 pub mod dev_harness;
+mod fonts;
 mod frame;
+mod game_ui;
 mod instance;
 pub(crate) mod menu;
 mod notification;
 mod overlays;
 mod scale;
+pub(crate) mod shell;
 mod splash;
 mod tabs;
 mod theme;
 mod theme_preview;
 mod tween;
 mod update_progress;
-mod widgets;
 mod window;
 
 use std::sync::atomic::AtomicBool;
@@ -53,7 +57,7 @@ pub struct Gui {
     pub(crate) last_focused: Option<egui::Id>,
 
     pub(crate) show_menu: bool,
-    pub(crate) menu_tab: menu::ControlTab,
+    pub(crate) menu_tab: shell::ControlTab,
     /// Persistent working state for the Config tab (formerly a floating window).
     pub(crate) config_editor: ConfigEditor,
     /// Currently selected plugin page handle in the Plugins tab (None = list view).

@@ -8,9 +8,9 @@ use crate::core::Hachimi;
 use egui_taffy::taffy::prelude::length;
 use egui_taffy::{taffy, tui};
 
+use super::super::components as widgets;
 use super::super::scale::get_scale;
 use super::super::tabs::{self, layout};
-use super::super::widgets;
 use super::{random_id, save_and_reload_config};
 
 pub(crate) struct ConfigEditor {
@@ -153,7 +153,7 @@ impl ConfigEditor {
         let id = self.id;
         let detached = self.detached;
         let config = &self.config;
-        let footer_w = (super::super::menu::SHELL_WIDTH * get_scale(ui.ctx()) - 16.0).max(120.0);
+        let footer_w = (super::super::shell::SHELL_WIDTH * get_scale(ui.ctx()) - 16.0).max(120.0);
         ui.add_enabled_ui(enabled, |ui| {
             ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend);
             tui(ui, id.with("footer"))

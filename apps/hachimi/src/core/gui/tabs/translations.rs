@@ -6,7 +6,7 @@ use std::thread;
 
 use rust_i18n::t;
 
-use crate::core::gui::widgets;
+use crate::core::gui::components as widgets;
 use crate::core::gui::Gui;
 use crate::core::hachimi;
 use crate::core::Hachimi;

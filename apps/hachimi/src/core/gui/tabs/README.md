@@ -12,6 +12,6 @@ Each top-level tab has its own module here, laid out with **egui_taffy** (flex/g
 | Plugins | `plugins.rs` | `run_plugins_tab` (Gui) |
 | About | `about_tab.rs` | `run_about_tab` (Gui) |
 
-**Dispatch:** `menu.rs` → `ConfigEditor::ui_body` / `ui_translations` for config tabs; `Gui::run_*_tab` for Plugins/About (and Translations actions). Shell chrome (header, tab bar, footer) stays in [`menu.rs`](../menu.rs).
+**Dispatch:** `menu.rs` → `ConfigEditor::ui_body` / `ui_translations` for config tabs; `Gui::run_*_tab` for Plugins/About (and Translations actions). Shell chrome (header, tab bar, footer) lives in [`shell.rs`](../shell.rs); `menu.rs` is the live `Gui` glue. Combo helpers (`Gui::run_combo`, etc.) live in [`components/combos.rs`](../components/combos.rs).
 
-**Layout kit:** `settings_grid` for label+control rows; `flex_row` / `flex_wrap` / `flex_col` for button clusters. Width is pinned via `content_width` (shell width minus the vertical scrollbar reservation) so scroll areas don't stretch the modal and inner elements don't bleed past the tab body.
+**Layout kit:** `settings_grid` for label+control rows; `flex_row` / `flex_wrap` / `flex_col` for button clusters. Width is pinned via `content_width` (shell width minus the vertical scrollbar reservation) so scroll areas don't stretch the modal and inner elements don't bleed past the tab body. Shared widgets (buttons, cards, toggles, etc.) live in [`components/`](../components/).

@@ -6,9 +6,9 @@ use std::borrow::Cow;
 use std::ffi::c_void;
 use std::panic::{self, AssertUnwindSafe};
 
+use crate::core::gui::components as widgets;
+use crate::core::gui::components::PillButtonKind;
 use crate::core::gui::scale::get_scale;
-use crate::core::gui::widgets;
-use crate::core::gui::widgets::PillButtonKind;
 use crate::core::gui::Gui;
 use crate::core::plugin::menu::{get_plugin_menu_icon, get_plugin_menu_items, get_plugin_menu_sections};
 use crate::core::plugin::OwnerScope;

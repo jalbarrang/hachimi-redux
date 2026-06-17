@@ -5,7 +5,7 @@ use std::borrow::Cow;
 use chrono::{Datelike, Utc};
 use rust_i18n::t;
 
-use crate::core::gui::widgets;
+use crate::core::gui::components as widgets;
 use crate::core::gui::window::{BoxedWindow, FirstTimeSetupWindow, LicenseWindow, SimpleYesNoDialog};
 use crate::core::gui::Gui;
 use crate::core::hachimi::{REPO_PATH, WEBSITE_URL};
