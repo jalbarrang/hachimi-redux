@@ -25,7 +25,7 @@ required-features = ["dev-harness"]
 # Standalone egui app runner — only compiled for the dev-harness preview, kept
 # out of the cdylib. Same egui 0.33.x as the rest of the crate so the `Ui` type
 # unifies with the real menu code.
-eframe = { version = "0.33", optional = true, default-features = false, features = [
+eframe = { version = "0.34", optional = true, default-features = false, features = [
     "default_fonts",
     "glow",
     "persistence",
@@ -40,10 +40,10 @@ serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 fnv = "1.0"
 widestring = "1.1"
-egui = { version = "0.33.3", default-features = false, features = ["serde"] }
-egui-scale = "0.3.0"
-egui_extras = { version = "0.33.3", default-features = false, features = ["image"] }
-egui_taffy = "=0.10.0"
+egui = { version = "0.34", default-features = false, features = ["serde"] }
+egui-scale = "0.4.0"
+egui_extras = { version = "0.34", default-features = false, features = ["image"] }
+egui_taffy = "=0.12.0"
 image = { version = "0.25.9", default-features = false, features = ["png"] }
 png = "0.17"
 sqlparser = "0.43"
