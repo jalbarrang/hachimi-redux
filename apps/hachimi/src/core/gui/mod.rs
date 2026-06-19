@@ -1,9 +1,13 @@
 //! In-game egui overlay: menu, dialogs, notifications, and plugin UI.
 
 mod components;
+pub(crate) mod control_center_mount;
+pub(crate) mod control_center_tls;
 pub(crate) mod debug;
 #[cfg(feature = "dev-harness")]
 pub mod dev_harness;
+mod dioxus;
+mod dioxus_bridge;
 mod fonts;
 mod frame;
 mod game_ui;
@@ -14,6 +18,7 @@ mod overlays;
 mod scale;
 pub(crate) mod shell;
 mod splash;
+mod stub;
 mod tabs;
 mod theme;
 mod theme_preview;

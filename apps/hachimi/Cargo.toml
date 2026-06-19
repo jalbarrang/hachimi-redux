@@ -30,6 +30,9 @@ eframe = { version = "0.34", optional = true, default-features = false, features
     "glow",
     "persistence",
 ] }
+dioxus-egui = { path = "../../crates/dioxus-egui", version = "0.1", features = ["introspect"] }
+honse-ui = { path = "../../crates/honse-ui", version = "0.1" }
+dioxus = { version = "0.7", default-features = false, features = ["macro", "html", "signals", "hooks"] }
 hachimi-plugin-abi = { path = "../../crates/hachimi-plugin-abi", version = "0.1.0" }
 log = "0.4"
 cstr = "0.2"

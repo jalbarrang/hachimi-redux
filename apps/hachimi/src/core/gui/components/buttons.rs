@@ -4,7 +4,6 @@ use super::super::theme::ThemeTokens;
 pub(crate) enum PillButtonKind {
     Primary,
     Secondary,
-    Ghost,
     Danger,
 }
 
@@ -17,11 +16,6 @@ pub(crate) fn pill_button(ui: &mut egui::Ui, text: impl Into<String>, kind: Pill
             tokens.accent_ink,
         ),
         PillButtonKind::Secondary => (tokens.surface, egui::Stroke::new(1.0, tokens.line), tokens.text),
-        PillButtonKind::Ghost => (
-            egui::Color32::TRANSPARENT,
-            egui::Stroke::new(1.0, tokens.line),
-            tokens.text_dim,
-        ),
         PillButtonKind::Danger => (
             tokens.crit,
             egui::Stroke::new(1.0, tokens.crit.linear_multiply(0.8)),
@@ -44,10 +38,6 @@ pub(crate) fn primary_button(ui: &mut egui::Ui, text: impl Into<String>) -> egui
 
 pub(crate) fn secondary_button(ui: &mut egui::Ui, text: impl Into<String>) -> egui::Response {
     pill_button(ui, text, PillButtonKind::Secondary)
-}
-
-pub(crate) fn ghost_button(ui: &mut egui::Ui, text: impl Into<String>) -> egui::Response {
-    pill_button(ui, text, PillButtonKind::Ghost)
 }
 
 pub(crate) fn danger_button(ui: &mut egui::Ui, text: impl Into<String>) -> egui::Response {

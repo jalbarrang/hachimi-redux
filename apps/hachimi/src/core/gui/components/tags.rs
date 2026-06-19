@@ -1,38 +1,5 @@
 use super::super::theme::ThemeTokens;
 
-pub(crate) fn category_tag(ui: &mut egui::Ui, text: impl Into<String>) -> egui::Response {
-    let tokens = ThemeTokens::from_ui(ui);
-    let text = text.into();
-    let galley = ui
-        .painter()
-        .layout_no_wrap(text, egui::TextStyle::Small.resolve(ui.style()), tokens.text);
-    let desired = galley.size() + egui::vec2(18.0, 8.0);
-    let (rect, response) = ui.allocate_exact_size(desired, egui::Sense::hover());
-    if ui.is_rect_visible(rect) {
-        ui.painter()
-            .rect_filled(rect, tokens.small_radius, tokens.surface.linear_multiply(0.95));
-        ui.painter().rect_stroke(
-            rect,
-            tokens.small_radius,
-            egui::Stroke::new(1.0, tokens.line),
-            egui::epaint::StrokeKind::Inside,
-        );
-        ui.painter().line_segment(
-            [
-                rect.left_top() + egui::vec2(3.0, 4.0),
-                rect.left_bottom() + egui::vec2(3.0, -4.0),
-            ],
-            egui::Stroke::new(2.0, tokens.accent),
-        );
-        ui.painter().galley(
-            rect.center() - galley.size() / 2.0 + egui::vec2(2.0, 0.0),
-            galley,
-            tokens.text,
-        );
-    }
-    response
-}
-
 #[allow(dead_code)]
 pub(crate) fn stat_chip(ui: &mut egui::Ui, label: &str, value: impl ToString, delta: Option<&str>) -> egui::Response {
     let tokens = ThemeTokens::from_ui(ui);

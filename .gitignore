@@ -17,3 +17,6 @@ docs/reverse-engineering/il2cpp/
 
 # Fetched game master DB (proprietary; keep local-only)
 db/
+
+# Local-only upstream source clones for reference (not part of the build)
+/.reference/

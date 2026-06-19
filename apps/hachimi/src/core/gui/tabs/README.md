@@ -1,17 +1,19 @@
 # Control Center tab bodies
 
-Each top-level tab has its own module here, laid out with **egui_taffy** (flex/grid via [`layout.rs`](layout.rs)).
+The Control Center shell is authored in Dioxus under [`../dioxus/`](../dioxus/). Tab modules live in [`../dioxus/tabs/`](../dioxus/tabs/).
 
-| Tab | File | Entry point |
-|-----|------|-------------|
-| General | `general.rs` | `options` + `overlays` |
-| Graphics | `graphics.rs` | `options` |
-| Gameplay | `gameplay.rs` | `options` |
-| Hotkeys | `hotkeys.rs` | `ui_hotkeys` |
-| Translations | `translations.rs` | `run_translations_tab` (Gui) + `options` (grid) |
-| Plugins | `plugins.rs` | `run_plugins_tab` (Gui) |
-| About | `about_tab.rs` | `run_about_tab` (Gui) |
+| Tab | Dioxus module | Notes |
+|-----|---------------|-------|
+| General | `dioxus/tabs/general.rs` | Full rsx grid |
+| Graphics | `dioxus/tabs/graphics.rs` | VSync row uses `native="egui"` |
+| Gameplay | `dioxus/tabs/gameplay.rs` | Full rsx grid |
+| Hotkeys | `dioxus/tabs/hotkeys.rs` | `native="egui"` → `tabs/hotkeys.rs` |
+| Translations | `dioxus/tabs/translations.rs` | Grid + native action strip |
+| Plugins | `dioxus/tabs/plugins.rs` | `native="egui"` → `menu.rs` |
+| About | `dioxus/tabs/about.rs` | `native="egui"` → `menu.rs` |
 
-**Dispatch:** `menu.rs` → `ConfigEditor::ui_body` / `ui_translations` for config tabs; `Gui::run_*_tab` for Plugins/About (and Translations actions). Shell chrome (header, tab bar, footer) lives in [`shell.rs`](../shell.rs); `menu.rs` is the live `Gui` glue. Combo helpers (`Gui::run_combo`, etc.) live in [`components/combos.rs`](../components/combos.rs).
+**Dispatch:** `menu.rs` → `shell::render_control_center_gui` → `control_center_mount` embeds the Dioxus VDOM each frame. Preview: `dev_harness.rs` → `render_control_center_preview`.
 
-**Layout kit:** `settings_grid` for label+control rows; `flex_row` / `flex_wrap` / `flex_col` for button clusters. Width is pinned via `content_width` (shell width minus the vertical scrollbar reservation) so scroll areas don't stretch the modal and inner elements don't bleed past the tab body. Shared widgets (buttons, cards, toggles, etc.) live in [`components/`](../components/).
+**Legacy:** imperative helpers in this folder (`general.rs`, `graphics.rs`, …) remain for reference during migration; the live path uses `dioxus/tabs/*`.
+
+**Layout kit:** `dioxus/tabs/layout.rs` (`SettingsGrid`, `LabelCell`, …). Shared widgets: [`honse-ui`](../../../../../../crates/honse-ui/) + [`components/`](../components/) (legacy).

@@ -202,7 +202,7 @@ pub(crate) fn panel_state(id: &str) -> PanelState {
         .unwrap_or_default()
 }
 
-/// Forget a panel's saved position and size so it snaps back to defaults next frame.
+/// Forget a panel's saved position and size so it returns to defaults next frame.
 pub(crate) fn reset_panel(id: &str) {
     let mut state = OVERLAY_UI.lock().expect("lock poisoned");
     let entry = state.panels.entry(id.to_owned()).or_default();

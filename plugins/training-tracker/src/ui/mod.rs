@@ -15,6 +15,7 @@ use crate::memory_reader;
 mod career;
 mod constants;
 mod dimens;
+mod dioxus_mount;
 // Race-condition icon toggles (weather/season/time). Currently hidden from the
 // UI per product decision; kept dormant so it can be re-enabled cheaply.
 #[allow(dead_code)]
@@ -73,7 +74,7 @@ extern "C" fn toggle_overlay_hotkey(_userdata: *mut c_void) {
 extern "C" fn draw_menu_section(ui: *mut c_void, _userdata: *mut c_void) {
     // SAFETY: host passes its live `&mut egui::Ui` for this callback.
     let ui = unsafe { ui_from_ptr(ui) };
-    if panic::catch_unwind(AssertUnwindSafe(|| menu::draw(ui))).is_err() {
+    if panic::catch_unwind(AssertUnwindSafe(|| dioxus_mount::render_menu(ui))).is_err() {
         hlog_error!("draw_menu_section PANICKED");
     }
 }
@@ -81,7 +82,7 @@ extern "C" fn draw_menu_section(ui: *mut c_void, _userdata: *mut c_void) {
 extern "C" fn draw_overlay(ui: *mut c_void, _userdata: *mut c_void) {
     // SAFETY: host passes its live `&mut egui::Ui` for this callback.
     let ui = unsafe { ui_from_ptr(ui) };
-    if panic::catch_unwind(AssertUnwindSafe(|| draw_overlay_inner(ui))).is_err() {
+    if panic::catch_unwind(AssertUnwindSafe(|| dioxus_mount::render_overlay(ui))).is_err() {
         hlog_error!("draw_overlay PANICKED");
     }
 }

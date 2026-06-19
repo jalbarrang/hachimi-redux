@@ -314,7 +314,12 @@ unsafe extern "C" fn log(level: i32, target: *const c_char, message: *const c_ch
 // ── Host services ──
 
 unsafe extern "C" fn host_capabilities() -> u64 {
-    capability::GUI | capability::OVERLAY | capability::EVENTS | capability::IL2CPP | capability::DATA_PATHS
+    capability::GUI
+        | capability::OVERLAY
+        | capability::EVENTS
+        | capability::IL2CPP
+        | capability::DATA_PATHS
+        | capability::DIOXUS_UI
 }
 
 unsafe extern "C" fn host_data_path(rel: *const c_char, out_buf: *mut c_char, buf_len: usize) -> usize {

@@ -9,7 +9,7 @@ use std::sync::atomic::{AtomicU8, Ordering};
 use serde::{Deserialize, Serialize};
 
 /// A toggleable metric shown inside each per-uma widget.
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
 pub enum Metric {
     Hp = 0,

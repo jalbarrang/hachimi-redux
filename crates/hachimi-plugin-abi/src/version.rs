@@ -24,7 +24,10 @@
 ///
 /// v14: added `gui_overlay_get_visible` (query an overlay's current visibility),
 /// letting plugins implement a toggle alongside `gui_overlay_set_visible`.
-pub const API_VERSION: i32 = 14;
+///
+/// v15: host advertises [`crate::capability::DIOXUS_UI`] — plugins may embed Dioxus
+/// rsx into the shared `egui::Ui` via `hachimi-plugin-sdk::UiMount`.
+pub const API_VERSION: i32 = 15;
 
 /// Number of function pointers in `Vtable`.
 pub const VTABLE_SLOT_COUNT: usize = 47;

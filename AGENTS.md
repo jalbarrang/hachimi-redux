@@ -6,15 +6,15 @@
 - **Platform:** Windows Steam the Honse game only (no Android).
 - **Core:** `cargo build --release -p hachimi` → `hachimi.dll` → game dir as `cri_mana_vpx.dll`.
 - **Plugins:** `cargo build --release -p hachimi-training-tracker` → game dir; `config.json` → `windows.load_libraries`.
-- **Menu preview (no game):** `cargo run -p hachimi --example menu_preview --features dev-harness` renders the real Control Center shell + config tabs in an eframe window (default config; Plugins/About are stubs). Lives behind the `dev-harness` feature; never built by CI/default.
-- **UI / hooks:** egui 0.33, `egui-directx11`, minhook, pelite, `windows` crate.
+- **Menu preview (no game):** `cargo run -p hachimi --example menu_preview --features dev-harness` renders the Dioxus Control Center in an eframe window (default config; Plugins/About are stubs). Lives behind the `dev-harness` feature; never built by CI/default.
+- **UI / hooks:** Dioxus 0.7 + `dioxus-egui` + `honse-ui` (authoring) → egui 0.34 + `egui_taffy` → `egui-directx11` (paint); minhook, pelite, `windows` crate.
 - **Workspace:** default members exclude `apps/installer` (use `-p hachimi_installer` after artifact staging).
 - **CI commands:** `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`, `cargo test --lib` (no game process). Run fmt/clippy in `plugins/training-tracker/` when editing that crate.
 
 ## Project facts
 
 - Fork of Hachimi; Windows/Steam translation & enhancement mod for the Honse game.
-- Plugin host API **v9** (`hachimi_plugin_abi::API_VERSION`). Upstream Hachimi plugins do not load; use DLLs built from this repo only.
+- Plugin host API **v15** (`hachimi_plugin_abi::API_VERSION`; `capability::DIOXUS_UI` for Dioxus embed). Upstream Hachimi plugins do not load; use DLLs built from this repo only.
 - Default game dir: `C:\Program Files (x86)\Steam\steamapps\common\UmamusumePrettyDerby`.
 - Stock `cri_mana_vpx.dll` → back up once as `cri_mana_vpx.dll.backup`; mod replaces `cri_mana_vpx.dll`.
 - Settings: `config.json` in the game **data** directory (not the install folder).

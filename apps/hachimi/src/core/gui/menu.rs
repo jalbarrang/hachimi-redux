@@ -3,48 +3,40 @@
 //! The shell layout lives in [`super::shell`]; tab bodies live in `gui/tabs/`
 //! and `window/config_editor.rs`. This module wires the shell to `Gui` state.
 
-use std::borrow::Cow;
-
 use super::scale::get_scale;
-use super::shell::{render_control_center, ControlCenterHost, ControlTab};
-use super::window::{BoxedWindow, ConfigEditor, ConfigEditorTab};
 use super::Gui;
 
-impl ControlCenterHost for Gui {
-    fn active_tab(&self) -> ControlTab {
-        self.menu_tab
-    }
-
-    fn set_active_tab(&mut self, tab: ControlTab) {
-        self.menu_tab = tab;
-    }
-
-    fn config_editor(&mut self) -> &mut ConfigEditor {
-        &mut self.config_editor
-    }
-
-    fn draw_icon(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
-        ui.add(Self::icon(ctx));
-    }
-
-    fn draw_body(&mut self, ui: &mut egui::Ui, ctx: &egui::Context, tab: ControlTab) {
-        let mut show_notification: Option<Cow<'_, str>> = None;
-        let mut show_window: Option<BoxedWindow> = None;
-
-        match tab {
-            ControlTab::General => self.config_editor.ui_body(ui, ctx, ConfigEditorTab::General),
-            ControlTab::Graphics => self.config_editor.ui_body(ui, ctx, ConfigEditorTab::Graphics),
-            ControlTab::Gameplay => self.config_editor.ui_body(ui, ctx, ConfigEditorTab::Gameplay),
-            ControlTab::Hotkeys => self.config_editor.ui_body(ui, ctx, ConfigEditorTab::Hotkeys),
-            ControlTab::Translations => self.run_translations_tab(ui, ctx, &mut show_notification),
-            ControlTab::Plugins => self.run_plugins_tab(ui, ctx, &mut show_notification),
-            ControlTab::About => self.run_about_tab(ui, ctx, &mut show_notification, &mut show_window),
+impl Gui {
+    pub(crate) fn draw_translations_actions(
+        &mut self,
+        ui: &mut egui::Ui,
+        config: &std::rc::Rc<std::cell::RefCell<crate::core::hachimi::Config>>,
+    ) {
+        let mut note: Option<std::borrow::Cow<'_, str>> = None;
+        *self.config_editor.config_mut() = config.borrow().clone();
+        let ctx = self.context.clone();
+        self.run_translations_tab(ui, &ctx, &mut note);
+        *config.borrow_mut() = self.config_editor.config().clone();
+        if let Some(n) = note {
+            self.show_notification(n.as_ref());
         }
-        if let Some(content) = show_notification {
-            self.show_notification(content.as_ref());
+    }
+
+    pub(crate) fn draw_plugins_tab(&mut self, ui: &mut egui::Ui) {
+        let mut note = None;
+        let ctx = self.context.clone();
+        self.run_plugins_tab(ui, &ctx, &mut note);
+    }
+
+    pub(crate) fn draw_about_tab(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
+        let mut note = None;
+        let mut window = None;
+        self.run_about_tab(ui, ctx, &mut note, &mut window);
+        if let Some(n) = note {
+            self.show_notification(n.as_ref());
         }
-        if let Some(window) = show_window {
-            self.show_window(window);
+        if let Some(w) = window {
+            self.show_window(w);
         }
     }
 }
@@ -70,7 +62,7 @@ impl Gui {
 
         let mut keep_open = true;
         let response = egui::Modal::new(egui::Id::new("hachimi_control_center")).show(&ctx, |ui| {
-            keep_open = render_control_center(ui, &ctx, scale, self);
+            keep_open = super::shell::render_control_center_gui(self, ui, &ctx, scale);
         });
 
         // Close on backdrop click / Escape, or via the header button.
