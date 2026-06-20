@@ -350,6 +350,10 @@ impl Hachimi {
                 info!("Plugin init failed");
             }
         }
+
+        // Bring up in-core (first-party) modules in the same phase as cdylib plugins,
+        // through the shared `CoreModule` lifecycle.
+        crate::core::plugin::module::bootstrap();
     }
 
     pub fn get_data_path<P: AsRef<Path>>(&self, rel_path: P) -> PathBuf {

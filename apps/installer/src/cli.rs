@@ -30,7 +30,6 @@ struct Args {
     pre_install: bool,
     post_install: bool,
     enable_dotlocal: bool,
-    with_training_tracker: bool,
 }
 
 enum Command {
@@ -91,7 +90,9 @@ impl Args {
                 "--pre-install" => args.pre_install = true,
                 "--post-install" => args.post_install = true,
                 "--enable-dotlocal" => args.enable_dotlocal = true,
-                "--with-training-tracker" => args.with_training_tracker = true,
+                // Accepted for backward compatibility with older host updaters that
+                // still pass it; Training Tracker now ships in-core, so it's a no-op.
+                "--with-training-tracker" => {}
                 "--" => in_game_args = true,
 
                 _ => {
@@ -215,16 +216,10 @@ pub fn run() -> Result<bool, installer::Error> {
                 if args.post_install {
                     res = res.and_then(|_| installer.post_install());
                 }
-                if args.with_training_tracker {
-                    #[cfg(feature = "training_tracker")]
-                    {
-                        res = res.and_then(|_| installer.install_training_tracker());
-                    }
-                    #[cfg(not(feature = "training_tracker"))]
-                    {
-                        // Installer built without the bundled plugin; nothing to install.
-                    }
-                }
+                // Training Tracker is now compiled into hachimi.dll. Remove any stale
+                // standalone plugin DLL + its `load_libraries` entry left by an older
+                // installer so the host doesn't warn about an unknown plugin.
+                res = res.and_then(|_| installer.uninstall_training_tracker());
                 res
             }
             Command::Uninstall => installer

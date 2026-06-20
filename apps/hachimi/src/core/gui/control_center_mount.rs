@@ -212,6 +212,20 @@ fn register_native_tab(
                 });
             }
         }
+        #[cfg(feature = "training-tracker")]
+        ControlTab::TrainingTracker => {
+            if preview_stubs {
+                set_native_draw(|ui| {
+                    super::stub::stub_tab(ui, "Training Tracker", "Training Tracker needs the live game.");
+                });
+            } else {
+                set_native_draw(|ui| {
+                    // SAFETY: HOST_GUI points at the live `Gui` while the native tab draws.
+                    let gui = unsafe { &mut *HOST_GUI.get() };
+                    gui.draw_training_tracker_tab(ui);
+                });
+            }
+        }
         ControlTab::Graphics => {
             #[cfg(target_os = "windows")]
             {

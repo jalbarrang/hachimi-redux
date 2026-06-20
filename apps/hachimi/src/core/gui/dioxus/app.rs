@@ -5,6 +5,8 @@ use honse_ui::{theme, Button, ButtonVariant, Image, TabBar, TabItem};
 use rust_i18n::t;
 
 use super::context::{bind_action, ControlCenterCtx, HostAction};
+#[cfg(feature = "training-tracker")]
+use super::tabs::training_tracker::TrainingTrackerTab;
 use super::tabs::{
     about::AboutTab, gameplay::GameplayTab, general::GeneralTab, graphics::GraphicsTab, hotkeys::HotkeysTab,
     plugins::PluginsTab, translations::TranslationsTab,
@@ -26,7 +28,8 @@ fn ControlCenterShell() -> Element {
     let shell_h = (ctx.height)();
     let footer_on = tab.edits_config();
 
-    let tabs = vec![
+    #[allow(unused_mut)]
+    let mut tabs = vec![
         TabItem {
             id: "general".into(),
             label: t!("config_editor.general_tab").to_string(),
@@ -56,6 +59,15 @@ fn ControlCenterShell() -> Element {
             label: "\u{f129} About".to_string(),
         },
     ];
+
+    #[cfg(feature = "training-tracker")]
+    tabs.insert(
+        5,
+        TabItem {
+            id: "training-tracker".into(),
+            label: "\u{f201} Training Tracker".to_string(),
+        },
+    );
 
     let active_id = tab_id(tab);
 
@@ -128,6 +140,8 @@ fn ControlCenterShell() -> Element {
                         ControlTab::Translations => rsx! { TranslationsTab {} },
                         ControlTab::Plugins => rsx! { PluginsTab {} },
                         ControlTab::About => rsx! { AboutTab {} },
+                        #[cfg(feature = "training-tracker")]
+                        ControlTab::TrainingTracker => rsx! { TrainingTrackerTab {} },
                     }
                 }
             }
@@ -163,6 +177,8 @@ fn tab_id(tab: ControlTab) -> String {
         ControlTab::Translations => "translations",
         ControlTab::Plugins => "plugins",
         ControlTab::About => "about",
+        #[cfg(feature = "training-tracker")]
+        ControlTab::TrainingTracker => "training-tracker",
     }
     .into()
 }
@@ -175,6 +191,8 @@ fn parse_tab(id: &str) -> ControlTab {
         "translations" => ControlTab::Translations,
         "plugins" => ControlTab::Plugins,
         "about" => ControlTab::About,
+        #[cfg(feature = "training-tracker")]
+        "training-tracker" => ControlTab::TrainingTracker,
         _ => ControlTab::General,
     }
 }

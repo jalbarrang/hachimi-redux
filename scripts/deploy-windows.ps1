@@ -1,19 +1,19 @@
 <#
 .SYNOPSIS
-    Copy release-built Hachimi core and/or training-tracker plugin into the game directory.
+    Copy release-built Hachimi core and/or its cdylib plugins into the game directory.
 
 .DESCRIPTION
     By default copies:
-    - target\release\hachimi.dll → <GameDir>\cri_mana_vpx.dll (proxy)
-    - target\release\hachimi_training_tracker.dll → <GameDir>\
+    - target\release\hachimi.dll → <GameDir>\cri_mana_vpx.dll (proxy; Training Tracker
+      is compiled into this)
+    - target\release\hachimi_race_hud.dll → <GameDir>\  (hot-swappable SDK dogfood)
     - target\release\hachimi_debug_viewer.dll → <GameDir>\  (dev-only diagnostics)
-    - target\release\hachimi_race_hud.dll → <GameDir>\
 
-    With -PluginOnly, copies the plugins (+ skill_grades.json) but skips the proxy.
+    With -PluginOnly, copies the race-hud plugin but skips the proxy.
     Never modifies cri_mana_vpx.dll.backup.
 
-    -HotSwap only swaps the training-tracker plugin via IPC; the debug-viewer and
-    race-hud plugins are deployed only in non-HotSwap runs (need a game restart).
+    -HotSwap only swaps the race-hud plugin via IPC; the debug-viewer plugin is
+    deployed only in non-HotSwap runs (need a game restart).
 
     With -PluginOnly -HotSwap, unloads the plugin via Hachimi IPC (requires
     enable_ipc in config.json), copies the new DLL, then reloads it — no game restart.
@@ -23,12 +23,11 @@
     Defaults to $env:HACHIMI_GAME_DIR or the standard Steam path.
 
 .PARAMETER Build
-    Run `cargo build --release` before copying. Builds hachimi and the plugin by
-    default; with -PluginOnly, builds only hachimi-training-tracker.
+    Run `cargo build --release` before copying. Builds hachimi and the plugins by
+    default; with -PluginOnly, builds only hachimi-race-hud.
 
 .PARAMETER PluginOnly
-    Deploy only hachimi_training_tracker.dll (and skill_grades.json). Skips the core
-    proxy (cri_mana_vpx.dll).
+    Deploy only hachimi_race_hud.dll. Skips the core proxy (cri_mana_vpx.dll).
 
 .PARAMETER HotSwap
     Requires -PluginOnly. Unload the plugin via IPC, copy, reload via IPC. Requires
@@ -64,12 +63,12 @@ $ErrorActionPreference = "Stop"
 $RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $TargetDir = Join-Path $RepoRoot "target\release"
 $HostDll = Join-Path $TargetDir "hachimi.dll"
-$PluginDll = Join-Path $TargetDir "hachimi_training_tracker.dll"
-$PluginFileName = "hachimi_training_tracker.dll"
+# Training Tracker now ships inside hachimi.dll. The hot-swappable cdylib plugin is
+# race-hud (the SDK dogfood); debug-viewer is the dev-only diagnostics plugin.
+$PluginDll = Join-Path $TargetDir "hachimi_race_hud.dll"
+$PluginFileName = "hachimi_race_hud.dll"
 $DebugViewerDll = Join-Path $TargetDir "hachimi_debug_viewer.dll"
 $DebugViewerFileName = "hachimi_debug_viewer.dll"
-$RaceHudDll = Join-Path $TargetDir "hachimi_race_hud.dll"
-$RaceHudFileName = "hachimi_race_hud.dll"
 $ProxyName = "cri_mana_vpx.dll"
 $BackupName = "cri_mana_vpx.dll.backup"
 $IpcUrl = "http://127.0.0.1:50433"
@@ -183,12 +182,12 @@ if ($Build) {
             cargo build --release -p hachimi
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
         }
-        cargo build --release -p hachimi-training-tracker
-        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-        cargo build --release -p hachimi-debug-viewer
-        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
         cargo build --release -p hachimi-race-hud
         if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+        if (-not $PluginOnly) {
+            cargo build --release -p hachimi-debug-viewer
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+        }
     }
     finally {
         Pop-Location
@@ -198,9 +197,10 @@ if ($Build) {
 if (-not $PluginOnly) {
     Require-File $HostDll "Run: cargo build --release -p hachimi`nOr pass -Build"
 }
-Require-File $PluginDll "Run: cargo build --release -p hachimi-training-tracker`nOr pass -Build"
-Require-File $DebugViewerDll "Run: cargo build --release -p hachimi-debug-viewer`nOr pass -Build"
-Require-File $RaceHudDll "Run: cargo build --release -p hachimi-race-hud`nOr pass -Build"
+Require-File $PluginDll "Run: cargo build --release -p hachimi-race-hud`nOr pass -Build"
+if (-not $PluginOnly) {
+    Require-File $DebugViewerDll "Run: cargo build --release -p hachimi-debug-viewer`nOr pass -Build"
+}
 
 $GameDir = $GameDir.TrimEnd('\')
 if (-not (Test-Path -LiteralPath $GameDir -PathType Container)) {
@@ -215,7 +215,6 @@ $ProxyPath = Join-Path $GameDir $ProxyName
 $BackupPath = Join-Path $GameDir $BackupName
 $PluginDest = Join-Path $GameDir $PluginFileName
 $DebugViewerDest = Join-Path $GameDir $DebugViewerFileName
-$RaceHudDest = Join-Path $GameDir $RaceHudFileName
 
 if (-not $PluginOnly) {
     if (-not (Test-Path -LiteralPath $BackupPath)) {
@@ -249,15 +248,13 @@ if (-not $PluginOnly) {
 }
 
 Copy-PluginDll -Source $PluginDll -Dest $PluginDest -HotSwap:$HotSwap
-Write-Host "  hachimi_training_tracker.dll  ->  hachimi_training_tracker.dll"
+Write-Host "  hachimi_race_hud.dll  ->  hachimi_race_hud.dll"
 
 if ($HotSwap) {
     Reload-PluginViaIpc -Name $PluginFileName
 } else {
     Copy-PluginDll -Source $DebugViewerDll -Dest $DebugViewerDest
     Write-Host "  hachimi_debug_viewer.dll  ->  hachimi_debug_viewer.dll"
-    Copy-PluginDll -Source $RaceHudDll -Dest $RaceHudDest
-    Write-Host "  hachimi_race_hud.dll  ->  hachimi_race_hud.dll"
 }
 
 # Training-tracker data resources. At runtime the host downloads these into the
@@ -270,7 +267,7 @@ if (-not (Test-Path -LiteralPath $DataDir -PathType Container)) {
   New-Item -ItemType Directory -Path $DataDir -Force | Out-Null
 }
 
-$SkillGradesSrc = Join-Path $PSScriptRoot "..\plugins\training-tracker\assets\skill_grades.json"
+$SkillGradesSrc = Join-Path $PSScriptRoot "..\apps\hachimi\src\core\modules\training_tracker\assets\skill_grades.json"
 if (Test-Path -LiteralPath $SkillGradesSrc) {
   Copy-Item -LiteralPath $SkillGradesSrc -Destination (Join-Path $DataDir "skill_grades.json") -Force
   Write-Host "  skill_grades.json  ->  hachimi\skill_grades.json"
@@ -278,7 +275,7 @@ if (Test-Path -LiteralPath $SkillGradesSrc) {
   Write-Host "  (skill_grades.json missing; run: cargo run -p fetch-master-db; cargo run -p skill-grades)" -ForegroundColor Yellow
 }
 
-$CourseParamsSrc = Join-Path $PSScriptRoot "..\plugins\training-tracker\assets\course_params.json"
+$CourseParamsSrc = Join-Path $PSScriptRoot "..\apps\hachimi\src\core\modules\training_tracker\assets\course_params.json"
 if (Test-Path -LiteralPath $CourseParamsSrc) {
   Copy-Item -LiteralPath $CourseParamsSrc -Destination (Join-Path $DataDir "course_params.json") -Force
   Write-Host "  course_params.json  ->  hachimi\course_params.json"
@@ -307,8 +304,9 @@ if (Test-Path -LiteralPath $IconsSrc -PathType Container) {
 }
 
 Write-Host ""
-Write-Host "Done. Ensure config.json lists the plugins under windows.load_libraries:" -ForegroundColor Cyan
-Write-Host '  "load_libraries": ["hachimi_training_tracker.dll", "hachimi_debug_viewer.dll", "hachimi_race_hud.dll"]'
+Write-Host "Done. Ensure config.json lists the cdylib plugins under windows.load_libraries:" -ForegroundColor Cyan
+Write-Host '  "load_libraries": ["hachimi_race_hud.dll", "hachimi_debug_viewer.dll"]'
+Write-Host "(Training Tracker is built into hachimi.dll — no load_libraries entry needed.)"
 if ($PluginOnly -and -not $HotSwap) {
     Write-Host ""
     Write-Host "If the game is already running, use -HotSwap or About -> Danger Zone -> Reload plugins." -ForegroundColor Cyan

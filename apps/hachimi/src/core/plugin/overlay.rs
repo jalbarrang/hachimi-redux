@@ -18,6 +18,9 @@ use std::{
 use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
 
+use std::sync::Arc;
+
+use super::callback::UiCallback;
 use super::types::GuiMenuSectionCallback;
 
 #[derive(Clone)]
@@ -25,8 +28,7 @@ pub(crate) struct PluginOverlay {
     pub(crate) handle: u64,
     pub(crate) owner: u32,
     pub(crate) id: String,
-    pub(crate) callback: GuiMenuSectionCallback,
-    pub(crate) userdata: usize,
+    pub(crate) callback: UiCallback,
     /// Render bare (no host title/collapse/close header, no window frame).
     pub(crate) chromeless: bool,
     /// Non-draggable: the panel keeps its persisted position and can't be moved,
@@ -132,6 +134,23 @@ pub fn register_plugin_overlay_ex(
     callback: GuiMenuSectionCallback,
     userdata: *mut c_void,
 ) -> u64 {
+    push_overlay(
+        id,
+        flags,
+        UiCallback::C {
+            func: callback,
+            userdata: userdata as usize,
+        },
+    )
+}
+
+/// In-core (`CoreModule`) overlay registration with a Rust closure.
+#[allow(dead_code)] // first in-core caller lands with the training-tracker port
+pub(crate) fn register_overlay_rust(id: String, flags: u64, callback: Arc<dyn Fn(&mut egui::Ui) + Send + Sync>) -> u64 {
+    push_overlay(id, flags, UiCallback::Rust(callback))
+}
+
+fn push_overlay(id: String, flags: u64, callback: UiCallback) -> u64 {
     OVERLAY_UI
         .lock()
         .expect("lock poisoned")
@@ -144,7 +163,6 @@ pub fn register_plugin_overlay_ex(
         owner: super::current_owner(),
         id,
         callback,
-        userdata: userdata as usize,
         chromeless: flags & hachimi_plugin_abi::overlay_flags::CHROMELESS != 0,
         fixed: flags & hachimi_plugin_abi::overlay_flags::FIXED != 0,
     });

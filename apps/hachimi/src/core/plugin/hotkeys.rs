@@ -12,7 +12,7 @@
 
 use std::ffi::c_void;
 use std::panic::{catch_unwind, AssertUnwindSafe};
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
 use once_cell::sync::Lazy;
 
@@ -65,12 +65,16 @@ impl From<Chord> for HotkeyBind {
 }
 
 /// What runs when a hotkey fires.
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 enum Action {
     /// A built-in host action.
     Host(fn()),
     /// A plugin-provided C callback.
     Plugin { callback: GuiMenuCallback, userdata: usize },
+    /// An in-core [`super::CoreModule`] Rust closure. (First user lands with the
+    /// training-tracker port.)
+    #[allow(dead_code)]
+    Module(Arc<dyn Fn() + Send + Sync>),
 }
 
 struct Hotkey {
@@ -120,6 +124,13 @@ fn register(id: String, label: String, default: Chord, action: Action) -> u64 {
 /// Register a built-in host hotkey (owner 0).
 pub fn register_host(id: &str, label: &str, default: Chord, action: fn()) -> u64 {
     register(id.to_owned(), label.to_owned(), default, Action::Host(action))
+}
+
+/// Register an in-core (`CoreModule`) hotkey with a Rust closure. Attributed to the
+/// current owner so it is removed on teardown.
+#[allow(dead_code)] // first in-core caller lands with the training-tracker port
+pub(crate) fn register_module(id: String, label: String, default: Chord, callback: Arc<dyn Fn() + Send + Sync>) -> u64 {
+    register(id, label, default, Action::Module(callback))
 }
 
 /// Register a plugin hotkey. Attributed to the current owner so it is removed on
@@ -208,7 +219,7 @@ pub fn dispatch(pressed: Chord) -> bool {
         hotkeys
             .iter()
             .filter(|h| effective_chord(&h.id, h.default).matches(pressed))
-            .map(|h| (h.owner, h.action))
+            .map(|h| (h.owner, h.action.clone()))
             .collect()
     };
 
@@ -225,6 +236,11 @@ pub fn dispatch(pressed: Chord) -> bool {
                 let _scope = OwnerScope::enter(owner);
                 let _ = catch_unwind(AssertUnwindSafe(|| callback(userdata as *mut c_void)))
                     .inspect_err(|_| error!("plugin hotkey callback panicked (owner {})", owner));
+            }
+            Action::Module(callback) => {
+                let _scope = OwnerScope::enter(owner);
+                let _ = catch_unwind(AssertUnwindSafe(|| callback()))
+                    .inspect_err(|_| error!("module hotkey callback panicked (owner {})", owner));
             }
         }
     }

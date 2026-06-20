@@ -5,4 +5,6 @@ pub(crate) mod graphics;
 pub(crate) mod hotkeys;
 pub(crate) mod layout;
 pub(crate) mod plugins;
+#[cfg(feature = "training-tracker")]
+pub(crate) mod training_tracker;
 pub(crate) mod translations;

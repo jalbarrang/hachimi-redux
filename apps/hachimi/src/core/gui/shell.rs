@@ -17,6 +17,8 @@ pub(crate) enum ControlTab {
     Gameplay,
     Hotkeys,
     Translations,
+    #[cfg(feature = "training-tracker")]
+    TrainingTracker,
     Plugins,
     About,
 }

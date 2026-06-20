@@ -13,16 +13,14 @@ use windows::{
     Win32::{
         Foundation::{HWND, LPARAM, WPARAM},
         System::LibraryLoader::GetModuleHandleW,
-        UI::Controls::BST_CHECKED,
         UI::{
             Input::KeyboardAndMouse::EnableWindow,
             WindowsAndMessaging::{
                 CreateDialogParamW, DestroyIcon, DispatchMessageW, GetDlgItem, GetMessageW, GetWindowLongPtrW,
                 LoadIconW, MessageBoxW, PostQuitMessage, SendMessageW, SetWindowLongPtrW, SetWindowTextW, ShowWindow,
-                TranslateMessage, BM_GETCHECK, CBN_SELCHANGE, CB_ADDSTRING, CB_DELETESTRING, CB_GETCURSEL,
-                CB_INSERTSTRING, CB_SETCURSEL, GWLP_USERDATA, ICON_BIG, IDOK, IDYES, MB_ICONERROR, MB_ICONINFORMATION,
-                MB_ICONWARNING, MB_OK, MB_OKCANCEL, MB_YESNO, MSG, SW_SHOW, WM_CLOSE, WM_COMMAND, WM_INITDIALOG,
-                WM_SETICON,
+                TranslateMessage, CBN_SELCHANGE, CB_ADDSTRING, CB_DELETESTRING, CB_GETCURSEL, CB_INSERTSTRING,
+                CB_SETCURSEL, GWLP_USERDATA, ICON_BIG, IDOK, IDYES, MB_ICONERROR, MB_ICONINFORMATION, MB_ICONWARNING,
+                MB_OK, MB_OKCANCEL, MB_YESNO, MSG, SW_SHOW, WM_CLOSE, WM_COMMAND, WM_INITDIALOG, WM_SETICON,
             },
         },
     },
@@ -63,14 +61,6 @@ unsafe fn localize_controls(dialog: HWND) {
     if let Ok(tt) = GetDlgItem(dialog, IDC_TRAINING_TRACKER) {
         _ = SetWindowTextW(tt, &HSTRING::from(t!("gui.training_tracker")));
     }
-}
-
-/// Whether the Training Tracker checkbox is currently ticked.
-unsafe fn training_tracker_checked(dialog: HWND) -> bool {
-    let Ok(cb) = GetDlgItem(dialog, IDC_TRAINING_TRACKER) else {
-        return false;
-    };
-    SendMessageW(cb, BM_GETCHECK, WPARAM(0), LPARAM(0)).0 as u32 == BST_CHECKED.0
 }
 
 pub fn run() -> Result<(), windows::core::Error> {
@@ -256,19 +246,11 @@ unsafe extern "system" fn dlg_proc(dialog: HWND, message: u32, wparam: WPARAM, l
 
             localize_controls(dialog);
 
-            // Training Tracker checkbox: default-on when the plugin is bundled,
-            // otherwise hide the control entirely.
+            // Training Tracker now ships inside hachimi.dll, so the legacy
+            // "install the plugin?" checkbox is obsolete — hide it.
             if let Ok(tt) = GetDlgItem(dialog, IDC_TRAINING_TRACKER) {
-                #[cfg(feature = "training_tracker")]
-                {
-                    use windows::Win32::UI::WindowsAndMessaging::BM_SETCHECK;
-                    SendMessageW(tt, BM_SETCHECK, WPARAM(BST_CHECKED.0 as usize), LPARAM(0));
-                }
-                #[cfg(not(feature = "training_tracker"))]
-                {
-                    use windows::Win32::UI::WindowsAndMessaging::{ShowWindow, SW_HIDE};
-                    _ = ShowWindow(tt, SW_HIDE);
-                }
+                use windows::Win32::UI::WindowsAndMessaging::{ShowWindow, SW_HIDE};
+                _ = ShowWindow(tt, SW_HIDE);
             }
 
             // Init language combo
@@ -453,20 +435,13 @@ unsafe extern "system" fn dlg_proc(dialog: HWND, message: u32, wparam: WPARAM, l
                             MB_ICONWARNING | MB_OK,
                         );
                     }
-                    let want_tracker = training_tracker_checked(dialog);
                     match installer
                         .install()
                         .and_then(|_| installer.post_install())
-                        .and_then(|_| {
-                            #[cfg(feature = "training_tracker")]
-                            if want_tracker {
-                                return installer.install_training_tracker();
-                            }
-                            // Honor an unchecked box (or a build without the plugin) by
-                            // removing any previously-installed tracker.
-                            let _ = want_tracker;
-                            installer.uninstall_training_tracker()
-                        }) {
+                        // Training Tracker is in-core now; strip any stale standalone
+                        // plugin DLL + load_libraries entry left by an older installer.
+                        .and_then(|_| installer.uninstall_training_tracker())
+                    {
                         Ok(_) => {
                             MessageBoxW(
                                 dialog,

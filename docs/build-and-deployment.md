@@ -6,15 +6,14 @@ The repo is a Cargo workspace with a virtual root manifest and dedicated folders
 `apps/*` (deployables: `apps/hachimi`, `apps/installer`), `crates/*` (libraries),
 `plugins/*` (plugins). Build from the repo root:
 
-- **Core**: `cargo build --release -p hachimi` → `target/release/hachimi.dll`
+- **Core**: `cargo build --release -p hachimi` → `target/release/hachimi.dll` (the
+  Training Tracker compiles in via the default `training-tracker` feature)
 - **Plugin ABI tests**: `cargo test -p hachimi-plugin-abi`
-- **Training tracker plugin**: `cargo build --release -p hachimi-training-tracker` → `target/release/hachimi_training_tracker.dll`
+- **cdylib plugins**: `cargo build --release -p hachimi-race-hud` (or `-debug-viewer`)
 - **Installer** (Windows): vendored MIT fork in `apps/installer/`. It's kept out of
   `default-members`, so build it explicitly and only after staging the binaries it
-  embeds (`hachimi.dll`, `cellar.dll`, `FunnyHoney.exe`, and — with the
-  `training_tracker` feature — `hachimi_training_tracker.dll` + `skill_grades.json`)
-  into `apps/installer/`:
-  `cargo build --release -p hachimi_installer --features compress_bin,training_tracker`
+  embeds (`hachimi.dll`, `cellar.dll`, `FunnyHoney.exe`) into `apps/installer/`:
+  `cargo build --release -p hachimi_installer --features compress_bin`
   → `target/release/hachimi_installer.exe`. The release workflow does this staging
   automatically; those embedded files are gitignored.
 
@@ -39,7 +38,7 @@ $env:HACHIMI_GAME_DIR = "D:\path\to\UmamusumePrettyDerby"
 .\scripts\deploy-windows.ps1 -Build
 ```
 
-The script copies `hachimi.dll` → `cri_mana_vpx.dll` and `hachimi_training_tracker.dll` into the game directory. It never modifies `cri_mana_vpx.dll.backup`.
+The script copies `hachimi.dll` → `cri_mana_vpx.dll` (Training Tracker built in) and the cdylib plugin DLLs into the game directory. It never modifies `cri_mana_vpx.dll.backup`.
 
 Plugin-only deploy (skip the core proxy):
 
@@ -58,7 +57,7 @@ After updating the host (for IPC unload/reload support), deploy core once and re
 ### Manual
 
 - **Deploy core**: Copy `target/release/hachimi.dll` as `C:/Program Files (x86)/Steam/steamapps/common/UmamusumePrettyDerby/cri_mana_vpx.dll`
-- **Deploy plugin**: Copy `target/release/hachimi_training_tracker.dll` to the game directory root
+- **Deploy a cdylib plugin**: Copy `target/release/hachimi_race_hud.dll` to the game directory root
 - **Config**: `config.json` in the game data directory. `menu_open_key: 68` (D key). Plugins listed in `windows.load_libraries`.
 
 ## Versioning & Releases

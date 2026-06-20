@@ -4,7 +4,6 @@
 //! handled by the input gate). Positions/collapse/visibility persist via the
 //! overlay registry.
 
-use std::os::raw::c_void;
 use std::panic::{self, AssertUnwindSafe};
 
 use crate::core::plugin::overlay;
@@ -151,7 +150,7 @@ impl Gui {
             ui.set_opacity(opacity);
             let _scope = crate::core::plugin::OwnerScope::enter(ov.owner);
             let _ = panic::catch_unwind(AssertUnwindSafe(|| {
-                (ov.callback)(ui as *mut egui::Ui as *mut c_void, ov.userdata as *mut c_void);
+                ov.callback.invoke(ui);
             }))
             .inspect_err(|_| {
                 error!("plugin overlay callback panicked: {}", ov.id);
@@ -207,7 +206,7 @@ fn draw_panel(ui: &mut egui::Ui, ov: &overlay::PluginOverlay, title: &str, scale
 
     let _scope = crate::core::plugin::OwnerScope::enter(ov.owner);
     let _ = panic::catch_unwind(AssertUnwindSafe(|| {
-        (ov.callback)(ui as *mut egui::Ui as *mut c_void, ov.userdata as *mut c_void);
+        ov.callback.invoke(ui);
     }))
     .inspect_err(|_| {
         error!("plugin overlay callback panicked: {}", ov.id);

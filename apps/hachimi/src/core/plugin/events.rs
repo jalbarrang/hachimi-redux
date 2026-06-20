@@ -6,34 +6,48 @@
 //! in `catch_unwind` so a misbehaving plugin can't take down the host thread.
 
 use std::ffi::c_void;
-use std::panic::{catch_unwind, AssertUnwindSafe};
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
 use hachimi_plugin_abi::event;
 use hachimi_plugin_abi::{PluginEventFn, TrainingCommandEvent, ViewChangeEvent};
 use once_cell::sync::Lazy;
 
+use super::callback::EventCallback;
 use super::{current_owner, next_handle, OwnerScope};
 
 struct Subscription {
     handle: u64,
     owner: u32,
     event_id: u32,
-    callback: PluginEventFn,
-    userdata: usize,
+    callback: EventCallback,
 }
 
 static SUBSCRIPTIONS: Lazy<Mutex<Vec<Subscription>>> = Lazy::new(|| Mutex::new(Vec::new()));
 
 /// Register an event callback. Returns a non-zero handle.
 pub fn subscribe(event_id: u32, callback: PluginEventFn, userdata: *mut c_void) -> u64 {
+    push_subscription(
+        event_id,
+        EventCallback::C {
+            func: callback,
+            userdata: userdata as usize,
+        },
+    )
+}
+
+/// In-core (`CoreModule`) event subscription with a Rust closure.
+#[allow(dead_code)] // first in-core caller lands with the training-tracker port
+pub(crate) fn subscribe_rust(event_id: u32, callback: Arc<dyn Fn(u32, *const c_void) + Send + Sync>) -> u64 {
+    push_subscription(event_id, EventCallback::Rust(callback))
+}
+
+fn push_subscription(event_id: u32, callback: EventCallback) -> u64 {
     let handle = next_handle();
     SUBSCRIPTIONS.lock().expect("lock poisoned").push(Subscription {
         handle,
         owner: current_owner(),
         event_id,
         callback,
-        userdata: userdata as usize,
     });
     handle
 }
@@ -50,41 +64,37 @@ pub fn unsubscribe(handle: u64) {
 pub fn dispatch(event_id: u32, data: *const c_void) {
     // Snapshot matching callbacks, then release the lock before invoking so a
     // callback may safely (un)subscribe or call back into the host.
-    let targets: Vec<(u32, PluginEventFn, usize)> = {
+    let targets: Vec<(u32, EventCallback)> = {
         let subs = SUBSCRIPTIONS.lock().expect("lock poisoned");
         if subs.is_empty() {
             return;
         }
         subs.iter()
             .filter(|s| s.event_id == event_id)
-            .map(|s| (s.owner, s.callback, s.userdata))
+            .map(|s| (s.owner, s.callback.clone()))
             .collect()
     };
 
-    for (owner, callback, userdata) in targets {
+    for (owner, callback) in targets {
         // Attribute any registrations made from inside the callback to its plugin.
         let _scope = OwnerScope::enter(owner);
-        let _ = catch_unwind(AssertUnwindSafe(|| callback(event_id, data, userdata as *mut c_void)))
-            .inspect_err(|_| error!("plugin event callback panicked (event {})", event_id));
+        callback.invoke_catch(event_id, data);
     }
 }
 
 /// Dispatch `SHUTDOWN` to a single plugin's subscriptions, then drop all of that
 /// plugin's subscriptions. Used when unloading one plugin.
 pub(crate) fn shutdown_and_remove_owner(owner: u32) {
-    let targets: Vec<(PluginEventFn, usize)> = {
+    let targets: Vec<EventCallback> = {
         let subs = SUBSCRIPTIONS.lock().expect("lock poisoned");
         subs.iter()
             .filter(|s| s.owner == owner)
-            .map(|s| (s.callback, s.userdata))
+            .map(|s| s.callback.clone())
             .collect()
     };
 
-    for (callback, userdata) in targets {
-        let _ = catch_unwind(AssertUnwindSafe(|| {
-            callback(event::SHUTDOWN, std::ptr::null(), userdata as *mut c_void)
-        }))
-        .inspect_err(|_| error!("plugin SHUTDOWN callback panicked (owner {})", owner));
+    for callback in targets {
+        callback.invoke_catch(event::SHUTDOWN, std::ptr::null());
     }
 
     SUBSCRIPTIONS

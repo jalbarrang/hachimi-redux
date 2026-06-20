@@ -1834,6 +1834,7 @@ dependencies = [
  "egui_taffy",
  "fnv",
  "hachimi-plugin-abi",
+ "hachimi-telemetry",
  "honse-ui",
  "http",
  "image",
@@ -1914,20 +1915,6 @@ dependencies = [
  "prost",
  "prost-build",
  "protox",
- "serde",
- "serde_json",
-]
-
-[[package]]
-name = "hachimi-training-tracker"
-version = "0.2.0"
-dependencies = [
- "eframe",
- "egui_taffy",
- "hachimi-plugin-abi",
- "hachimi-plugin-sdk",
- "hachimi-telemetry",
- "png 0.17.16",
  "serde",
  "serde_json",
 ]

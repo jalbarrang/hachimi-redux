@@ -53,8 +53,9 @@ function Run-Gate {
 $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
 
 # ── Gate 1: Formatting ──────────────────────────────────────────
-Run-Gate "Rustfmt (core)" { cargo fmt --check }
-Run-Gate "Rustfmt (plugin)" { Push-Location plugins/training-tracker; cargo fmt --check; Pop-Location }
+# Workspace-root gates cover every default member (core + the race-hud / debug-viewer
+# plugins). Training Tracker is now an in-core module under apps/hachimi.
+Run-Gate "Rustfmt" { cargo fmt --check }
 
 # ── Gate 2: Supply chain ────────────────────────────────────────
 if (-not $Quick -and -not $SkipDeny) {
@@ -71,8 +72,7 @@ if (-not $Quick -and -not $SkipDeny) {
 if (-not $Quick -and -not $SkipMachete) {
     $macheteCmd = Get-Command cargo-machete -ErrorAction SilentlyContinue
     if ($macheteCmd) {
-        Run-Gate "cargo-machete (core)" { cargo machete }
-        Run-Gate "cargo-machete (plugin)" { Push-Location plugins/training-tracker; cargo machete; Pop-Location }
+        Run-Gate "cargo-machete" { cargo machete }
     } else {
         Write-Host ""
         Write-Host "  ⚠ SKIP: cargo-machete not installed (cargo install cargo-machete)" -ForegroundColor Yellow
@@ -80,31 +80,16 @@ if (-not $Quick -and -not $SkipMachete) {
 }
 
 # ── Gate 4: Clippy (zero warnings) ──────────────────────────────
-Run-Gate "Clippy (core — zero warnings)" {
+Run-Gate "Clippy (zero warnings)" {
     cargo clippy --all-targets -- -D warnings
-}
-Run-Gate "Clippy (plugin — zero warnings)" {
-    Push-Location plugins/training-tracker
-    cargo clippy --all-targets -- -D warnings
-    Pop-Location
 }
 
 # ── Gate 5: Tests ─────────────────────────────────────────────────────
-Run-Gate "Tests (core)" { cargo test --lib }
-Run-Gate "Tests (plugin)" {
-    Push-Location plugins/training-tracker
-    cargo test --lib
-    Pop-Location
-}
+Run-Gate "Tests" { cargo test --lib }
 
 # ── Gate 6: Type check ──────────────────────────────────────────
 if (-not $Quick) {
-    Run-Gate "Cargo check (core)" { cargo check --all-targets }
-    Run-Gate "Cargo check (plugin)" {
-        Push-Location plugins/training-tracker
-        cargo check --all-targets
-        Pop-Location
-    }
+    Run-Gate "Cargo check" { cargo check --all-targets }
 }
 
 # ── Summary ─────────────────────────────────────────────────────

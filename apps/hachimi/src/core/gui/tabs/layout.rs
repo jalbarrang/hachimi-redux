@@ -6,7 +6,6 @@
 use egui_taffy::taffy::prelude::{auto, length};
 use egui_taffy::{taffy, tui, Tui, TuiBuilderLogic};
 
-
 /// Usable width for native tab content: the width of the egui `Ui` that taffy
 /// assigned to this tab body. `max_rect` is the node's fixed allocated width —
 /// already inset by the body padding and any reserved scrollbar — and, unlike

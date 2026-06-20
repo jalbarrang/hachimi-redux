@@ -3,7 +3,6 @@
 //! selectable chips, and the selected page's callback is rendered below.
 
 use std::borrow::Cow;
-use std::ffi::c_void;
 use std::panic::{self, AssertUnwindSafe};
 
 use crate::core::gui::components as widgets;
@@ -47,9 +46,9 @@ impl Gui {
                             None => widgets::secondary_button(ui, item.label.clone()).clicked(),
                         };
                         if clicked {
-                            if let Some(callback) = item.callback {
+                            if let Some(callback) = &item.callback {
                                 let _ = panic::catch_unwind(AssertUnwindSafe(|| {
-                                    callback(item.userdata as *mut c_void);
+                                    callback.invoke();
                                 }))
                                 .inspect_err(|_| error!("plugin menu item callback panicked: {}", item.label));
                             }
@@ -115,7 +114,7 @@ impl Gui {
 
         let _scope = OwnerScope::enter(section.owner);
         let _ = panic::catch_unwind(AssertUnwindSafe(|| {
-            (section.callback)(ui as *mut egui::Ui as *mut c_void, section.userdata as *mut c_void);
+            section.callback.invoke(ui);
         }))
         .inspect_err(|_| error!("plugin menu section callback panicked"));
     }

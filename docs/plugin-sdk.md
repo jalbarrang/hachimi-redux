@@ -2,7 +2,7 @@
 
 Hachimi plugins are native shared libraries (`.dll`) loaded at runtime. They talk to the host through a C ABI vtable, but you almost never touch it directly: the **`hachimi-plugin-sdk`** crate wraps the vtable in a safe `Sdk` handle, and the **`#[hachimi_plugin]`** attribute macro generates the C entry points for you.
 
-The [`training-tracker`](../plugins/training-tracker/) plugin is the reference implementation and is used as the example throughout this guide.
+The [`race-hud`](../plugins/race-hud/) plugin is the reference cdylib implementation and the SDK dogfood. (Training Tracker was historically the reference but now ships **in-core** — compiled into `hachimi.dll` as a `CoreModule` under `apps/hachimi/src/core/modules/training_tracker/` — so it no longer uses the cdylib SDK. The `training-tracker`-named snippets below are kept as illustrative examples of the SDK surface.)
 
 ## Architecture
 
@@ -35,8 +35,8 @@ hachimi-plugin-sdk = { git = "https://github.com/jalbarrang/hachimi-redux", tag 
 hachimi-plugin-abi = { git = "https://github.com/jalbarrang/hachimi-redux", tag = "sdk-v0.1.0" }
 ```
 
-> **In-tree plugins** (inside this workspace, like `training-tracker`) use `path =`
-> dependencies instead — see `plugins/training-tracker/Cargo.toml`. The git form above
+> **In-tree plugins** (inside this workspace, like `race-hud`) use `path =`
+> dependencies instead — see `plugins/race-hud/Cargo.toml`. The git form above
 > is for external plugins. See [plugin-sdk-release.md](plugin-sdk-release.md) for the
 > tag scheme and the egui-version-match requirement.
 

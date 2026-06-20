@@ -500,26 +500,12 @@ impl Installer {
         Some(self.install_dir.as_ref()?.join(TRACKING_TRACKER_DLL))
     }
 
-    /// Install the Training Tracker plugin: drop the DLL into the game root and add
-    /// it to `windows.load_libraries` in `config.json`. The plugin's data resources
-    /// (`skill_grades.json` / `course_params.json`) are **not** bundled here — the
-    /// host downloads them into the game data dir on launch (see the `hosted_data`
-    /// TRACKER sync), the same as the GameTora catalog.
-    #[cfg(feature = "training_tracker")]
-    pub fn install_training_tracker(&self) -> Result<(), Error> {
-        let dll_path = self.get_tracker_dll_path().ok_or(Error::NoInstallDir)?;
-
-        #[cfg(feature = "compress_bin")]
-        std::fs::write(&dll_path, include_bytes_zstd!("hachimi_training_tracker.dll", 19))?;
-        #[cfg(not(feature = "compress_bin"))]
-        std::fs::write(&dll_path, include_bytes!("../hachimi_training_tracker.dll").as_slice())?;
-
-        self.set_plugin_enabled(TRACKING_TRACKER_DLL, true)
-    }
-
-    /// Remove the Training Tracker plugin: delete its DLL and strip the
-    /// `load_libraries` entry. Missing files are ignored. The host-downloaded data
-    /// resources live in the game data dir and are left as harmless cache.
+    /// Remove a legacy standalone Training Tracker plugin: delete its DLL and strip
+    /// the `load_libraries` entry. Missing files are ignored. Training Tracker now
+    /// ships compiled into `hachimi.dll`, so this runs on every install/uninstall to
+    /// migrate users off the old plugin layout (a stale entry would otherwise make
+    /// the host warn about an unknown plugin). The host-downloaded data resources
+    /// live in the game data dir and are left as harmless cache.
     pub fn uninstall_training_tracker(&self) -> Result<(), Error> {
         if let Some(dll_path) = self.get_tracker_dll_path() {
             _ = std::fs::remove_file(dll_path);

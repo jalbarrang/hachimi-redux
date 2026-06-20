@@ -30,6 +30,7 @@ pub mod utils;
 mod sugoi_client;
 pub use sugoi_client::SugoiClient;
 
+pub mod modules;
 pub mod plugin;
 
 pub mod updater;

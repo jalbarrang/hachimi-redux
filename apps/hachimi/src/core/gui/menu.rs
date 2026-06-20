@@ -28,6 +28,11 @@ impl Gui {
         self.run_plugins_tab(ui, &ctx, &mut note);
     }
 
+    #[cfg(feature = "training-tracker")]
+    pub(crate) fn draw_training_tracker_tab(&mut self, ui: &mut egui::Ui) {
+        crate::core::plugin::tab::draw(ui);
+    }
+
     pub(crate) fn draw_about_tab(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
         let mut note = None;
         let mut window = None;

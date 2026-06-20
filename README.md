@@ -4,7 +4,7 @@
 
 English | [简体中文](README-zh_cn.md) | [繁體中文](README-zh_tw.md) | [Español (España)](README-es_es.md) | [Español (Latinoamérica)](README-es_419.md) | [Français](README-fr_fr.md) | [Português (Brasil)](README-pt_br.md) | [Português (Portugal)](README-pt_pt.md)
 
-Game enhancement and translation mod for UM:PD. HachimiRedux is a fork of Hachimi with an in-game training tracker plugin and a reworked native plugin SDK.
+Game enhancement and translation mod for UM:PD. HachimiRedux is a fork of Hachimi with a built-in in-game training tracker and a reworked native plugin SDK.
 
 <img height="400" src="apps/hachimi/assets/screenshot-2.png">
 
@@ -31,7 +31,7 @@ Or share them and ruin it for the dozens of Hachimi users. It's up to you.
 Do what you must, but we would respectfully request that you try to label the game as "UM:PD" or "The Honse Game" instead of the actual name of the game, to avoid search engine parsing.
 
 # ⚠️ Incompatible with upstream Hachimi plugins
-This fork ships its own native plugin API (host API v9). **Plugins built for upstream Hachimi are not compatible with HachimiRedux**, and the training tracker plugin distributed here will not load on upstream Hachimi. Prefer DLLs built from this repository, and use them together. Mixing builds can fail to load or crash the game.
+This fork ships its own native plugin API (host API v9). **Plugins built for upstream Hachimi are not compatible with HachimiRedux**, and HachimiRedux's own cdylib plugins will not load on upstream Hachimi. Prefer DLLs built from this repository, and use them together. Mixing builds can fail to load or crash the game.
 
 ## Legacy plugin compatibility (opt-in, limited)
 Manifest-less, legacy-ABI plugins (e.g. upstream Hachimi data-dumpers) can be loaded through an **opt-in compatibility path**. List the DLL under a `legacy_libraries` allowlist in `config.json`, in addition to `load_libraries`:
@@ -76,9 +76,9 @@ When in doubt, rebuild the plugin against this repository (host API v9) instead 
 
 # Installation
 
-The easiest way to install HachimiRedux is the **installer** from the [Releases page](https://github.com/jalbarrang/hachimi-redux/releases): it sets up the core mod and the optional Training Tracker plugin for you, with no manual file copying or JSON editing. If you would rather build it yourself, see [Build from source](#build-from-source-advanced).
+The easiest way to install HachimiRedux is the **installer** from the [Releases page](https://github.com/jalbarrang/hachimi-redux/releases): it sets up the core mod for you, with no manual file copying or JSON editing. If you would rather build it yourself, see [Build from source](#build-from-source-advanced).
 
-HachimiRedux is the core mod (loaded as `cri_mana_vpx.dll`); the **Training Tracker** is an optional plugin DLL loaded by the core mod. Both come from the same build.
+HachimiRedux is the core mod (loaded as `cri_mana_vpx.dll`). The **Training Tracker** is built **into** the core mod — there is no separate plugin DLL to install or enable.
 
 The game directory is the Steam install folder, e.g.
 `C:\Program Files (x86)\Steam\steamapps\common\UmamusumePrettyDerby`.
@@ -87,7 +87,7 @@ The game directory is the Steam install folder, e.g.
 
 1. Download the latest `hachimi_installer.exe` from the [Releases page](https://github.com/jalbarrang/hachimi-redux/releases).
 2. Run it. The installer auto-detects your Steam game directory; if it cannot, select it manually (the default path is above).
-3. Pick your language. To get the in-game Training Tracker, leave the **"Install Training Tracker plugin"** checkbox ticked (on by default).
+3. Pick your language. (The Training Tracker is built in — no plugin checkbox to tick.)
 4. Click **Install**. The installer backs up the original `cri_mana_vpx.dll`, installs the mod, and creates `config.json` for you.
 5. Launch the game. Press the menu key — the default is the **Right Arrow** key — to open the in-game UI.
 
@@ -98,10 +98,8 @@ To update or remove HachimiRedux later, just run the installer again (it offers 
 This repo is a Cargo workspace. From the repo root:
 
 ```sh
-# Core mod
+# Core mod (Training Tracker is compiled in via the default `training-tracker` feature)
 cargo build --release -p hachimi                    # -> target/release/hachimi.dll
-# Training Tracker plugin
-cargo build --release -p hachimi-training-tracker   # -> target/release/hachimi_training_tracker.dll
 ```
 
 ## Install HachimiRedux (core)
@@ -114,22 +112,14 @@ The game loads the mod through the renderer DLL `cri_mana_vpx.dll`.
 
 Mod settings live in `config.json` inside the game data directory, which is the **`hachimi` subfolder of the game directory** (e.g. `…\UmamusumePrettyDerby\hachimi\config.json`). It is created automatically by the installer / on first launch; everything else is configured from the in-game GUI.
 
-## Install the Training Tracker plugin
+## Training Tracker
 
-Plugins are native DLLs the core mod loads at startup from the game directory root.
-
-1. Install the HachimiRedux core first (above).
-2. Copy `target/release/hachimi_training_tracker.dll` into the game directory root (the same folder as `cri_mana_vpx.dll`). Note: the plugin DLL goes in the game **root**, while `config.json` lives in the `hachimi` subfolder.
-3. Add the DLL to the `load_libraries` list in `config.json` (`<game_dir>\hachimi\config.json`):
-
-   ```json
-   {
-     "windows": {
-       "load_libraries": ["hachimi_training_tracker.dll"]
-     }
-   }
-   ```
-4. Launch the game. The tracker appears as a page in the Plugins tab and as a floating overlay panel. See [docs/plugin-sdk.md](docs/plugin-sdk.md) for how plugins work.
+The Training Tracker ships **inside** the core mod (`hachimi.dll`) — there is no
+separate plugin DLL to copy or list in `load_libraries`. Once the core is installed,
+the tracker appears as a page in the Plugins tab and as a floating overlay panel.
+(It is compiled in via the default `training-tracker` Cargo feature; a lean build can
+drop it with `--no-default-features`.) See [docs/plugin-sdk.md](docs/plugin-sdk.md) for
+how the separate cdylib plugin SDK works.
 
 ## Automated deploy (Windows, from source)
 
@@ -146,7 +136,7 @@ $env:HACHIMI_GAME_DIR = "D:\path\to\UmamusumePrettyDerby"
 .\scripts\deploy-windows.ps1 -Build
 ```
 
-The script copies `hachimi.dll` → `cri_mana_vpx.dll` and the training tracker DLL into the game directory, and never modifies `cri_mana_vpx.dll.backup`.
+The script copies `hachimi.dll` → `cri_mana_vpx.dll` (Training Tracker included) and the cdylib plugin DLLs into the game directory, and never modifies `cri_mana_vpx.dll.backup`.
 
 # Troubleshooting
 
@@ -154,13 +144,13 @@ The script copies `hachimi.dll` → `cri_mana_vpx.dll` and the training tracker 
 
 By far the most common cause is **stacking multiple game mods or DLL injectors** in the game folder. Each one hooks the game's rendering/runtime, and they fight each other. HachimiRedux warns about this in-game (a notification + the `hachimi.log`) and the installer warns before installing, but you must remove the others yourself:
 
-- Keep **only** HachimiRedux: `cri_mana_vpx.dll` and any HachimiRedux-built plugins (e.g. `hachimi_training_tracker.dll`).
+- Keep **only** HachimiRedux: `cri_mana_vpx.dll` and any HachimiRedux-built cdylib plugins (e.g. `hachimi_race_hud.dll`).
 - Remove other overlays/injectors from the game folder, such as proxy-loader DLLs that shouldn't be there (`version.dll`, `winhttp.dll`, `dxgi.dll`, `d3d11.dll`, `dinput8.dll`, …) and named overlays (`horseACT.dll`, `heaven_overlay.dll`, …).
 - **Only plugins built from HachimiRedux** belong in `load_libraries`. Do not add third-party overlays there — they are not HachimiRedux plugins and will be rejected (with an in-game notice) or can crash the game.
 
 ## Where things live
 
-- `cri_mana_vpx.dll` and plugin DLLs: the game **root** directory.
+- `cri_mana_vpx.dll` and any cdylib plugin DLLs: the game **root** directory. (The Training Tracker is built into `cri_mana_vpx.dll`, not a separate file.)
 - `config.json` and other mod data: the **`hachimi` subfolder** of the game directory (`<game_dir>\hachimi\config.json`).
 - Mod log: `hachimi.log` in the game root (enable `enable_file_logging` in `config.json`).
 - Game log: `%USERPROFILE%\AppData\LocalLow\Cygames\Umamusume\Player.log`.

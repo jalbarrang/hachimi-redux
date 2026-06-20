@@ -2,7 +2,7 @@
 
 ## What this is
 
-Fork of Hachimi: a Windows/Steam translation & enhancement mod for the Honse game (no Android). The core ships as `hachimi.dll`, deployed into the game dir as a `cri_mana_vpx.dll` proxy that hooks IL2CPP. Optional plugins are separate cdylibs loaded via `config.json`. The authoritative crate/tool list is the root `Cargo.toml` `members` — don't restate it elsewhere. Dependency direction: `apps/*` and `plugins/*` depend on `crates/*`, never the reverse.
+Fork of Hachimi: a Windows/Steam translation & enhancement mod for the Honse game (no Android). The core ships as `hachimi.dll`, deployed into the game dir as a `cri_mana_vpx.dll` proxy that hooks IL2CPP. First-party marquee features (e.g. Training Tracker) compile **into** `hachimi.dll` as in-core `CoreModule`s (feature-gated under `apps/hachimi/src/core/modules/`); optional third-party-style plugins are separate cdylibs loaded via `config.json`. Both tiers share one lifecycle interface (`core::plugin::CoreModule`). The authoritative crate/tool list is the root `Cargo.toml` `members` — don't restate it elsewhere. Dependency direction: `apps/*` and `plugins/*` depend on `crates/*`, never the reverse.
 
 ## Stack
 
@@ -21,7 +21,7 @@ Fork of Hachimi: a Windows/Steam translation & enhancement mod for the Honse gam
 | Task | Command |
 |---|---|
 | Build core | `cargo build --release -p hachimi` → `hachimi.dll` |
-| Build a plugin | `cargo build --release -p hachimi-training-tracker` (or `-debug-viewer` / `-race-hud`) |
+| Build a plugin | `cargo build --release -p hachimi-race-hud` (or `-debug-viewer`) |
 | Build installer | `cargo build --release -p hachimi_installer` (only after artifacts staged) |
 | Menu preview (no game) | `cargo run -p hachimi --example menu_preview --features dev-harness` |
 | Deploy to game | `.\scripts\deploy-windows.ps1 -Build` (`$env:HACHIMI_GAME_DIR` overrides path) |
@@ -62,7 +62,8 @@ crates/hachimi-plugin-abi/    → versioned host/plugin ABI (API_VERSION)
 crates/hachimi-plugin-sdk/    → plugin authoring SDK
 crates/hachimi-plugin-macros/ → plugin proc-macros
 crates/hachimi-telemetry/     → telemetry
-plugins/              → cdylibs: training-tracker, debug-viewer, race-hud
+plugins/              → cdylib plugins (SDK dogfood): debug-viewer, race-hud
+apps/hachimi/src/core/modules/ → in-core first-party modules (training_tracker), feature-gated
 tools/                → dev data tools (see tools/README.md + docs/updating-game-data.md)
 scripts/              → deploy-windows.ps1, quality-gates.ps1, bump-version.ps1, ...
 ```

@@ -37,6 +37,19 @@ pub fn load_libraries() -> Vec<Plugin> {
         .filter(|name| seen.insert(name.as_str()));
 
     for name in load_order {
+        // Skip any DLL whose feature is now compiled into the host. A stale
+        // `load_libraries` entry from the standalone-plugin era (e.g. left by an
+        // upgrade that only swapped cri_mana_vpx.dll without the installer's config
+        // migration) would otherwise load a second copy alongside the in-core
+        // module, double-registering its overlays/hooks.
+        if crate::core::modules::is_builtin_module_library(name) {
+            info!(
+                "Skipping '{}': this feature is now built into hachimi.dll. \
+                 Remove it from config.json -> windows.load_libraries.",
+                name
+            );
+            continue;
+        }
         // Opt-in compatibility path for manifest-less, legacy-ABI plugins.
         let legacy = config.windows.legacy_libraries.iter().any(|l| l == name);
         if let Some(plugin) = load_plugin_library(name, plugins.len() as u32 + 1, legacy) {
@@ -242,6 +255,8 @@ pub extern "C" fn DllMain(hmodule: HMODULE, call_reason: c_ulong, _reserved: *mu
         info!("Attach completed");
     } else if call_reason == DLL_PROCESS_DETACH && Hachimi::is_initialized() {
         crate::core::plugin::events::dispatch_shutdown();
+        // Tear down in-core modules (unhook their IL2CPP hooks, drop registrations).
+        crate::core::plugin::module::shutdown_all();
         wnd_hook::uninit();
 
         info!("Unhooking everything");

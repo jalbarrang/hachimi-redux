@@ -11,6 +11,7 @@ use std::{
 
 use once_cell::sync::Lazy;
 
+use super::callback::{ActionCallback, UiCallback};
 use super::types::{GuiMenuCallback, GuiMenuSectionCallback};
 
 #[derive(Clone)]
@@ -18,8 +19,7 @@ pub(crate) struct PluginMenuItem {
     pub(crate) handle: u64,
     pub(crate) owner: u32,
     pub(crate) label: String,
-    pub(crate) callback: Option<GuiMenuCallback>,
-    pub(crate) userdata: usize,
+    pub(crate) callback: Option<ActionCallback>,
 }
 
 #[derive(Clone)]
@@ -34,8 +34,7 @@ pub(crate) struct PluginMenuSection {
     pub(crate) owner: u32,
     pub(crate) title: Option<String>,
     pub(crate) icon: Option<PluginMenuIcon>,
-    pub(crate) callback: GuiMenuSectionCallback,
-    pub(crate) userdata: usize,
+    pub(crate) callback: UiCallback,
 }
 
 pub(crate) static PLUGIN_MENU_ITEMS: Lazy<Mutex<Vec<PluginMenuItem>>> = Lazy::new(|| Mutex::new(Vec::new()));
@@ -44,18 +43,36 @@ pub(crate) static PLUGIN_MENU_ICONS: Lazy<Mutex<HashMap<String, PluginMenuIcon>>
     Lazy::new(|| Mutex::new(HashMap::new()));
 
 pub fn register_plugin_menu_item(label: String, callback: Option<GuiMenuCallback>, userdata: *mut c_void) -> u64 {
+    let callback = callback.map(|func| ActionCallback::C {
+        func,
+        userdata: userdata as usize,
+    });
+    push_menu_item(label, callback)
+}
+
+fn push_menu_item(label: String, callback: Option<ActionCallback>) -> u64 {
     let handle = super::next_handle();
     PLUGIN_MENU_ITEMS.lock().expect("lock poisoned").push(PluginMenuItem {
         handle,
         owner: super::current_owner(),
         label,
         callback,
-        userdata: userdata as usize,
     });
     handle
 }
 
 pub fn register_plugin_menu_section(callback: GuiMenuSectionCallback, userdata: *mut c_void) -> u64 {
+    push_menu_section(
+        None,
+        None,
+        UiCallback::C {
+            func: callback,
+            userdata: userdata as usize,
+        },
+    )
+}
+
+fn push_menu_section(title: Option<String>, icon: Option<PluginMenuIcon>, callback: UiCallback) -> u64 {
     let handle = super::next_handle();
     PLUGIN_MENU_SECTIONS
         .lock()
@@ -63,12 +80,34 @@ pub fn register_plugin_menu_section(callback: GuiMenuSectionCallback, userdata: 
         .push(PluginMenuSection {
             handle,
             owner: super::current_owner(),
-            title: None,
-            icon: None,
+            title,
+            icon,
             callback,
-            userdata: userdata as usize,
         });
     handle
+}
+
+/// In-core (`CoreModule`) menu section registration with a Rust closure. `icon` is
+/// `(uri, png_bytes)`. Attributed to the current owner like the C-tier path.
+#[allow(dead_code)] // first in-core caller lands with the training-tracker port
+pub(crate) fn register_menu_section_rust(
+    title: Option<String>,
+    icon: Option<(String, Vec<u8>)>,
+    callback: Arc<dyn Fn(&mut egui::Ui) + Send + Sync>,
+) -> u64 {
+    let icon = icon.and_then(|(uri, bytes)| {
+        (!uri.is_empty() && !bytes.is_empty()).then(|| PluginMenuIcon {
+            uri,
+            bytes: bytes.into(),
+        })
+    });
+    push_menu_section(title, icon, UiCallback::Rust(callback))
+}
+
+/// In-core menu item registration with a Rust closure.
+#[allow(dead_code)] // first in-core caller lands with the training-tracker port
+pub(crate) fn register_menu_item_rust(label: String, callback: Option<Arc<dyn Fn() + Send + Sync>>) -> u64 {
+    push_menu_item(label, callback.map(ActionCallback::Rust))
 }
 
 pub fn register_plugin_menu_section_with_icon(
@@ -81,22 +120,17 @@ pub fn register_plugin_menu_section_with_icon(
     if title.is_empty() || uri.is_empty() || bytes.is_empty() {
         return 0;
     }
-    let handle = super::next_handle();
-    PLUGIN_MENU_SECTIONS
-        .lock()
-        .expect("lock poisoned")
-        .push(PluginMenuSection {
-            handle,
-            owner: super::current_owner(),
-            title: Some(title),
-            icon: Some(PluginMenuIcon {
-                uri,
-                bytes: bytes.into(),
-            }),
-            callback,
+    push_menu_section(
+        Some(title),
+        Some(PluginMenuIcon {
+            uri,
+            bytes: bytes.into(),
+        }),
+        UiCallback::C {
+            func: callback,
             userdata: userdata as usize,
-        });
-    handle
+        },
+    )
 }
 
 /// Remove all menu items and sections owned by `owner`.

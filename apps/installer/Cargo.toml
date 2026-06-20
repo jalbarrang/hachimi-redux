@@ -43,7 +43,5 @@ cc = "1.1"
 [features]
 compress_bin = ["dep:include-bytes-zstd"]
 net_install = ["dep:reqwest", "dep:bytes"]
-# Embeds hachimi_training_tracker.dll (must be in project root at build time) and
-# exposes the optional Training Tracker install toggle. The plugin's data
-# resources are downloaded by the host at runtime, not embedded here.
-training_tracker = []
+# Training Tracker is compiled into hachimi.dll; the installer no longer bundles a
+# separate plugin DLL. (The former `training_tracker` feature was removed.)

@@ -49,13 +49,12 @@ jobs:
           Add-Content -Path "Cargo.toml" -Value $patches
 
       - uses: dtolnay/rust-toolchain@stable
-      - name: Build Hachimi + Training Tracker for Windows
+      - name: Build Hachimi for Windows
         run: |
-          # Workspace build produces both the core mod and the training-tracker
-          # plugin against the same (patched) egui — required for ABI match.
-          cargo build --target x86_64-pc-windows-msvc --target-dir build --release -p hachimi -p hachimi-training-tracker
+          # Training Tracker is compiled into hachimi.dll (in-core module), so the
+          # core build is the only artifact — no separate plugin DLL.
+          cargo build --target x86_64-pc-windows-msvc --target-dir build --release -p hachimi
           move build\x86_64-pc-windows-msvc\release\hachimi.dll build
-          move build\x86_64-pc-windows-msvc\release\hachimi_training_tracker.dll build
         env:
           HACHIMI_IGNORE_DIRTY: "true"
 
@@ -77,10 +76,9 @@ jobs:
           # The installer is a vendored workspace member (installer/). Stage the
           # artifacts it embeds, then build it explicitly (-p) from the workspace.
           copy build\hachimi.dll apps\installer\
-          copy build\hachimi_training_tracker.dll apps\installer\
           move ..\Cellar\build\x86_64-pc-windows-msvc\release\cellar.dll apps\installer\
           move FunnyHoney\FunnyHoney.exe apps\installer\
-          cargo build --target x86_64-pc-windows-msvc --target-dir build --release -p hachimi_installer --features compress_bin,training_tracker
+          cargo build --target x86_64-pc-windows-msvc --target-dir build --release -p hachimi_installer --features compress_bin
           move build\x86_64-pc-windows-msvc\release\hachimi_installer.exe build
 
       - name: Get checksums for Windows binaries
@@ -89,12 +87,10 @@ jobs:
           curl -L "https://github.com/BLAKE3-team/BLAKE3/releases/latest/download/b3sum_windows_x64_bin.exe" -o b3sum.exe
           DLL_HASH=($(./b3sum.exe build/hachimi.dll | tr -d '\r'))
           EXE_HASH=($(./b3sum.exe build/hachimi_installer.exe | tr -d '\r'))
-          TRACKER_HASH=($(./b3sum.exe build/hachimi_training_tracker.dll | tr -d '\r'))
           cat <<EOF > build/blake3.json
           {
             "hachimi.dll": "$DLL_HASH",
-            "hachimi_installer.exe": "$EXE_HASH",
-            "hachimi_training_tracker.dll": "$TRACKER_HASH"
+            "hachimi_installer.exe": "$EXE_HASH"
           }
           EOF
 
@@ -105,7 +101,6 @@ jobs:
             build/blake3.json
             build/hachimi.dll
             build/hachimi_installer.exe
-            build/hachimi_training_tracker.dll
 
       - name: Upload Windows binaries
         uses: actions/upload-artifact@v7
@@ -115,7 +110,6 @@ jobs:
             build/blake3.json
             build/hachimi.dll
             build/hachimi_installer.exe
-            build/hachimi_training_tracker.dll
 
   create-release:
     needs: [build-windows]
