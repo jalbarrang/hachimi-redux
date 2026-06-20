@@ -1,6 +1,14 @@
 use super::scale::get_scale;
 use super::Gui;
 
+/// Stable URI for the bundled app icon, registered into egui's byte loader at
+/// GUI init so `<img src="bytes://hachimi-icon.png">` resolves in the Dioxus shell.
+pub(crate) const ICON_URI: &str = "bytes://hachimi-icon.png";
+
+pub(crate) fn register_icon_bytes(ctx: &egui::Context) {
+    ctx.include_bytes(ICON_URI, include_bytes!("../../../assets/icon.png") as &[u8]);
+}
+
 impl Gui {
     const ICON_IMAGE: egui::ImageSource<'static> = egui::include_image!("../../../assets/icon.png");
 

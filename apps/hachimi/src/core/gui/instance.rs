@@ -27,6 +27,7 @@ impl Gui {
 
         let context = egui::Context::default();
         egui_extras::install_image_loaders(&context);
+        super::splash::register_icon_bytes(&context);
 
         // egui_taffy lays out via `request_discard` (it re-runs the UI within the
         // same frame until the taffy layout settles). That only works when the
@@ -61,12 +62,14 @@ impl Gui {
         }
 
         let now = Instant::now();
+        let initial_landscape_ratio = config.windows.gui_landscape_ratio;
         let instance = Gui {
             context,
             config,
             input: egui::RawInput::default(),
             gui_scale: 1.0,
             finalized_scale: 1.0,
+            finalized_landscape_ratio: initial_landscape_ratio,
             default_style,
             start_time: now,
             prev_main_axis_size: 1,

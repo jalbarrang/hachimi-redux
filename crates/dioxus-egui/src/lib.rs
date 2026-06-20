@@ -90,10 +90,27 @@ pub const EMBED_MAX_PASSES: usize = 3;
 
 /// Render a Dioxus tree into an existing `egui::Ui` region (in-game overlay path).
 ///
+/// Fills the parent's available width (root `width: 100%`). Use this when the
+/// host already bounds the `Ui` to the surface size (e.g. the Control Center
+/// shell). For a shrink-to-content surface inside an auto-sizing window, use
+/// [`render_in_ui_shrink`] instead.
+///
 /// Diffs the VDOM once, then walks the retained tree up to [`EMBED_MAX_PASSES`]
 /// times so egui_taffy layout can settle. Delivers any observed input events
 /// back into the VDOM and re-renders when state changes.
 pub fn render_in_ui(ui: &mut egui::Ui, vdom: &mut VirtualDom, renderer: &mut DioxusEgui) {
+    render_in_ui_impl(ui, vdom, renderer, false);
+}
+
+/// Like [`render_in_ui`], but shrink-wraps to the content instead of reserving
+/// the parent's available space. Required for plugin overlays drawn in an
+/// `auto_sized()` window: there "available space" is the whole viewport, so the
+/// filling path inflates the window to full screen.
+pub fn render_in_ui_shrink(ui: &mut egui::Ui, vdom: &mut VirtualDom, renderer: &mut DioxusEgui) {
+    render_in_ui_impl(ui, vdom, renderer, true);
+}
+
+fn render_in_ui_impl(ui: &mut egui::Ui, vdom: &mut VirtualDom, renderer: &mut DioxusEgui, shrink: bool) {
     init_event_converter();
 
     ui.ctx().options_mut(|o| {
@@ -103,16 +120,34 @@ pub fn render_in_ui(ui: &mut egui::Ui, vdom: &mut VirtualDom, renderer: &mut Dio
         s.wrap_mode = Some(egui::TextWrapMode::Extend);
     });
 
+    // Fill path reserves the parent's available space and stretches to 100% width;
+    // shrink path reserves nothing and lets the root auto-size to its content.
+    let root_width = if shrink {
+        taffy::prelude::auto()
+    } else {
+        taffy::prelude::percent(1.0)
+    };
+    let align_items = if shrink {
+        Some(taffy::AlignItems::Start)
+    } else {
+        Some(taffy::AlignItems::Stretch)
+    };
+
     let mut events: Vec<DomEvent> = Vec::new();
     for pass in 0..EMBED_MAX_PASSES {
         let mut pass_events: Vec<DomEvent> = Vec::new();
-        tui(ui, ui.id().with(("dioxus-embed", pass)))
-            .reserve_available_space()
+        let builder = tui(ui, ui.id().with(("dioxus-embed", pass)));
+        let builder = if shrink {
+            builder
+        } else {
+            builder.reserve_available_space()
+        };
+        builder
             .style(taffy::Style {
                 flex_direction: taffy::FlexDirection::Column,
-                align_items: Some(taffy::AlignItems::Stretch),
+                align_items,
                 size: taffy::Size {
-                    width: taffy::prelude::percent(1.0),
+                    width: root_width,
                     height: taffy::prelude::auto(),
                 },
                 ..Default::default()

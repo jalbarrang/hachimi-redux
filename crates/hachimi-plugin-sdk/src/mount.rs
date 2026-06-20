@@ -4,7 +4,7 @@
 //! host's overlay/menu draw callback) and call [`UiMount::render`] each frame.
 
 use dioxus::dioxus_core::{Element, VirtualDom};
-use dioxus_egui::{init_event_converter, render_in_ui, DioxusEgui};
+use dioxus_egui::{init_event_converter, render_in_ui, render_in_ui_shrink, DioxusEgui};
 
 /// Owns a Dioxus `VirtualDom` + renderer for repeated embed renders into `egui::Ui`.
 pub struct UiMount {
@@ -27,14 +27,27 @@ impl UiMount {
         }
     }
 
-    /// Diff VDOM state, then walk into `ui` (multi-pass settling).
+    /// Diff VDOM state, then walk into `ui` (multi-pass settling). Fills the
+    /// parent's available width — use inside a host-bounded `Ui` (menu/tab body).
     pub fn render(&mut self, ui: &mut egui::Ui) {
+        self.prepare();
+        render_in_ui(ui, &mut self.vdom, &mut self.renderer);
+    }
+
+    /// Like [`Self::render`], but shrink-wraps to content. Use for plugin
+    /// overlays drawn in an `auto_sized()` window so the window doesn't inflate
+    /// to the full viewport.
+    pub fn render_shrink(&mut self, ui: &mut egui::Ui) {
+        self.prepare();
+        render_in_ui_shrink(ui, &mut self.vdom, &mut self.renderer);
+    }
+
+    fn prepare(&mut self) {
         if !self.events_ready {
             init_event_converter();
             self.events_ready = true;
         }
         self.vdom.render_immediate(&mut self.renderer);
-        render_in_ui(ui, &mut self.vdom, &mut self.renderer);
     }
 }
 

@@ -1,7 +1,7 @@
 //! Control Center Dioxus root component.
 
 use dioxus_egui::dioxus::prelude::*;
-use honse_ui::{theme, Button, ButtonVariant, Card, TabBar, TabItem};
+use honse_ui::{theme, Button, ButtonVariant, Image, TabBar, TabItem};
 use rust_i18n::t;
 
 use super::context::{bind_action, ControlCenterCtx, HostAction};
@@ -66,16 +66,27 @@ fn ControlCenterShell() -> Element {
     rsx! {
         div {
             "dir": "col",
-            "gap": "8",
             "align": "stretch",
             "width": "{shell_w}",
             "height": "{shell_h}",
-            "bg": theme::BG,
-            Card {
+            "bg": theme::SURFACE_1,
+            "border": theme::LINE,
+            "radius": theme::RADIUS,
+
+            div {
+                "dir": "col",
+                "gap": "8",
+                "align": "stretch",
+                "padding": "14",
                 div {
                     "dir": "row",
                     "gap": "8",
                     "align": "center",
+                    Image {
+                        src: crate::core::gui::splash::ICON_URI.to_string(),
+                        width: 24.0,
+                        height: 24.0,
+                    }
                     div {
                         "color": theme::FG,
                         "font-size": "18",
@@ -94,33 +105,39 @@ fn ControlCenterShell() -> Element {
                         "\u{f00d}"
                     }
                 }
-            }
-
-            TabBar {
-                active: active_id,
-                tabs,
-                onselect: move |id: String| {
-                    active_tab.set(parse_tab(&id));
-                },
-            }
-
-            honse_ui::ScrollArea {
-                match tab {
-                    ControlTab::General => rsx! { GeneralTab {} },
-                    ControlTab::Graphics => rsx! { GraphicsTab {} },
-                    ControlTab::Gameplay => rsx! { GameplayTab {} },
-                    ControlTab::Hotkeys => rsx! { HotkeysTab {} },
-                    ControlTab::Translations => rsx! { TranslationsTab {} },
-                    ControlTab::Plugins => rsx! { PluginsTab {} },
-                    ControlTab::About => rsx! { AboutTab {} },
+                TabBar {
+                    active: active_id,
+                    tabs,
+                    onselect: move |id: String| {
+                        active_tab.set(parse_tab(&id));
+                    },
                 }
             }
 
-            div {
-                "dir": "row",
-                "gap": "8",
-                "justify": "end",
-                if footer_on {
+            honse_ui::ScrollArea {
+                div {
+                    "dir": "col",
+                    "gap": "8",
+                    "align": "stretch",
+                    "padding": "14",
+                    match tab {
+                        ControlTab::General => rsx! { GeneralTab {} },
+                        ControlTab::Graphics => rsx! { GraphicsTab {} },
+                        ControlTab::Gameplay => rsx! { GameplayTab {} },
+                        ControlTab::Hotkeys => rsx! { HotkeysTab {} },
+                        ControlTab::Translations => rsx! { TranslationsTab {} },
+                        ControlTab::Plugins => rsx! { PluginsTab {} },
+                        ControlTab::About => rsx! { AboutTab {} },
+                    }
+                }
+            }
+
+            if footer_on {
+                div {
+                    "dir": "row",
+                    "gap": "8",
+                    "justify": "end",
+                    "padding": "14",
                     Button {
                         variant: ButtonVariant::Secondary,
                         onclick: bind_action(&actions, HostAction::RevertConfig),

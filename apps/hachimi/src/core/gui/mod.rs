@@ -3,7 +3,6 @@
 mod components;
 pub(crate) mod control_center_mount;
 pub(crate) mod control_center_tls;
-pub(crate) mod debug;
 #[cfg(feature = "dev-harness")]
 pub mod dev_harness;
 mod dioxus;
@@ -54,6 +53,8 @@ pub struct Gui {
     pub gui_scale: f32,
 
     pub finalized_scale: f32,
+    /// Landscape overlay scale ratio held across a drag (see `set_screen_size`).
+    pub finalized_landscape_ratio: f32,
     pub start_time: Instant,
     pub prev_main_axis_size: i32,
     pub(crate) last_fps_update: Instant,

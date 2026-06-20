@@ -6,31 +6,15 @@
 use egui_taffy::taffy::prelude::{auto, length};
 use egui_taffy::{taffy, tui, Tui, TuiBuilderLogic};
 
-use super::super::shell;
 
-/// Deterministic width for a tab body root: the menu shell width. Pinned via
-/// `reserve_width` instead of `reserve_available_width` — the latter reads the
-/// modal's current width and feeds it back into layout, so a tab whose content
-/// is wider than the shell makes the modal grow on each pass.
-pub(crate) fn body_grid_width(scale: f32) -> f32 {
-    (shell::SHELL_WIDTH * scale).max(120.0)
-}
-
-/// Width the scroll area reserves for its vertical bar (0 when floating).
-fn scrollbar_allowance(ui: &egui::Ui) -> f32 {
-    let s = &ui.spacing().scroll;
-    if s.floating {
-        0.0
-    } else {
-        s.bar_width + s.bar_inner_margin + s.bar_outer_margin
-    }
-}
-
-/// True usable width of a tab body: shell width minus the scrollbar reservation.
-/// Deterministic (derived from `SHELL_WIDTH`, NOT `ui.available_width()`), so it
-/// keeps the anti-jitter guarantee while no longer overrunning the visible region.
-pub(crate) fn content_width(ui: &egui::Ui, scale: f32) -> f32 {
-    (body_grid_width(scale) - scrollbar_allowance(ui)).max(120.0)
+/// Usable width for native tab content: the width of the egui `Ui` that taffy
+/// assigned to this tab body. `max_rect` is the node's fixed allocated width —
+/// already inset by the body padding and any reserved scrollbar — and, unlike
+/// `available_width`, it does NOT grow when a child overflows. So pinning rows to
+/// it can't feed back and inflate the modal, while still tracking the real
+/// (now 800px) shell width and every surrounding inset automatically.
+pub(crate) fn content_width(ui: &egui::Ui, _scale: f32) -> f32 {
+    ui.max_rect().width().max(120.0)
 }
 
 fn flex_root_style(width: f32, direction: taffy::FlexDirection, gap: f32, wrap: taffy::FlexWrap) -> taffy::Style {

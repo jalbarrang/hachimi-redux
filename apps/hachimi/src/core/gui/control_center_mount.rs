@@ -82,7 +82,6 @@ impl ControlCenterMount {
 
         self.mount.render(ui);
 
-        let keep = self.ctx.keep_open.get();
         let bump_revision = {
             // SAFETY: `HOST_GUI` is set for the duration of `render_live`.
             let gui = unsafe { &mut *HOST_GUI.get() };
@@ -90,6 +89,11 @@ impl ControlCenterMount {
             *gui.config_editor.config_mut() = self.ctx.config.borrow().clone();
             drain_actions(&self.ctx, gui)
         };
+        // Read `keep_open` AFTER draining: `CloseMenu` (the X button) is queued
+        // during `mount.render` and only applied by `drain_actions`. Reading it
+        // earlier returns a stale `true`, and next frame's `prepare_frame` resets
+        // the flag — so the close is silently lost and the menu never closes.
+        let keep = self.ctx.keep_open.get();
         if bump_revision {
             self.mount.in_runtime(|| self.ctx.bump_revision());
         }
@@ -118,8 +122,9 @@ impl ControlCenterMount {
         *tab = *self.mount.in_runtime(|| self.ctx.active_tab.peek());
         *editor.config_mut() = self.ctx.config.borrow().clone();
 
-        let keep = self.ctx.keep_open.get();
         let bump_revision = drain_preview_actions(&self.ctx, editor);
+        // Read after draining so a queued `CloseMenu` is reflected this frame.
+        let keep = self.ctx.keep_open.get();
         if bump_revision {
             self.mount.in_runtime(|| self.ctx.bump_revision());
         }

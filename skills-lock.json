@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "skills": {
+    "plan-mode": {
+      "source": "jalbarrang/skills",
+      "sourceType": "github",
+      "skillPath": "plan-mode/SKILL.md",
+      "computedHash": "f1f4f59f45b630a940c2018b948a2a50426cb83bd3393b17efcef17b816256b9"
+    }
+  }
+}

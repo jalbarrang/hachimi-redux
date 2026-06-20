@@ -6,7 +6,7 @@
 use dioxus_egui::dioxus::prelude::*;
 use honse_ui::{
     theme, Badge, BadgeVariant, Button, ButtonSize, ButtonVariant, Card, CardDescription, CardTitle, Field, Grade,
-    Mood, Separator, Stat,
+    Image, Mood, Separator, Stat,
 };
 
 fn main() -> dioxus_egui::eframe::Result<()> {
@@ -23,6 +23,12 @@ fn app() -> Element {
 
     rsx! {
         div { "dir": "col", "gap": "14", "align": "stretch", "width": "420",
+
+            Card {
+                CardTitle { "Image" }
+                CardDescription { "fixed-size img slot (bytes:// URI)" }
+                Image { src: "bytes://gallery-placeholder.png".to_string(), width: 24.0, height: 24.0 }
+            }
 
             Card {
                 CardTitle { "Buttons" }

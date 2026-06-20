@@ -15,6 +15,16 @@ impl Gui {
         let is_landscape = width > height;
         let main_axis_size = if is_landscape { height } else { width.min(height) };
 
+        // Freeze the landscape ratio while the pointer is held, the same way
+        // `gui_scale` is finalized in `run`. Rescaling the entire egui surface
+        // live on every drag frame re-centers/re-sizes the menu each frame, which
+        // ghosts a stale copy through the flip-model backbuffer (the duplicate
+        // menu bug). Holding the last finalized ratio until release avoids it; the
+        // slider's numeric value still updates live.
+        if !self.context.egui_is_using_pointer() {
+            self.finalized_landscape_ratio = Hachimi::instance().config.load().windows.gui_landscape_ratio;
+        }
+
         let orientation_scale = {
             let orientation_ratio = if is_landscape {
                 height as f32 / width as f32
@@ -22,7 +32,7 @@ impl Gui {
                 1.0
             };
             if is_landscape {
-                orientation_ratio * Hachimi::instance().config.load().windows.gui_landscape_ratio
+                orientation_ratio * self.finalized_landscape_ratio
             } else {
                 1.0
             }

@@ -15,7 +15,7 @@ use crate::windows::utils::chord_to_display_label;
 use super::super::components as widgets;
 use super::super::scale::get_scale;
 use super::super::Gui;
-use super::layout::{auto_cell, flex_row, flex_spacer};
+use super::layout::{auto_cell, content_width, flex_row, flex_spacer};
 
 /// Virtual keys we warn about when bound without a modifier (game/system critical).
 const RESERVED_VKS: &[u16] = &[
@@ -60,7 +60,13 @@ pub(crate) fn ui_hotkeys(ui: &mut egui::Ui, ctx: &egui::Context, config: &mut Co
     }
 
     ui.add_space(4.0);
-    ui.label(t!("hotkeys.description"));
+    // The shell forces `TextWrapMode::Extend`, so a plain label runs off the edge.
+    // Pin a child to the body width and wrap inside it.
+    ui.scope(|ui| {
+        ui.set_max_width(content_width(ui, scale));
+        ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Wrap);
+        ui.label(t!("hotkeys.description"));
+    });
     ui.add_space(4.0);
 
     let owner_names = plugin_owner_names();

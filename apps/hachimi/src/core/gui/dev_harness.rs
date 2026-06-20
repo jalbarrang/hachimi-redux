@@ -43,6 +43,7 @@ pub fn init_context(ctx: &egui::Context) {
     Gui::apply_theme(ctx, &mut style, &config);
     ctx.set_global_style(style);
     egui_extras::install_image_loaders(ctx);
+    super::splash::register_icon_bytes(ctx);
 }
 
 /// Persistent preview state. Lives in the host binary (the example) so it survives

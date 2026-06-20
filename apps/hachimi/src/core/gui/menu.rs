@@ -61,9 +61,14 @@ impl Gui {
         let scale = get_scale(&ctx);
 
         let mut keep_open = true;
-        let response = egui::Modal::new(egui::Id::new("hachimi_control_center")).show(&ctx, |ui| {
-            keep_open = super::shell::render_control_center_gui(self, ui, &ctx, scale);
-        });
+        // No popup frame: the Dioxus shell paints its own rounded panel (bg +
+        // border + radius). The default `Frame::popup` drew a second, offset
+        // window frame + shadow behind it. Keep only the dimmed backdrop.
+        let response = egui::Modal::new(egui::Id::new("hachimi_control_center"))
+            .frame(egui::Frame::NONE)
+            .show(&ctx, |ui| {
+                keep_open = super::shell::render_control_center_gui(self, ui, &ctx, scale);
+            });
 
         // Close on backdrop click / Escape, or via the header button.
         if response.should_close() || !keep_open {

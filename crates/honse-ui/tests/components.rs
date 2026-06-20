@@ -6,7 +6,7 @@
 use dioxus_egui::dioxus::dioxus_core::VirtualDom;
 use dioxus_egui::dioxus::prelude::*;
 use dioxus_egui::DioxusEgui;
-use honse_ui::{Badge, BadgeVariant, Button, ButtonVariant, Card, CardTitle, Field};
+use honse_ui::{Badge, BadgeVariant, Button, ButtonVariant, Card, CardTitle, Field, Image};
 
 fn demo() -> Element {
     rsx! {
@@ -41,4 +41,23 @@ fn components_render_and_buttons_are_clickable() {
     let labels: Vec<String> = r.buttons().into_iter().map(|(_, l)| l).collect();
     assert!(labels.contains(&"Save".to_string()), "buttons: {labels:?}");
     assert!(labels.contains(&"Cancel".to_string()), "buttons: {labels:?}");
+}
+
+#[test]
+fn image_renders_with_src() {
+    fn demo() -> Element {
+        rsx! {
+            Image { src: "bytes://test.png".to_string(), width: 24.0, height: 24.0 }
+        }
+    }
+
+    let mut vdom = VirtualDom::new(demo);
+    let mut r = DioxusEgui::new();
+    vdom.rebuild(&mut r);
+
+    let dump = r.dump();
+    assert!(
+        dump.contains("[img src=bytes://test.png]"),
+        "image element present: {dump}"
+    );
 }

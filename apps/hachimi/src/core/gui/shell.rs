@@ -1,13 +1,12 @@
 //! Control Center modal shell: Dioxus shell + tab dispatch.
 
 use super::control_center_tls;
-use super::theme::ThemeTokens;
 #[cfg(feature = "dev-harness")]
 use super::window::ConfigEditor;
 use super::Gui;
 
 /// Base (unscaled) width of the Control Center modal shell.
-pub(crate) const SHELL_WIDTH: f32 = 600.0;
+pub(crate) const SHELL_WIDTH: f32 = 800.0;
 
 /// Fixed top-level tabs of the Control Center.
 #[derive(Clone, Copy, PartialEq, Eq, Default, Debug)]
@@ -59,12 +58,9 @@ fn render_inner_live(ui: &mut egui::Ui, ctx: &egui::Context, scale: f32, gui: &m
     ui.set_max_height(shell_h);
     ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend);
 
-    let tokens = ThemeTokens::from_ui(ui);
-    let mut keep_open = true;
-    egui::Frame::new().fill(tokens.window).show(ui, |ui| {
-        keep_open = control_center_tls::with_mount(|mount| mount.render_live(ui, ctx, scale, shell_h, gui));
-    });
-    keep_open
+    // No wrapping fill frame: the Dioxus shell paints its own rounded panel, so a
+    // rectangular fill behind it only pokes square corners past the rounding.
+    control_center_tls::with_mount(|mount| mount.render_live(ui, ctx, scale, shell_h, gui))
 }
 
 #[cfg(feature = "dev-harness")]
@@ -81,10 +77,5 @@ fn render_inner_preview(
     ui.set_max_height(shell_h);
     ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend);
 
-    let tokens = ThemeTokens::from_ui(ui);
-    let mut keep_open = true;
-    egui::Frame::new().fill(tokens.window).show(ui, |ui| {
-        keep_open = control_center_tls::with_mount(|mount| mount.render_preview(ui, ctx, scale, shell_h, editor, tab));
-    });
-    keep_open
+    control_center_tls::with_mount(|mount| mount.render_preview(ui, ctx, scale, shell_h, editor, tab))
 }

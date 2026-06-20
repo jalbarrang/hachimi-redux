@@ -11,11 +11,13 @@ pub fn SliderRow(label: String, value: f64, min: f64, max: f64, step: f64, oninp
             "dir": "row",
             "gap": "8",
             "align": "center",
-            div {
-                "color": theme::FG_MUTED,
-                "font-size": "14",
-                "width": "140",
-                {label}
+            if !label.is_empty() {
+                div {
+                    "color": theme::FG_MUTED,
+                    "font-size": "14",
+                    "width": "140",
+                    {label}
+                }
             }
             input {
                 r#type: "range",

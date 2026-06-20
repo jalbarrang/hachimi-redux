@@ -11,6 +11,7 @@ pub fn SettingsGrid(children: Element) -> Element {
             "grid-cols": "label-control",
             "gap": "8",
             "align": "start",
+            "justify-items": "stretch",
             {children}
         }
     }

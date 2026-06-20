@@ -102,7 +102,10 @@ pub fn container_style(attrs: &[(String, String)]) -> Style {
         style.gap = length(gap);
         let item_align = parse_align(attr(attrs, "align"));
         style.align_items = Some(item_align);
-        style.justify_items = Some(item_align);
+        style.justify_items = Some(match attr(attrs, "justify-items") {
+            Some(value) => parse_align(Some(value)),
+            None => item_align,
+        });
     }
     if let Some(w) = attr_f32(attrs, "width") {
         style.size.width = length(w);

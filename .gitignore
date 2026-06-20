@@ -20,3 +20,5 @@ db/
 
 # Local-only upstream source clones for reference (not part of the build)
 /.reference/
+
+.agents/skills/impeccable/scripts

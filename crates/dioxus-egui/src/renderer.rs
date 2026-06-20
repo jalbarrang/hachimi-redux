@@ -538,7 +538,7 @@ impl DioxusEgui {
             _ => {
                 let was = Self::attr(attrs, "value").unwrap_or("").to_string();
                 let mut now = was.clone();
-                let resp = tui.ui(|ui| ui.text_edit_singleline(&mut now));
+                let resp = tui.ui(|ui| ui.add(egui::TextEdit::singleline(&mut now).desired_width(f32::INFINITY)));
                 if resp.changed() && now != was {
                     Self::push_value(*eid, listeners, now, events);
                 }
@@ -686,6 +686,10 @@ impl DioxusEgui {
             } => {
                 let v = Self::attr(attrs, "value").unwrap_or("");
                 out.push_str(&format!("[textarea value={v}]\n"));
+            }
+            NodeKind::Element { tag: "img", attrs, .. } => {
+                let src = Self::attr(attrs, "src").unwrap_or("");
+                out.push_str(&format!("[img src={src}]\n"));
             }
             NodeKind::Element { children, .. } => {
                 for &c in children {
@@ -951,6 +955,15 @@ mod style_tests {
         ]));
         assert_eq!(s.align_items, Some(AlignItems::Start));
         assert_eq!(s.justify_items, Some(AlignItems::Start));
+
+        let s = container_style(&attrs(&[
+            ("display", "grid"),
+            ("grid-cols", "label-control"),
+            ("align", "start"),
+            ("justify-items", "stretch"),
+        ]));
+        assert_eq!(s.align_items, Some(AlignItems::Start));
+        assert_eq!(s.justify_items, Some(AlignItems::Stretch));
     }
 
     #[test]
