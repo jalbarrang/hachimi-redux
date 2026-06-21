@@ -136,8 +136,7 @@ fn bond_row(ui: &mut egui::Ui, idx: usize, row: &BondRow, w: f32, font: f32, chi
                 tui.style(name_grow()).add(|tui| {
                     tui.ui(|ui| {
                         ui.add(
-                            egui::Label::new(RichText::new(&row.name).strong().color(theme::FG).size(font))
-                                .truncate(),
+                            egui::Label::new(RichText::new(&row.name).strong().color(theme::FG).size(font)).truncate(),
                         );
                     });
                 });
@@ -150,7 +149,12 @@ fn bond_row(ui: &mut egui::Ui, idx: usize, row: &BondRow, w: f32, font: f32, chi
                     tui.ui(|ui| {
                         ui.horizontal(|ui| {
                             ui.spacing_mut().item_spacing.x = 0.0;
-                            ui.label(RichText::new(row.value.to_string()).strong().color(row.value_color).size(font));
+                            ui.label(
+                                RichText::new(row.value.to_string())
+                                    .strong()
+                                    .color(row.value_color)
+                                    .size(font),
+                            );
                             ui.label(RichText::new("/100").color(theme::FG_DIM).size(font));
                         });
                     });

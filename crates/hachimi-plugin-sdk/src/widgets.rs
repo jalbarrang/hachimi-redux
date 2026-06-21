@@ -1,12 +1,10 @@
 //! Tiny egui-native widget helpers for plugins.
 //!
-//! These replace the handful of `honse-ui` components plugins relied on while the
-//! GUI was authored in Dioxus. They are immediate-mode `fn(&mut egui::Ui, ...)`
-//! draws — no retained tree, no `VirtualDom`. Plugins cast the host `Ui` pointer
-//! with [`crate::ui_from_ptr`] and call these directly.
+//! Immediate-mode `fn(&mut egui::Ui, ...)` draws — no retained tree. Plugins cast
+//! the host `Ui` pointer with [`crate::ui_from_ptr`] and call these directly.
 
-/// Design tokens mirroring the honse-ui palette, as `egui::Color32` constants so
-/// plugins style egui draws without parsing hex strings.
+/// Design tokens as `egui::Color32` constants so plugins style egui draws
+/// without parsing hex strings.
 pub mod theme {
     use egui::Color32;
 

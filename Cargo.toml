@@ -3,8 +3,6 @@ resolver = "2"
 members = [
     "apps/hachimi",
     "apps/installer",
-    "crates/dioxus-egui",
-    "crates/honse-ui",
     "crates/hachimi-plugin-abi",
     "crates/hachimi-plugin-sdk",
     "crates/hachimi-plugin-macros",
@@ -22,8 +20,6 @@ members = [
 # check/clippy/test/build (CI + dev) don't try to compile it without those files.
 default-members = [
     "apps/hachimi",
-    "crates/dioxus-egui",
-    "crates/honse-ui",
     "crates/hachimi-plugin-abi",
     "crates/hachimi-plugin-sdk",
     "crates/hachimi-plugin-macros",
