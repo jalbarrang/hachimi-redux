@@ -80,16 +80,20 @@ pub(super) fn draw(ui: &mut egui::Ui, snap: &CareerSnapshot) {
         .reserve_width(width)
         .style(grid_2col(dimens::z(dimens::GAP_LG), width))
         .show(|tui| {
-            // Left column: portrait + name / outfit / stars.
+            // Left column: portrait + badge + name / outfit / stars.
             tui.style(row(dimens::z(dimens::GAP_LG))).add(|tui| {
                 tui.style(col(dimens::z(dimens::GAP_XS))).add(|tui| {
-                    tui.ui(|ui| portrait_with_badge(ui, snap));
+                    tui.ui(|ui| portrait(ui, snap));
                     if let Some(ev) = snap.evaluation_value {
                         tui.ui(|ui| {
                             ui.label(RichText::new(group_thousands(ev)).strong().color(theme::FG_MUTED));
                         });
                     }
                 });
+
+                // Rank badge as its own element beside the portrait.
+                tui.ui(|ui| rank_badge(ui, snap));
+
                 tui.style(taffy::Style {
                     flex_grow: 1.0,
                     flex_basis: length(0.0),
@@ -100,13 +104,7 @@ pub(super) fn draw(ui: &mut egui::Ui, snap: &CareerSnapshot) {
                     // `.ui()`; that feeds back into layout, keeps the node dirty
                     // every frame, and flickers the whole panel on repaint. Report
                     // a constant size (width 0 + infinite.x) instead.
-                    truncating_label(
-                        tui,
-                        RichText::new(&name)
-                            .size(dimens::z(dimens::FONT_NAME))
-                            .strong()
-                            .color(theme::FG),
-                    );
+
                     if let Some(outfit) = &outfit {
                         truncating_label(
                             tui,
@@ -116,14 +114,23 @@ pub(super) fn draw(ui: &mut egui::Ui, snap: &CareerSnapshot) {
                                 .color(theme::FG_MUTED),
                         );
                     }
+
+                    truncating_label(
+                        tui,
+                        RichText::new(&name)
+                            .size(dimens::z(dimens::FONT_NAME))
+                            .strong()
+                            .color(theme::FG),
+                    );
+
                     tui.ui(|ui| stars(ui, snap.star.clamp(0, 5)));
                 });
             });
             // Right column: condition pills, right-aligned.
             tui.style(col_end(dimens::z(dimens::GAP_MD))).add(|tui| {
-                tui.ui(|ui| date_pill(ui, snap));
+                // tui.ui(|ui| date_pill(ui, snap));
                 tui.ui(|ui| energy_pill(ui, snap));
-                tui.ui(|ui| mood_pill(ui, snap));
+                // tui.ui(|ui| mood_pill(ui, snap));
             });
         });
 }
@@ -145,13 +152,10 @@ fn truncating_label(tui: &mut egui_taffy::Tui, text: RichText) {
     });
 }
 
-/// Portrait square with the overlapping circular rank badge at the top-right.
-fn portrait_with_badge(ui: &mut egui::Ui, snap: &CareerSnapshot) {
-    let badge = dimens::z(dimens::RANK_BADGE);
+/// Portrait square with a rounded border.
+fn portrait(ui: &mut egui::Ui, snap: &CareerSnapshot) {
     let portrait = dimens::z(dimens::PORTRAIT);
-    let region = Vec2::new(portrait + badge * 0.4, portrait + badge * 0.35);
-    let (rect, _) = ui.allocate_exact_size(region, egui::Sense::hover());
-    let p_rect = Rect::from_min_size(Pos2::new(rect.left(), rect.bottom() - portrait), Vec2::splat(portrait));
+    let (p_rect, _) = ui.allocate_exact_size(Vec2::splat(portrait), egui::Sense::hover());
 
     // Portrait image (or placeholder), with a rounded border.
     let drawn = career_meta::trainee_portrait_path(snap.card_id)
@@ -175,36 +179,40 @@ fn portrait_with_badge(ui: &mut egui::Ui, snap: &CareerSnapshot) {
         Stroke::new(1.0, theme::LINE),
         StrokeKind::Inside,
     );
+}
 
-    // Rank badge: gold-ringed dark medallion with the rank sprite, top-right.
-    if let Some(ev) = snap.evaluation_value {
-        let label = rank_table::rank_label(ev);
-        let center = Pos2::new(p_rect.right() - 2.0, p_rect.top() + 2.0);
-        let r = badge * 0.5;
-        ui.painter().circle_filled(center, r, theme::SURFACE_1);
-        ui.painter().circle_stroke(center, r, Stroke::new(2.0, theme::GOLD));
-        let drew = career_meta::rank_label_sprite(label)
-            .and_then(|path| textures::texture(ui.ctx(), &path))
-            .map(|tex| {
-                let s = badge * 0.74;
-                let ir = Rect::from_center_size(center, Vec2::splat(s));
-                ui.painter().image(
-                    tex.id(),
-                    ir,
-                    Rect::from_min_max(Pos2::ZERO, Pos2::new(1.0, 1.0)),
-                    Color32::WHITE,
-                );
-            })
-            .is_some();
-        if !drew {
-            ui.painter().text(
-                center,
-                egui::Align2::CENTER_CENTER,
-                label,
-                egui::FontId::proportional(badge * 0.5),
-                theme::GOLD,
+/// Rank badge: gold-ringed dark medallion with the rank sprite, beside the portrait.
+fn rank_badge(ui: &mut egui::Ui, snap: &CareerSnapshot) {
+    let Some(ev) = snap.evaluation_value else { return };
+    let badge = dimens::z(dimens::RANK_BADGE);
+    let (rect, _) = ui.allocate_exact_size(Vec2::splat(badge), egui::Sense::hover());
+
+    let label = rank_table::rank_label(ev);
+    let center = rect.center();
+    let r = badge * 0.5;
+    ui.painter().circle_filled(center, r, theme::SURFACE_1);
+    ui.painter().circle_stroke(center, r, Stroke::new(2.0, theme::GOLD));
+    let drew = career_meta::rank_label_sprite(label)
+        .and_then(|path| textures::texture(ui.ctx(), &path))
+        .map(|tex| {
+            let s = badge * 0.74;
+            let ir = Rect::from_center_size(center, Vec2::splat(s));
+            ui.painter().image(
+                tex.id(),
+                ir,
+                Rect::from_min_max(Pos2::ZERO, Pos2::new(1.0, 1.0)),
+                Color32::WHITE,
             );
-        }
+        })
+        .is_some();
+    if !drew {
+        ui.painter().text(
+            center,
+            egui::Align2::CENTER_CENTER,
+            label,
+            egui::FontId::proportional(badge * 0.5),
+            theme::GOLD,
+        );
     }
 }
 
@@ -216,6 +224,7 @@ fn stars(ui: &mut egui::Ui, value: i32) {
     ui.label(RichText::new(s).size(dimens::z(dimens::FONT_STARS)).color(theme::GOLD));
 }
 
+#[allow(dead_code)]
 fn date_pill(ui: &mut egui::Ui, snap: &CareerSnapshot) {
     let (year, date) = career_meta::turn_date(snap.current_turn, snap.scenario_id);
     theme::pill(ui, |ui| {
@@ -252,6 +261,7 @@ fn energy_pill(ui: &mut egui::Ui, snap: &CareerSnapshot) {
     });
 }
 
+#[allow(dead_code)]
 fn mood_pill(ui: &mut egui::Ui, snap: &CareerSnapshot) {
     let label = memory_reader::mood_label(snap.motivation);
     theme::pill(ui, |ui| {

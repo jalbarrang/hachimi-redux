@@ -6,7 +6,11 @@
 //! only the theme primitives exist.
 
 mod bonds;
+mod bonds_table;
 mod header;
+// Skills section is hidden for now (its draw call is disabled below); the module
+// is kept compiling until it's re-enabled.
+#[allow(dead_code)]
 mod skills;
 mod theme;
 mod training;
@@ -39,10 +43,12 @@ pub(super) fn draw_tab(ui: &mut egui::Ui) {
 /// background frame is the panel face, so sections are drawn directly (no card).
 fn draw(ui: &mut egui::Ui, snap: &CareerSnapshot) {
     header::draw(ui, snap);
-    ui.add_space(10.0);
+    ui.add_space(8.0);
+
     training::draw(ui, snap);
-    ui.add_space(10.0);
+    ui.add_space(8.0);
+
     bonds::draw(ui, snap);
-    ui.add_space(10.0);
-    skills::draw(ui, snap);
+    // ui.add_space(10.0);
+    // skills::draw(ui, snap);
 }

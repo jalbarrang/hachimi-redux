@@ -10,7 +10,9 @@ mod combos;
 mod feedback;
 mod sections;
 mod tags;
+mod widgets;
 
 pub(crate) use buttons::*;
 pub(crate) use feedback::*;
 pub(crate) use sections::*;
+pub(crate) use widgets::*;

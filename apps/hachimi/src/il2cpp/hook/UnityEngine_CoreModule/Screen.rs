@@ -47,6 +47,26 @@ pub fn apply_auto_full_screen(mut width: i32, mut height: i32) -> bool {
     true
 }
 
+/// Explicitly set the game resolution. Bypasses the auto-full-screen aspect
+/// scaling and applies the literal dimensions. A `refresh_rate` of 0 (or less)
+/// substitutes the current display refresh rate so we never request 0 Hz.
+pub fn set_resolution(width: i32, height: i32, full_screen_mode: i32, refresh_rate: i32) {
+    let preferred_refresh_rate = RefreshRate {
+        numerator: if refresh_rate > 0 {
+            refresh_rate as u32
+        } else {
+            get_currentResolution().refresh_rate.max(0) as u32
+        },
+        denominator: 1,
+    };
+    get_orig_fn!(SetResolution_Injected, SetResolutionInjectedFn)(
+        width,
+        height,
+        full_screen_mode,
+        &preferred_refresh_rate,
+    );
+}
+
 type SetResolutionInjectedFn =
     extern "C" fn(width: i32, height: i32, fullscreen_mode: i32, preferred_refresh_rate: *const RefreshRate);
 extern "C" fn SetResolution_Injected(
@@ -58,6 +78,18 @@ extern "C" fn SetResolution_Injected(
     let windows_config = &Hachimi::instance().config.load().windows;
     if windows_config.auto_full_screen && apply_auto_full_screen(width, height) {
         return;
+    }
+
+    // Re-impose the configured windowed resolution on game-initiated windowed
+    // calls (e.g. after a fullscreen<->windowed toggle), so an explicit windowed
+    // size sticks instead of being overwritten by the game. Only applies when not
+    // in auto-full-screen mode and the incoming call is itself windowed.
+    if !windows_config.auto_full_screen && full_screen_mode == super::FullScreenMode_Windowed {
+        let windowed_res = &windows_config.windowed_res;
+        if windowed_res.width > 0 && windowed_res.height > 0 {
+            set_resolution(windowed_res.width, windowed_res.height, full_screen_mode, 0);
+            return;
+        }
     }
 
     get_orig_fn!(SetResolution_Injected, SetResolutionInjectedFn)(

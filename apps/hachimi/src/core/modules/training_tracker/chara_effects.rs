@@ -42,6 +42,7 @@ const EFFECTS: &[(i32, &str, Polarity)] = &[
 /// Look up a condition by its chara-effect id. Returns `(name, polarity)`.
 /// Unknown ids fall back to a generic label and `Positive` so new/unmapped
 /// effects still render (and get logged once for follow-up).
+#[allow(dead_code)]
 pub fn lookup(id: i32) -> (String, Polarity) {
     match EFFECTS.iter().find(|&&(eid, _, _)| eid == id) {
         Some(&(_, name, pol)) => (name.to_string(), pol),

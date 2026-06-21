@@ -10,7 +10,7 @@ pub fn SliderRow(label: String, value: f64, min: f64, max: f64, step: f64, oninp
         div {
             "dir": "row",
             "gap": "8",
-            "align": "center",
+            "align": "left",
             if !label.is_empty() {
                 div {
                     "color": theme::FG_MUTED,

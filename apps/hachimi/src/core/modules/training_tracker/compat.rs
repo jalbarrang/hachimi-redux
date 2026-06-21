@@ -3,7 +3,7 @@
 //! Training-tracker was authored as a cdylib plugin against `hachimi-plugin-sdk`,
 //! reaching the host over the C ABI vtable. In-core it needs none of that: this
 //! module re-implements the small slice of the SDK surface the tracker actually
-//! uses ([`Sdk`], [`UiMount`], [`ui_from_ptr`], the `egui`/`dioxus` re-exports and
+//! uses ([`Sdk`], [`ui_from_ptr`], the `egui` re-export and
 //! the `hlog_*` macros) but delegates straight to host internals — direct
 //! `crate::il2cpp` calls and the owner-scoped `crate::core::plugin` registries.
 //!
@@ -25,14 +25,8 @@ use crate::il2cpp;
 
 // ── Re-exports so moved tracker files keep their `crate::core::modules::training_tracker::compat::…` imports
 //    after a mechanical `crate::core::modules::training_tracker::compat` → `…compat` rename. ──
-pub use ::dioxus;
-pub use ::dioxus_egui;
 pub use ::egui;
-pub use ::honse_ui;
 pub use hachimi_plugin_abi::{capability, event};
-
-mod ui_mount;
-pub use ui_mount::{mount, UiMount};
 
 // ── Logging: the SDK's `hlog_*` macros log through the plugin vtable, which does
 //    not exist in-core. Redefine them to forward to the host `log` facade. The

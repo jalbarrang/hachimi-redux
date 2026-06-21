@@ -2,7 +2,7 @@
 
 use std::collections::HashMap;
 use std::ffi::c_void;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicI32, Ordering};
 
 use crate::core::modules::training_tracker::compat::Sdk;
 
@@ -214,6 +214,22 @@ fn read_snapshot_inner() -> Option<CareerSnapshot> {
     hlog_trace!("snapshot: step 10 — command info");
     let command_infos = read_command_infos(wsmd);
     let partner_placements = partner_placements_from(&command_infos);
+    {
+        // Turn-change diagnostic: dump raw per-facility partner ids so we can tell
+        // a stale game-side HomeInfo arrangement apart from a mapping bug in
+        // `partner_placements_from`. Fires once per turn (logs on turn change).
+        static LAST_PLACEMENT_TURN: AtomicI32 = AtomicI32::new(-1);
+        if LAST_PLACEMENT_TURN.swap(current_turn, Ordering::Relaxed) != current_turn {
+            for info in &command_infos {
+                let facility = facility_index_of(info.command_id);
+                let ids: Vec<i32> = info.partners.iter().map(|&(id, _, _)| id).collect();
+                hlog_info!(
+                    "placements turn={current_turn} command_id={} facility={facility:?} partners={ids:?}",
+                    info.command_id
+                );
+            }
+        }
+    }
     let (failure_rates, stat_gains, per_stat_gains, per_facility_bond_pressure, scenario_command_base) =
         align_command_infos(&command_infos);
 

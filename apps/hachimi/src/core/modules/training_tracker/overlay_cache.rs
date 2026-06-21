@@ -18,7 +18,7 @@ use crate::core::modules::training_tracker::memory_reader::{
 use crate::core::modules::training_tracker::skill_shop::{self, SkillShopEntry};
 
 /// Auto-refresh interval while memory tracking is on (milliseconds).
-pub const AUTO_REFRESH_INTERVAL_MS: u64 = 2000;
+pub const AUTO_REFRESH_INTERVAL_MS: u64 = 500;
 
 #[derive(Default)]
 struct OverlayCache {
@@ -286,6 +286,7 @@ pub fn snapshot() -> Option<CareerSnapshot> {
     CACHE.lock().ok().and_then(|g| g.snapshot.clone())
 }
 
+#[allow(dead_code)]
 pub fn skills() -> Vec<AcquiredSkillInfo> {
     CACHE.lock().ok().map(|g| g.skills.clone()).unwrap_or_default()
 }
@@ -348,8 +349,8 @@ mod tests {
     #[test]
     fn should_auto_refresh_respects_interval() {
         assert!(!should_auto_refresh(0, AUTO_REFRESH_INTERVAL_MS));
-        assert!(!should_auto_refresh(1999, AUTO_REFRESH_INTERVAL_MS));
-        assert!(should_auto_refresh(2000, AUTO_REFRESH_INTERVAL_MS));
+        assert!(!should_auto_refresh(499, AUTO_REFRESH_INTERVAL_MS));
+        assert!(should_auto_refresh(500, AUTO_REFRESH_INTERVAL_MS));
         assert!(should_auto_refresh(3000, AUTO_REFRESH_INTERVAL_MS));
     }
 

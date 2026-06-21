@@ -6,7 +6,8 @@ use crate::{
     core::Hachimi,
     il2cpp::{
         hook::UnityEngine_CoreModule::{
-            FullScreenMode_ExclusiveFullScreen, FullScreenMode_FullScreenWindow, QualitySettings, Screen,
+            FullScreenMode_ExclusiveFullScreen, FullScreenMode_FullScreenWindow, FullScreenMode_Windowed,
+            QualitySettings, Screen,
         },
         symbols::Thread,
         types::Resolution,
@@ -39,18 +40,56 @@ pub fn on_hooking_finished(hachimi: &Hachimi) {
         QualitySettings::set_vSyncCount(1);
     }
 
-    // Apply auto full screen
-    if hachimi.config.load().windows.auto_full_screen {
+    // Apply auto full screen, or an explicit windowed resolution when not in
+    // auto-full-screen mode.
+    let windows_config = &hachimi.config.load().windows;
+    if windows_config.auto_full_screen {
         std::thread::spawn(|| {
             std::thread::sleep(std::time::Duration::from_secs(2));
             Thread::main_thread().schedule(|| {
                 Screen::apply_auto_full_screen(Screen::get_width(), Screen::get_height());
             });
         });
+    } else {
+        let windowed_res = &windows_config.windowed_res;
+        if windowed_res.width > 0 && windowed_res.height > 0 {
+            std::thread::spawn(|| {
+                std::thread::sleep(std::time::Duration::from_secs(2));
+                Thread::main_thread().schedule(apply_resolution_main_thread);
+            });
+        }
     }
 
     // Clean up the update installer
     _ = std::fs::remove_file(utils::get_tmp_installer_path());
+}
+
+/// Main-thread worker: re-reads config and applies the configured resolution.
+/// Picks the full-screen target when currently in (or configured for) full
+/// screen, otherwise the windowed target. No-op when the relevant resolution is
+/// left at default (0x0). Must be a non-capturing `fn` for [`Thread::schedule`].
+fn apply_resolution_main_thread() {
+    let windows_config = &Hachimi::instance().config.load().windows;
+    let fullscreen = Screen::get_fullScreen() || windows_config.auto_full_screen;
+    let (res, mode, refresh) = if fullscreen {
+        (
+            &windows_config.full_screen_res,
+            windows_config.full_screen_mode as i32,
+            windows_config.full_screen_res.refresh_rate,
+        )
+    } else {
+        (&windows_config.windowed_res, FullScreenMode_Windowed, 0)
+    };
+
+    if res.width > 0 && res.height > 0 {
+        Screen::set_resolution(res.width, res.height, mode, refresh);
+    }
+}
+
+/// Apply the resolution configured in `windows.{full_screen_res,windowed_res}`
+/// to the running game, scheduled on the main thread.
+pub fn apply_current_resolution() {
+    Thread::main_thread().schedule(apply_resolution_main_thread);
 }
 
 #[derive(Deserialize, Serialize, Clone)]
@@ -76,6 +115,8 @@ pub struct Config {
     pub full_screen_mode: FullScreenMode,
     #[serde(default)]
     pub full_screen_res: Resolution,
+    #[serde(default)]
+    pub windowed_res: Resolution,
     #[serde(default)]
     pub resolution_scaling: ResolutionScaling,
     #[serde(default)]

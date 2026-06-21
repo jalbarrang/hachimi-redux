@@ -45,6 +45,7 @@ pub const GOLD: Color32 = Color32::from_rgb(0xf0, 0xa8, 0x18);
 /// Mood accent color for a motivation level (1 Awful … 5 Great); mirrors the
 /// dashboard `--color-mood-*` tokens. Out-of-range → muted.
 #[must_use]
+#[allow(dead_code)]
 pub fn mood_color(motivation: i32) -> Color32 {
     match motivation {
         5 => Color32::from_rgb(0xe8, 0x5f, 0x9c), // great
@@ -202,6 +203,7 @@ pub fn pill(ui: &mut Ui, add: impl FnOnce(&mut Ui)) {
 }
 
 /// Frame for a bond row: rainbow border when `rainbow`, else the raised face.
+#[allow(dead_code)]
 pub fn row_frame(rainbow: bool) -> egui::Frame {
     let stroke = if rainbow {
         Stroke::new(1.5, Color32::from_rgb(0x9a, 0x8c, 0xff))
@@ -218,6 +220,7 @@ pub fn row_frame(rainbow: bool) -> egui::Frame {
 /// A stat-colored rounded chip with the stat glyph centered, side `size` px.
 /// Falls back to a colored chip with the facility's initial when the icon sprite
 /// is unavailable.
+#[allow(dead_code)]
 pub fn stat_chip(ui: &mut Ui, facility: usize, size: f32) {
     let (rect, _) = ui.allocate_exact_size(Vec2::splat(size), egui::Sense::hover());
     ui.painter()

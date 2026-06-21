@@ -65,92 +65,109 @@ extern "C" fn IDXGISwapChain_Present(this: *mut c_void, sync_interval: c_uint, f
         return orig_fn(this, sync_interval, flags);
     }
 
-    let mut gui = Gui::instance_or_init("windows.menu_open_key")
-        .lock()
-        .expect("lock poisoned");
-    let painter_mutex = match init_painter(this) {
-        Ok(v) => v,
-        Err(e) => {
-            error!("{}", e);
-            info!("Unhooking IDXGISwapChain hooks");
+    // Render the Hachimi GUI into the back buffer inside this scope, then release
+    // every Hachimi lock BEFORE calling the real Present below. During a
+    // fullscreen mode/resolution switch DXGI blocks Present until the window's
+    // WndProc drains its message queue, and WndProc also locks the Gui mutex (see
+    // wnd_hook.rs). Holding the Gui/painter locks across the real Present
+    // deadlocks the render thread against the main thread — the "set a resolution
+    // in fullscreen -> game stops responding" hang.
+    {
+        let mut gui = Gui::instance_or_init("windows.menu_open_key")
+            .lock()
+            .expect("lock poisoned");
+        let painter_mutex = match init_painter(this) {
+            Ok(v) => v,
+            Err(e) => {
+                error!("{}", e);
+                info!("Unhooking IDXGISwapChain hooks");
 
-            let res = orig_fn(this, sync_interval, flags);
-            let interceptor = &Hachimi::instance().interceptor;
-            interceptor.unhook(IDXGISwapChain_Present as *const () as usize);
-            interceptor.unhook(IDXGISwapChain_ResizeBuffers as *const () as usize);
-            return res;
-        }
-    };
-    // Skip if the GUI is empty or the window is minimized
-    // SAFETY: FFI / raw pointer operation required by IL2CPP interop
-    if gui.is_empty() || unsafe { IsIconic(hwnd).into() } {
-        return orig_fn(this, sync_interval, flags);
-    }
-    // Check if this is the right swap chain
-    let mut painter = painter_mutex.lock().expect("lock poisoned");
-    if this != painter.swap_chain().as_raw() {
-        return orig_fn(this, sync_interval, flags);
-    }
+                // Drop the Gui lock before the real Present for the same
+                // deadlock reason described above.
+                drop(gui);
+                let res = orig_fn(this, sync_interval, flags);
+                let interceptor = &Hachimi::instance().interceptor;
+                interceptor.unhook(IDXGISwapChain_Present as *const () as usize);
+                interceptor.unhook(IDXGISwapChain_ResizeBuffers as *const () as usize);
+                return res;
+            }
+        };
 
-    // Get window size
-    let mut rect = RECT::default();
-    // SAFETY: FFI / raw pointer operation required by IL2CPP interop
-    if let Err(e) = unsafe { GetClientRect(hwnd, &mut rect) } {
-        error!("Failed to get client rect: {}", e);
-        return orig_fn(this, sync_interval, flags);
-    }
-    let width = rect.right - rect.left;
-    let height = rect.bottom - rect.top;
-    gui.set_screen_size(width, height);
+        'render: {
+            // Skip if the GUI is empty or the window is minimized
+            // SAFETY: FFI / raw pointer operation required by IL2CPP interop
+            if gui.is_empty() || unsafe { IsIconic(hwnd).into() } {
+                break 'render;
+            }
+            // Check if this is the right swap chain
+            let mut painter = painter_mutex.lock().expect("lock poisoned");
+            if this != painter.swap_chain().as_raw() {
+                break 'render;
+            }
 
-    // Run and render the GUI
-    let output = gui.run();
+            // Get window size
+            let mut rect = RECT::default();
+            // SAFETY: FFI / raw pointer operation required by IL2CPP interop
+            if let Err(e) = unsafe { GetClientRect(hwnd, &mut rect) } {
+                error!("Failed to get client rect: {}", e);
+                break 'render;
+            }
+            let width = rect.right - rect.left;
+            let height = rect.bottom - rect.top;
+            gui.set_screen_size(width, height);
 
-    for viewport_output in output.viewport_output.values() {
-        for cmd in &viewport_output.commands {
-            // Intercept egui telling the OS where the text cursor currently is
-            if let egui::ViewportCommand::IMERect(rect) = cmd {
-                // Windows IME boxes usually look best positioned at the bottom-left of the cursor.
-                let zoom = gui.context.zoom_factor();
-                let x = rect.min.x * zoom;
-                let y = rect.max.y * zoom;
-                let y_unity = height as f32 - y;
-                *IME_COMPOSITION_POS.lock().expect("lock poisoned") = (x, y_unity);
+            // Run and render the GUI
+            let output = gui.run();
 
-                crate::il2cpp::symbols::Thread::main_thread().schedule(|| {
-                    let (x, y_unity) = *IME_COMPOSITION_POS.lock().expect("lock poisoned");
+            for viewport_output in output.viewport_output.values() {
+                for cmd in &viewport_output.commands {
+                    // Intercept egui telling the OS where the text cursor currently is
+                    if let egui::ViewportCommand::IMERect(rect) = cmd {
+                        // Windows IME boxes usually look best positioned at the bottom-left of the cursor.
+                        let zoom = gui.context.zoom_factor();
+                        let x = rect.min.x * zoom;
+                        let y = rect.max.y * zoom;
+                        let y_unity = height as f32 - y;
+                        *IME_COMPOSITION_POS.lock().expect("lock poisoned") = (x, y_unity);
 
-                    crate::il2cpp::hook::UnityEngine_InputLegacyModule::Input::set_compositionCursorPos(
-                        crate::il2cpp::types::Vector2_t { x, y: y_unity },
-                    );
-                });
+                        crate::il2cpp::symbols::Thread::main_thread().schedule(|| {
+                            let (x, y_unity) = *IME_COMPOSITION_POS.lock().expect("lock poisoned");
+
+                            crate::il2cpp::hook::UnityEngine_InputLegacyModule::Input::set_compositionCursorPos(
+                                crate::il2cpp::types::Vector2_t { x, y: y_unity },
+                            );
+                        });
+                    }
+                }
+            }
+
+            let (mut renderer_output, _, _) = egui_directx11::split_output(output);
+
+            let layout_pixels_per_point = renderer_output.pixels_per_point;
+
+            let clipped_primitives = gui.context.tessellate(renderer_output.shapes, layout_pixels_per_point);
+
+            renderer_output.shapes = clipped_primitives
+                .into_iter()
+                .map(|p| egui::epaint::ClippedShape {
+                    clip_rect: p.clip_rect,
+                    shape: match p.primitive {
+                        egui::epaint::Primitive::Mesh(mesh) => egui::Shape::Mesh(mesh.into()),
+                        egui::epaint::Primitive::Callback(cb) => egui::Shape::Callback(cb),
+                    },
+                })
+                .collect();
+
+            renderer_output.pixels_per_point = 1.0;
+
+            if let Err(e) = painter.present(&gui.context, renderer_output) {
+                error!("Failed to render GUI: {}", e);
             }
         }
-    }
+    } // Gui + painter locks released here.
 
-    let (mut renderer_output, _, _) = egui_directx11::split_output(output);
-
-    let layout_pixels_per_point = renderer_output.pixels_per_point;
-
-    let clipped_primitives = gui.context.tessellate(renderer_output.shapes, layout_pixels_per_point);
-
-    renderer_output.shapes = clipped_primitives
-        .into_iter()
-        .map(|p| egui::epaint::ClippedShape {
-            clip_rect: p.clip_rect,
-            shape: match p.primitive {
-                egui::epaint::Primitive::Mesh(mesh) => egui::Shape::Mesh(mesh.into()),
-                egui::epaint::Primitive::Callback(cb) => egui::Shape::Callback(cb),
-            },
-        })
-        .collect();
-
-    renderer_output.pixels_per_point = 1.0;
-
-    if let Err(e) = painter.present(&gui.context, renderer_output) {
-        error!("Failed to render GUI: {}", e);
-    }
-
+    // The real Present runs with NO Hachimi locks held, so a fullscreen
+    // transition that blocks here cannot deadlock against WndProc.
     orig_fn(this, sync_interval, flags)
 }
 

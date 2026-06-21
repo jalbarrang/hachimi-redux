@@ -68,6 +68,10 @@ tools/                → dev data tools (see tools/README.md + docs/updating-ga
 scripts/              → deploy-windows.ps1, quality-gates.ps1, bump-version.ps1, ...
 ```
 
+**Runtime logs (for diagnosing crashes/hangs):**
+- Hachimi log: `<game install dir>\hachimi.log` (e.g. `C:\Program Files (x86)\Steam\steamapps\common\UmamusumePrettyDerby\hachimi.log`)
+- Unity Player log: `%USERPROFILE%\AppData\LocalLow\Cygames\Umamusume\Player.log`
+
 ## Gotchas
 
 - **Dioxus attrs map to taffy styles, not CSS.** In `crates/dioxus-egui/src/style.rs`, `align` sets cross-axis `align_items`; horizontal grid-item fill needs `justify-items`. A single-line `<input>` only fills its column when the grid item is stretched *and* the widget uses `desired_width(f32::INFINITY)` — both are required.

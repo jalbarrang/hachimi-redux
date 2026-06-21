@@ -85,10 +85,7 @@ pub fn draw_frame(state: &mut PreviewState, ui: &mut egui::Ui) -> bool {
     ui.painter()
         .rect_filled(ui.max_rect(), 0.0, egui::Color32::from_rgb(0, 180, 0));
 
-    // Center the modal shell within the desktop by handing it an explicit child
-    // rect (NOT a centered layout or a horizontal pad wrapper — both disturb the
-    // shell's internal taffy + scroll-area sizing). Mirrors the in-game
-    // `egui::Modal` which centers on screen.
+    // Center the modal shell within the desktop.
     let gui_scale = get_scale(&ctx);
     let shell_w = SHELL_WIDTH * gui_scale;
     let shell_h = ctx.input(|i| i.viewport_rect().height()) * 0.85;

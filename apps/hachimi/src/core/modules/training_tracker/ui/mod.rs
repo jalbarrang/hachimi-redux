@@ -15,7 +15,6 @@ use crate::core::modules::training_tracker::memory_reader;
 mod career;
 mod constants;
 mod dimens;
-mod dioxus_mount;
 // Race-condition icon toggles (weather/season/time). Currently hidden from the
 // UI per product decision; kept dormant so it can be re-enabled cheaply.
 #[allow(dead_code)]
@@ -41,10 +40,7 @@ pub fn register_ui() {
 
     // Top-level Control Center tab (was an L1 page under the Plugins tab). The host
     // already hands us a live `egui::Ui` inside its own native slot, and the page
-    // body is pure egui — so draw it directly. (The old C menu-section path went
-    // through `dioxus_mount::render_menu`, which spins up a *nested* Dioxus mount +
-    // `set_native_draw`; nesting that native slot inside the host's native slot
-    // leaves the body unpainted.)
+    // body is pure egui — so draw it directly.
     sdk.register_tab(|ui| {
         if panic::catch_unwind(AssertUnwindSafe(|| menu::draw(ui))).is_err() {
             hlog_error!("training-tracker tab draw PANICKED");
@@ -84,7 +80,7 @@ extern "C" fn toggle_overlay_hotkey(_userdata: *mut c_void) {
 extern "C" fn draw_overlay(ui: *mut c_void, _userdata: *mut c_void) {
     // SAFETY: host passes its live `&mut egui::Ui` for this callback.
     let ui = unsafe { ui_from_ptr(ui) };
-    if panic::catch_unwind(AssertUnwindSafe(|| dioxus_mount::render_overlay(ui))).is_err() {
+    if panic::catch_unwind(AssertUnwindSafe(|| draw_overlay_inner(ui))).is_err() {
         hlog_error!("draw_overlay PANICKED");
     }
 }
@@ -114,7 +110,7 @@ fn draw_overlay_inner(ui: &mut egui::Ui) {
     // Cap the overlay height so the host's auto-sizing window stops growing with
     // content (which made it scroll the whole panel). Tab bodies scroll inside the
     // remaining height instead. Clamp to the viewport so it never exceeds screen.
-    let max_height = (ui.ctx().content_rect().height() * 0.9).min(constants::OVERLAY_MAX_HEIGHT * scale);
+    let max_height = (ui.ctx().content_rect().height()).min(constants::OVERLAY_MAX_HEIGHT * scale);
 
     // Hard-allocate a fixed-width column. The host renders a chromeless panel in an
     // auto-sizing window whose `available_width` is large; any content that follows
@@ -131,6 +127,7 @@ fn draw_overlay_inner(ui: &mut egui::Ui) {
             if !overlay::draw_shell(ui, tracking) {
                 return;
             }
+
             match crate::core::modules::training_tracker::tabs::selected_tab() {
                 crate::core::modules::training_tracker::tabs::Tab::Career => career::draw_tab(ui),
                 crate::core::modules::training_tracker::tabs::Tab::Shop => skill_shop_tab::draw(ui),

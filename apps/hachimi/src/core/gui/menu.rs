@@ -1,31 +1,19 @@
 //! L1 "Control Center": hotkey-toggled modal glue for the live `Gui` instance.
 //!
-//! The shell layout lives in [`super::shell`]; tab bodies live in `gui/tabs/`
-//! and `window/config_editor.rs`. This module wires the shell to `Gui` state.
+//! The shell layout lives in [`super::shell`]; tab bodies live in `gui/tabs/`.
+//! This module wires the shell to `Gui` state.
 
 use super::scale::get_scale;
 use super::Gui;
 
 impl Gui {
-    pub(crate) fn draw_translations_actions(
-        &mut self,
-        ui: &mut egui::Ui,
-        config: &std::rc::Rc<std::cell::RefCell<crate::core::hachimi::Config>>,
-    ) {
-        let mut note: Option<std::borrow::Cow<'_, str>> = None;
-        *self.config_editor.config_mut() = config.borrow().clone();
-        let ctx = self.context.clone();
-        self.run_translations_tab(ui, &ctx, &mut note);
-        *config.borrow_mut() = self.config_editor.config().clone();
-        if let Some(n) = note {
-            self.show_notification(n.as_ref());
-        }
-    }
-
     pub(crate) fn draw_plugins_tab(&mut self, ui: &mut egui::Ui) {
         let mut note = None;
         let ctx = self.context.clone();
         self.run_plugins_tab(ui, &ctx, &mut note);
+        if let Some(n) = note {
+            self.show_notification(n.as_ref());
+        }
     }
 
     #[cfg(feature = "training-tracker")]
@@ -58,17 +46,14 @@ impl Gui {
         }
     }
 
-    /// Draw the modal shell + tab bar and dispatch to the active tab. The shell
-    /// layout lives in the shared `render_control_center` so the desktop preview
-    /// harness renders the exact same chrome.
+    /// Draw the modal shell + tab bar and dispatch to the active tab.
     fn run_control_center(&mut self) {
         let ctx = self.context.clone();
         let scale = get_scale(&ctx);
 
         let mut keep_open = true;
-        // No popup frame: the Dioxus shell paints its own rounded panel (bg +
-        // border + radius). The default `Frame::popup` drew a second, offset
-        // window frame + shadow behind it. Keep only the dimmed backdrop.
+        // The egui-native shell paints its own rounded panel — use Frame::NONE
+        // so the modal only provides the dimmed backdrop.
         let response = egui::Modal::new(egui::Id::new("hachimi_control_center"))
             .frame(egui::Frame::NONE)
             .show(&ctx, |ui| {

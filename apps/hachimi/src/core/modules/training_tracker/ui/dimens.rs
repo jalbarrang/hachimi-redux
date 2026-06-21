@@ -27,13 +27,17 @@ pub(super) const STRIP_PAD_L: f32 = 12.0;
 pub(super) const STRIP_PAD_R: f32 = 14.0;
 
 // ── Chips / pills ─────────────────────────────────────────────────────────
+#[allow(dead_code)]
 pub(super) const CHIP_PAD_X: f32 = 8.0;
+#[allow(dead_code)]
 pub(super) const CHIP_PAD_Y: f32 = 3.0;
 
 // ── Cards / rows ──────────────────────────────────────────────────────────
 /// Horizontal inner margin a row frame eats (used to derive inner content width).
+#[allow(dead_code)]
 pub(super) const ROW_FRAME_MARGIN: f32 = 20.0;
 /// Skill-card right inner margin.
+#[allow(dead_code)]
 pub(super) const SKILL_CARD_MARGIN: f32 = 8.0;
 
 // ── Grids ─────────────────────────────────────────────────────────────────
@@ -46,7 +50,9 @@ pub(super) const GRID_GAP_X: f32 = 10.0;
 pub(super) const ICON_MD: f32 = 16.0;
 pub(super) const ICON_LG: f32 = 24.0;
 /// Rarity rail width on skill cards.
+#[allow(dead_code)]
 pub(super) const RAIL_W: f32 = 4.0;
+#[allow(dead_code)]
 pub(super) const RAIL_H: f32 = 24.0;
 
 // ── Header ────────────────────────────────────────────────────────────────
@@ -54,9 +60,11 @@ pub(super) const PORTRAIT: f32 = 56.0;
 pub(super) const RANK_BADGE: f32 = 30.0;
 
 // ── Explicit (non-text-style) font sizes ──────────────────────────────────
+#[allow(dead_code)]
+pub(super) const FONT_BASE_SIZE: f32 = 16.0;
 pub(super) const FONT_NAME: f32 = 16.0;
-pub(super) const FONT_OUTFIT: f32 = 11.0;
-pub(super) const FONT_STARS: f32 = 13.0;
+pub(super) const FONT_OUTFIT: f32 = 12.0;
+pub(super) const FONT_STARS: f32 = 12.0;
 
 // ── L1 menu (settings) page ───────────────────────────────────────────────
 // The menu is a host-embedded page, NOT the overlay, so these are used raw

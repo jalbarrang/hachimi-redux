@@ -12,14 +12,19 @@
 
 use crate::core::modules::training_tracker::gametora_data;
 
+// Hidden-for-now Career date/skills section helpers; kept until re-enabled.
+#[allow(dead_code)]
 const MONTHS: [&str; 12] = [
     "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
 ];
+#[allow(dead_code)]
 const YEARS: [&str; 3] = ["Junior Year", "Classic Year", "Senior Year"];
+#[allow(dead_code)]
 const FINALE_STAGES: [&str; 3] = ["URA Qualifiers", "URA Semifinals", "URA Finals"];
 const LETTER_ORDER: [&str; 8] = ["G", "F", "E", "D", "C", "B", "A", "S"];
 
 /// Trackblazer (Make a New Track), per `get_ScenarioId`.
+#[allow(dead_code)]
 const SCENARIO_TRACKBLAZER: i32 = 4;
 
 /// In-game `(year, date)` label for a 1-based career turn. Mirrors
@@ -27,6 +32,7 @@ const SCENARIO_TRACKBLAZER: i32 = 4;
 /// per half-month (Apr–Jun); 13–24 normal (Jul–Dec); 25–48 Classic; 49–72
 /// Senior; 73+ the scenario finale.
 #[must_use]
+#[allow(dead_code)]
 pub fn turn_date(turn: i32, scenario_id: i32) -> (&'static str, String) {
     if turn >= 73 {
         if scenario_id == SCENARIO_TRACKBLAZER {

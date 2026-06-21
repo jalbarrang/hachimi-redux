@@ -1,5 +1,6 @@
 //! Placeholder tab bodies for off-game preview.
 
+#[cfg(feature = "dev-harness")]
 pub(crate) fn stub_tab(ui: &mut egui::Ui, title: &str, note: &str) {
     ui.add_space(12.0);
     ui.heading(title);
