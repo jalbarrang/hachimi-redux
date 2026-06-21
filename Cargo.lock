@@ -1887,12 +1887,9 @@ dependencies = [
 name = "hachimi-plugin-sdk"
 version = "0.1.0"
 dependencies = [
- "dioxus",
- "dioxus-egui",
  "egui",
  "hachimi-plugin-abi",
  "hachimi-plugin-macros",
- "honse-ui",
 ]
 
 [[package]]

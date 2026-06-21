@@ -91,8 +91,7 @@ pub mod capability {
     pub const IL2CPP: u64 = 1 << 3;
     /// Host can resolve paths under the game data dir (see [`Vtable::host_data_path`]).
     pub const DATA_PATHS: u64 = 1 << 4;
-    /// Host supports Dioxus rsx embedded into plugin `egui::Ui` callbacks (`UiMount`).
-    pub const DIOXUS_UI: u64 = 1 << 5;
+    // `1 << 5` was the embedded-rsx UI bit (removed in API v16); egui-only now.
 
     // Plugin-declared flags (set in the manifest `requested_caps`).
     /// The plugin promises it can be unloaded/reloaded at runtime: it removes every

@@ -1,19 +1,13 @@
 //! Race overlays: a standalone timer plus one independent widget per player-owned
 //! uma (HP + velocity), each its own draggable chromeless panel.
 
-// The Dioxus `rsx!` macro expands to internal `Option::unwrap()` calls banned by
-// the workspace `disallowed_methods` lint.
-#![allow(clippy::disallowed_methods)]
-
-use std::cell::RefCell;
 use std::ffi::c_void;
 use std::panic::{self, AssertUnwindSafe};
 
 use hachimi_plugin_sdk::{
-    dioxus::prelude::*,
-    egui,
-    honse_ui::{theme, Toggle},
-    ui_from_ptr, Sdk, UiMount,
+    egui, ui_from_ptr,
+    widgets::{self, theme},
+    Sdk,
 };
 
 use crate::settings::{self, Metric};
@@ -24,10 +18,6 @@ const TIMER_OVERLAY_ID: &str = "race_hud_timer";
 const MAX_UMA_WIDGETS: usize = 3;
 const TIMER_WIDTH: f32 = 120.0;
 const UMA_WIDTH: f32 = 120.0;
-
-thread_local! {
-    static CONTROL_PAGE_MOUNT: RefCell<Option<UiMount>> = const { RefCell::new(None) };
-}
 
 /// Overlay id for the `slot`-th uma widget (0-based; 1-based in the id/title).
 fn uma_overlay_id(slot: usize) -> String {
@@ -98,64 +88,26 @@ extern "C" fn draw_control_page(ui: *mut c_void, _userdata: *mut c_void) {
 }
 
 fn draw_control_page_inner(ui: &mut egui::Ui) {
-    CONTROL_PAGE_MOUNT.with(|slot| {
-        let mut mount = slot.borrow_mut();
-        if mount.is_none() {
-            *mount = Some(UiMount::new(control_page_app));
-        }
-        mount.as_mut().expect("mount").render(ui);
-    });
-}
-
-fn control_page_app() -> Element {
-    rsx! { ControlPage {} }
-}
-
-#[component]
-fn ControlPage() -> Element {
-    let hint = "Show/hide each uma widget from the Overlay tab (Race Hud Uma 1\u{2026}9). \
-        The HUD never changes a widget's visibility on its own, and your choices are saved."
-        .to_string();
-
-    rsx! {
-        div {
-            "dir": "col",
-            "gap": "8",
-            div {
-                "color": theme::FG,
-                "weight": "bold",
-                "font-size": "16",
-                "Race HUD"
-            }
-            div {
-                "color": theme::FG_MUTED,
-                "There is one draggable widget per uma slot. Choose which metrics each widget shows:"
-            }
-            for (metric, label) in Metric::ALL {
-                MetricToggle { metric, label: label.to_string() }
-            }
-            div {
-                "color": theme::FG_DIM,
-                "font-size": "12",
-                {hint}
-            }
+    ui.spacing_mut().item_spacing.y = 8.0;
+    ui.label(egui::RichText::new("Race HUD").color(theme::FG).size(16.0).strong());
+    ui.label(
+        egui::RichText::new("There is one draggable widget per uma slot. Choose which metrics each widget shows:")
+            .color(theme::FG_MUTED),
+    );
+    for (metric, label) in Metric::ALL {
+        if let Some(on) = widgets::toggle(ui, label, settings::is_shown(metric)) {
+            settings::set_shown(metric, on);
+            settings::persist();
         }
     }
-}
-
-#[component]
-fn MetricToggle(metric: Metric, label: String) -> Element {
-    let checked = settings::is_shown(metric);
-    rsx! {
-        Toggle {
-            label,
-            checked,
-            onchange: move |on| {
-                settings::set_shown(metric, on);
-                settings::persist();
-            },
-        }
-    }
+    ui.label(
+        egui::RichText::new(
+            "Show/hide each uma widget from the Overlay tab (Race Hud Uma 1\u{2026}9). \
+             The HUD never changes a widget's visibility on its own, and your choices are saved.",
+        )
+        .color(theme::FG_DIM)
+        .size(12.0),
+    );
 }
 
 extern "C" fn draw_timer_overlay(ui: *mut c_void, _userdata: *mut c_void) {

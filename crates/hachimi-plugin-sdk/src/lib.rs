@@ -9,18 +9,13 @@ pub use hachimi_plugin_macros::hachimi_plugin;
 /// Re-exported egui — plugins MUST use this so the version matches the host exactly.
 pub use egui;
 
-pub use dioxus;
-pub use dioxus_egui;
-pub use honse_ui;
-
 mod gui;
 mod hook;
 mod il2cpp;
-mod mount;
 mod sdk;
 mod version;
+pub mod widgets;
 
 pub use gui::ui_from_ptr;
-pub use mount::{mount, UiMount};
 pub use sdk::{init_result_to_i32, InitError, Sdk};
 pub use version::ApiVersion;

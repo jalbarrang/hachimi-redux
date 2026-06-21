@@ -25,9 +25,13 @@
 /// v14: added `gui_overlay_get_visible` (query an overlay's current visibility),
 /// letting plugins implement a toggle alongside `gui_overlay_set_visible`.
 ///
-/// v15: host advertises [`crate::capability::DIOXUS_UI`] — plugins may embed Dioxus
-/// rsx into the shared `egui::Ui` via `hachimi-plugin-sdk::UiMount`.
-pub const API_VERSION: i32 = 15;
+/// v15: host advertised an embedded-rsx UI capability bit (`1 << 5`), letting
+/// plugins mount a retained UI tree into the shared `egui::Ui`.
+///
+/// v16: removed that capability bit (`1 << 5`); plugins draw with egui only. The
+/// retained-tree mount helper is gone from the SDK in favour of the egui-native
+/// helpers in `hachimi-plugin-sdk::widgets`. No vtable slots changed.
+pub const API_VERSION: i32 = 16;
 
 /// Number of function pointers in `Vtable`.
 pub const VTABLE_SLOT_COUNT: usize = 47;
