@@ -115,12 +115,15 @@ pub(crate) fn draw(ui: &mut egui::Ui, config: &mut hachimi::Config, windows: &mu
 
 fn draw_overlays_panel(ui: &mut egui::Ui) {
     let mut opacity = overlay::opacity();
-    if slider_f32(ui, &mut opacity, 0.1..=1.0, 0.05) {
-        overlay::set_opacity(opacity);
-        let mut style = (*ui.ctx().global_style()).clone();
-        super::super::theme::apply_style(&mut style, opacity);
-        ui.ctx().set_global_style(style);
-    }
+    ui.horizontal(|ui| {
+        settings_label(ui, &t!("config_editor.overlay_opacity"));
+        if slider_f32(ui, &mut opacity, 0.1..=1.0, 0.05) {
+            overlay::set_opacity(opacity);
+            let mut style = (*ui.ctx().global_style()).clone();
+            super::super::theme::apply_style(&mut style, opacity);
+            ui.ctx().set_global_style(style);
+        }
+    });
 
     let overlays = overlay::get_plugin_overlays();
     if overlays.is_empty() {
