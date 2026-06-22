@@ -151,12 +151,6 @@ pub(crate) fn register_overlay_rust(id: String, flags: u64, callback: Arc<dyn Fn
 }
 
 fn push_overlay(id: String, flags: u64, callback: UiCallback) -> u64 {
-    OVERLAY_UI
-        .lock()
-        .expect("lock poisoned")
-        .panels
-        .entry(id.clone())
-        .or_default();
     let handle = super::next_handle();
     PLUGIN_OVERLAYS.lock().expect("lock poisoned").push(PluginOverlay {
         handle,
@@ -206,6 +200,22 @@ pub(crate) fn is_overlay_visible(id: &str) -> bool {
 pub fn set_overlay_visible(id: &str, visible: bool) {
     let mut state = OVERLAY_UI.lock().expect("lock poisoned");
     state.panels.entry(id.to_owned()).or_default().visible = visible;
+    save_state(&state);
+}
+
+/// Set a panel's first-run visibility without overriding persisted state.
+pub fn set_overlay_visible_if_unset(id: &str, visible: bool) {
+    let mut state = OVERLAY_UI.lock().expect("lock poisoned");
+    if state.panels.contains_key(id) {
+        return;
+    }
+    state.panels.insert(
+        id.to_owned(),
+        PanelState {
+            visible,
+            ..PanelState::default()
+        },
+    );
     save_state(&state);
 }
 

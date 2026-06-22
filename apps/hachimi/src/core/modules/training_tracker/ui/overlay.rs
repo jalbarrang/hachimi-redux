@@ -1,18 +1,20 @@
-//! L2 overlay shell: tracking toggle, tab bar, scroll helper, content scaling.
+//! L2 overlay helpers: panel frame, scroll helper, content scaling.
 
-use crate::core::modules::training_tracker::compat::{egui, Sdk};
-use egui_taffy::taffy::prelude::{auto, length};
-use egui_taffy::{taffy, tui, TuiBuilderLogic};
+use std::cell::Cell;
 
-use crate::core::modules::training_tracker::memory_reader;
-use crate::core::modules::training_tracker::overlay_prefs;
+use crate::core::modules::training_tracker::compat::egui;
 
-use super::constants::{MIN_LIST_HEIGHT, OVERLAY_BASE_WIDTH, OVERLAY_FONT_SIZE};
-use super::dimens;
+use crate::core::modules::training_tracker::memory_reader::CareerSnapshot;
+use crate::core::modules::training_tracker::{overlay_cache, overlay_prefs};
+
+use super::constants::{MIN_LIST_HEIGHT, OVERLAY_BASE_WIDTH, OVERLAY_FONT_SIZE, OVERLAY_MAX_HEIGHT};
 
 /// Panel-frame inner margin (must match [`panel_frame`]); content sits inside it.
 const PANEL_INNER_MARGIN: f32 = 10.0;
-use crate::core::modules::training_tracker::tabs::{self, selected_tab, set_selected_tab, Tab};
+
+thread_local! {
+    static ACTIVE_BASE_WIDTH: Cell<f32> = const { Cell::new(OVERLAY_BASE_WIDTH) };
+}
 
 /// Apply the user's content zoom to `ui` (font size + spacing) so the whole
 /// panel scales uniformly. The zoom is an explicit setting (slider), not derived
@@ -46,7 +48,16 @@ pub(super) fn scale() -> f32 {
 /// full-width elements: under the host's `auto_sized` window `available_width` is
 /// measured with a huge value and would inflate the panel (and the window).
 pub(super) fn content_width() -> f32 {
-    OVERLAY_BASE_WIDTH * scale() - 2.0 * PANEL_INNER_MARGIN
+    ACTIVE_BASE_WIDTH.with(|w| w.get()) * scale() - 2.0 * PANEL_INNER_MARGIN
+}
+
+fn with_base_width<R>(base_width: f32, f: impl FnOnce() -> R) -> R {
+    ACTIVE_BASE_WIDTH.with(|active| {
+        let prev = active.replace(base_width);
+        let out = f();
+        active.set(prev);
+        out
+    })
 }
 
 /// The overlay's own background panel (the whole visual, since the host renders
@@ -77,7 +88,7 @@ pub(super) fn space(ui: &mut egui::Ui, base: f32) {
 /// The slider edits a *pending* value; the live zoom (and thus the panel + the
 /// slider's own size) only changes when the drag ends. This stops the slider from
 /// rescaling under the cursor mid-drag, which made it jitter/overshoot.
-fn draw_zoom_control(ui: &mut egui::Ui) {
+pub(super) fn draw_zoom_control(ui: &mut egui::Ui) {
     // Plain egui: the egui `Slider` is an interactive widget whose measured size
     // depends on `slider_width`/`interact_size` (both zoom-scaled per frame), so it
     // can't be a stable egui_taffy leaf — it kept the `shell:zoom` taffy node
@@ -104,110 +115,24 @@ fn draw_zoom_control(ui: &mut egui::Ui) {
     });
 }
 
-/// A pinned-width flex row, vertically centered, wrapping, with a small gap.
-fn row_style(width: f32) -> taffy::Style {
-    taffy::Style {
-        display: taffy::Display::Flex,
-        flex_direction: taffy::FlexDirection::Row,
-        flex_wrap: taffy::FlexWrap::Wrap,
-        align_items: Some(taffy::AlignItems::Center),
-        gap: taffy::Size {
-            width: length(dimens::z(dimens::GAP_MD)),
-            height: length(dimens::z(dimens::GAP_SM)),
-        },
-        size: taffy::Size {
-            width: length(width),
-            height: auto(),
-        },
-        ..Default::default()
-    }
-}
+pub(super) fn draw_panel(ui: &mut egui::Ui, base_width: f32, body: impl FnOnce(&mut egui::Ui, &CareerSnapshot)) {
+    with_base_width(base_width, || {
+        overlay_cache::maybe_request_refresh();
+        let scale = apply_scale(ui);
+        let width = base_width * scale;
+        let max_height = ui.ctx().content_rect().height().min(OVERLAY_MAX_HEIGHT * scale);
 
-fn item_center() -> taffy::Style {
-    taffy::Style {
-        display: taffy::Display::Flex,
-        align_items: Some(taffy::AlignItems::Center),
-        ..Default::default()
-    }
-}
-
-/// Apply overlay chrome and draw tracking toggle + tab bar when tracking is on.
-pub(super) fn draw_shell(ui: &mut egui::Ui, tracking: bool) -> bool {
-    draw_tracking_toggle(ui, tracking);
-
-    if !tracking {
-        draw_start_hint(ui);
-        return false;
-    }
-
-    ui.separator();
-    draw_zoom_control(ui);
-    // Hide the tab row when only one tab is enabled — the overlay becomes a single
-    // clean panel showing just that tab's body.
-    if tabs::enabled_count() > 1 {
-        draw_tab_bar(ui);
-        ui.separator();
-    }
-    true
-}
-
-/// Hint shown when memory tracking is off.
-fn draw_start_hint(ui: &mut egui::Ui) {
-    ui.small("\u{1f3cb} Training Tracker");
-    ui.small("Memory tracking is off — press Start Tracking above.");
-}
-
-/// Horizontal tab bar (text labels) — only the user-enabled tabs are shown.
-fn draw_tab_bar(ui: &mut egui::Ui) {
-    let w = content_width();
-    ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend);
-    tui(ui, ui.id().with("tab_bar"))
-        .reserve_width(w)
-        .style(row_style(w))
-        .show(|tui| {
-            for (tab, label) in Tab::ALL {
-                if !tabs::is_enabled(tab) {
-                    continue;
+        ui.allocate_ui_with_layout(egui::vec2(width, 0.0), egui::Layout::top_down(egui::Align::Min), |ui| {
+            ui.set_width(width);
+            ui.set_max_height(max_height);
+            panel_frame().show(ui, |ui| match overlay_cache::snapshot() {
+                Some(snap) if snap.is_playing => body(ui, &snap),
+                _ => {
+                    ui.label(egui::RichText::new("Waiting for an active career\u{2026}").italics());
                 }
-                tui.style(item_center()).add(|tui| {
-                    tui.ui(|ui| {
-                        if ui.selectable_label(selected_tab() == tab, label).clicked() {
-                            set_selected_tab(tab);
-                        }
-                    });
-                });
-            }
+            });
         });
-}
-
-/// Compact Start/Stop memory-tracking button for the overlay (above the tabs).
-fn draw_tracking_toggle(ui: &mut egui::Ui, tracking: bool) {
-    // `try_get` (not `get`) so the desktop dev-harness, which never initializes the
-    // SDK, can still render this control without panicking. In the real host the
-    // SDK is always present, so notifications behave exactly as before.
-    let sdk = Sdk::try_get();
-    if tracking {
-        if ui.button("\u{23f9} Stop Tracking").clicked() {
-            memory_reader::stop_tracking();
-            if let Some(sdk) = sdk {
-                sdk.show_notification("Memory tracking stopped");
-            }
-        }
-    } else if ui.button("\u{25b6} Start Tracking").clicked() {
-        match memory_reader::start_tracking() {
-            Ok(()) => {
-                if let Some(sdk) = sdk {
-                    sdk.show_notification("Memory tracking started!");
-                }
-            }
-            Err(e) => {
-                if let Some(sdk) = sdk {
-                    sdk.show_notification(&format!("Failed: {}", e));
-                }
-                hlog_error!("start_tracking failed: {}", e);
-            }
-        }
-    }
+    });
 }
 
 pub(super) fn scroll_list(ui: &mut egui::Ui, body: impl FnOnce(&mut egui::Ui)) {

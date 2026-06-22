@@ -6,7 +6,6 @@
 //! bridges those to disk so there is a single source of truth for the file format:
 //! - [`crate::core::modules::training_tracker::build_profile`] — active build profile (objective, per-stat
 //!   targets, weights, course/strategy) + saved custom profiles
-//! - [`crate::core::modules::training_tracker::tabs`] — enabled overlay tabs
 //! - [`crate::core::modules::training_tracker::recommend`] — smart-recommendation tuning params
 //!
 //! Back-compat: every field is `#[serde(default)]`, so older configs (and configs
@@ -16,7 +15,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::core::modules::training_tracker::{build_profile, overlay_prefs, planner, recommend, tabs};
+use crate::core::modules::training_tracker::{build_profile, overlay_prefs, planner, recommend};
 use build_profile::BuildProfile;
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -25,7 +24,8 @@ struct PersistedConfig {
     /// `build_profile` is present (older configs).
     #[serde(default)]
     stat_targets: [i32; 5],
-    #[serde(default = "default_enabled_tabs")]
+    /// Legacy overlay tab bitmask; ignored since tracker readouts are independent panels.
+    #[serde(default, skip_serializing)]
     enabled_tabs: u8,
     #[serde(default)]
     recommend: recommend::RecommendParams,
@@ -46,7 +46,7 @@ impl Default for PersistedConfig {
     fn default() -> Self {
         Self {
             stat_targets: [0; 5],
-            enabled_tabs: default_enabled_tabs(),
+            enabled_tabs: 0,
             recommend: recommend::RecommendParams::default(),
             planner: planner::PlannerParams::default(),
             overlay_zoom: overlay_prefs::default_zoom(),
@@ -54,10 +54,6 @@ impl Default for PersistedConfig {
             saved_profiles: Vec::new(),
         }
     }
-}
-
-fn default_enabled_tabs() -> u8 {
-    tabs::ALL_ENABLED_MASK
 }
 
 fn config_path() -> std::path::PathBuf {
@@ -90,18 +86,17 @@ pub fn load() {
     });
     build_profile::set_active(active);
     let _ = cfg.saved_profiles; // legacy field; save/load UI removed
-    tabs::set_enabled_mask(cfg.enabled_tabs);
+    let _ = cfg.enabled_tabs;
     recommend::set_params(cfg.recommend);
     planner::set_params(cfg.planner);
     overlay_prefs::set_zoom(cfg.overlay_zoom);
     let p = build_profile::active();
     hlog_info!(
         target: "training-tracker",
-        "config loaded: profile={:?} objective={:?} targets={:?} tabs={:#06b}",
+        "config loaded: profile={:?} objective={:?} targets={:?}",
         p.name,
         p.objective,
-        p.per_stat_target,
-        tabs::enabled_mask()
+        p.per_stat_target
     );
 }
 
@@ -112,7 +107,7 @@ pub fn persist() {
     let cfg = PersistedConfig {
         // Mirror the active targets into the legacy field for forward-compat.
         stat_targets: active.per_stat_target,
-        enabled_tabs: tabs::enabled_mask(),
+        enabled_tabs: 0,
         recommend: recommend::params(),
         planner: planner::params(),
         overlay_zoom: overlay_prefs::zoom(),

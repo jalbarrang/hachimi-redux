@@ -19,36 +19,19 @@ use crate::core::modules::training_tracker::compat::egui;
 
 use super::overlay;
 use crate::core::modules::training_tracker::memory_reader::CareerSnapshot;
-use crate::core::modules::training_tracker::overlay_cache;
 
-/// Career tab entry point: refresh, then render the panel inside a scroll area,
-/// or a waiting note when no career is active.
-pub(super) fn draw_tab(ui: &mut egui::Ui) {
-    overlay_cache::maybe_request_refresh();
-    // The overlay is now height-capped (see `ui::mod`), so the Career body scrolls
-    // internally within the remaining height instead of growing the host window.
-    match overlay_cache::snapshot() {
-        Some(s) if s.is_playing => overlay::scroll_list(ui, |ui| draw(ui, &s)),
-        _ => {
-            ui.label(
-                egui::RichText::new("Waiting for an active career\u{2026}")
-                    .italics()
-                    .color(theme::FG_MUTED),
-            );
-        }
-    }
+pub(super) fn draw_energy_panel(ui: &mut egui::Ui, snap: &CareerSnapshot) {
+    header::energy_pill(ui, snap);
 }
 
-/// Draw the unified Career panel for an active career snapshot. The overlay's own
-/// background frame is the panel face, so sections are drawn directly (no card).
-fn draw(ui: &mut egui::Ui, snap: &CareerSnapshot) {
-    header::draw(ui, snap);
-    ui.add_space(8.0);
+pub(super) fn draw_training_panel(ui: &mut egui::Ui, snap: &CareerSnapshot) {
+    overlay::scroll_list(ui, |ui| {
+        header::draw(ui, snap);
+        ui.add_space(8.0);
+        training::draw(ui, snap);
+    });
+}
 
-    training::draw(ui, snap);
-    ui.add_space(8.0);
-
-    bonds::draw(ui, snap);
-    // ui.add_space(10.0);
-    // skills::draw(ui, snap);
+pub(super) fn draw_bonds_panel(ui: &mut egui::Ui, snap: &CareerSnapshot) {
+    overlay::scroll_list(ui, |ui| bonds::draw(ui, snap));
 }

@@ -81,7 +81,6 @@ mod skill_shop;
 mod skill_shop_prefs;
 #[allow(dead_code)]
 mod stat_targets;
-mod tabs;
 mod telemetry;
 mod ui;
 

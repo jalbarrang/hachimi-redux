@@ -8,6 +8,8 @@ use egui_taffy::{taffy, tui, Tui, TuiBuilderLogic};
 
 use super::dimens;
 
+use super::constants::TRAINING_OVERLAY_ID;
+use super::overlay;
 use crate::core::modules::training_tracker::build_profile::{self, Objective};
 use crate::core::modules::training_tracker::class_dump;
 use crate::core::modules::training_tracker::cm_model::{self, Strategy};
@@ -18,9 +20,6 @@ use crate::core::modules::training_tracker::memory_reader;
 use crate::core::modules::training_tracker::overlay_cache;
 use crate::core::modules::training_tracker::planner;
 use crate::core::modules::training_tracker::recommend;
-use crate::core::modules::training_tracker::tabs;
-
-use super::constants::OVERLAY_ID;
 
 /// Page title — h2 (theme heading size).
 fn heading_h2(ui: &mut egui::Ui, text: impl Into<egui::RichText>) {
@@ -62,11 +61,6 @@ pub(super) fn draw(ui: &mut egui::Ui) {
     ui.add_space(12.0);
     ui.separator();
     ui.add_space(8.0);
-    draw_tab_visibility(ui);
-
-    ui.add_space(12.0);
-    ui.separator();
-    ui.add_space(8.0);
     let w = menu_width(ui);
     ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend);
     tui(ui, ui.id().with("tt_actions"))
@@ -75,8 +69,8 @@ pub(super) fn draw(ui: &mut egui::Ui) {
         .show(|tui| {
             menu_item(tui, |tui| {
                 tui.ui(|ui| {
-                    if ui.button("\u{1f4ca} Show Training Overlay").clicked() {
-                        if sdk.overlay_set_visible(OVERLAY_ID, true) {
+                    if ui.button("\u{1f4ca} Show Training Panel").clicked() {
+                        if sdk.overlay_set_visible(TRAINING_OVERLAY_ID, true) {
                             sdk.show_notification("Training overlay shown");
                         } else {
                             hlog_warn!(target: "training-tracker", "Host declined overlay_set_visible");
@@ -162,6 +156,9 @@ fn draw_tracking_controls(ui: &mut egui::Ui) {
     let sdk = Sdk::get();
     let tracking = memory_reader::TRACKING.load(Ordering::Relaxed);
 
+    overlay::draw_zoom_control(ui);
+    ui.add_space(4.0);
+
     if !tracking {
         if ui.button("\u{25b6} Start Memory Tracking").clicked() {
             match memory_reader::start_tracking() {
@@ -193,33 +190,6 @@ fn draw_tracking_controls(ui: &mut egui::Ui) {
         None => "\u{26a0} Waiting for data…".to_owned(),
     };
     ui.small(status);
-}
-
-/// Overlay tab visibility toggles. At least one tab must stay enabled, so the
-/// last remaining tab's checkbox is disabled to prevent hiding every tab.
-fn draw_tab_visibility(ui: &mut egui::Ui) {
-    heading_h3(ui, "\u{1f5c2} Overlay Tabs");
-    ui.small("Choose which tabs appear in the overlay");
-    ui.add_space(4.0);
-    let last_one = tabs::enabled_count() <= 1;
-    for (tab, label) in tabs::Tab::ALL {
-        let mut on = tabs::is_enabled(tab);
-        // The Career view is always on; the last remaining tab can't be hidden.
-        let always_on = tab == tabs::Tab::Career;
-        let lock = always_on || (last_one && on);
-        let resp = ui.add_enabled(!lock, egui::Checkbox::new(&mut on, label));
-        if resp.changed() {
-            tabs::set_enabled(tab, on);
-            config::persist();
-        }
-        if lock {
-            resp.on_hover_text(if always_on {
-                "The Career view is always shown"
-            } else {
-                "At least one tab must stay enabled"
-            });
-        }
-    }
 }
 
 /// Smart-recommendation tuning. Sliders for how cautious the per-turn suggestion

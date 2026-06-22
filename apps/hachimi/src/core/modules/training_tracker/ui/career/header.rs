@@ -241,7 +241,7 @@ fn date_pill(ui: &mut egui::Ui, snap: &CareerSnapshot) {
     });
 }
 
-fn energy_pill(ui: &mut egui::Ui, snap: &CareerSnapshot) {
+pub(super) fn energy_pill(ui: &mut egui::Ui, snap: &CareerSnapshot) {
     let pct = if snap.max_hp > 0 {
         (snap.hp as f32 / snap.max_hp as f32 * 100.0).round() as i32
     } else {
