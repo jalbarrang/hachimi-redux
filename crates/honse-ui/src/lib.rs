@@ -6,5 +6,6 @@
 pub use egui;
 pub use egui_taffy;
 
+pub mod components;
 pub mod paint;
 pub mod theme;
