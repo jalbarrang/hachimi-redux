@@ -84,12 +84,12 @@ pub(crate) fn draw(ui: &mut egui::Ui, config: &mut hachimi::Config, apply_resolu
     settings_grid(ui, "res_settings", |ui| {
         // Virtual resolution multiplier
         settings_label(ui, &t!("config_editor.virtual_resolution_multiplier"));
-        slider_scale(ui, &mut config.virtual_res_mult);
+        slider_f32(ui, &mut config.virtual_res_mult, 1.0..=4.0, 0.1);
         ui.end_row();
 
         // Render scale
         settings_label(ui, &t!("config_editor.render_scale"));
-        slider_scale(ui, &mut config.render_scale);
+        slider_f32(ui, &mut config.render_scale, 0.1..=10.0, 0.1);
         ui.end_row();
 
         // Windows-specific resolution options
