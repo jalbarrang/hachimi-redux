@@ -101,9 +101,13 @@ fn header_row(ui: &mut egui::Ui, w: f32, font: f32) {
         .inner_margin(egui::Margin::same(pad as i8))
         .show(ui, |ui| {
             ui.set_width(w);
+            let name_w = name_width(w);
             flex_row(ui, ui.id().with("bonds_header"), w, |tui| {
-                tui.style(name_grow()).add(|tui| {
-                    tui.label(RichText::new("Name").color(theme::FG_MUTED).size(font));
+                tui.style(name_col(name_w)).add(|tui| {
+                    tui.ui(|ui| {
+                        ui.set_max_width(name_w);
+                        ui.label(RichText::new("Name").color(theme::FG_MUTED).size(font));
+                    });
                 });
                 header_col(tui, "Type", col_type(), font);
                 header_col(tui, "Value", col_bond(), font);
@@ -131,10 +135,12 @@ fn bond_row(ui: &mut egui::Ui, idx: usize, row: &BondRow, w: f32, font: f32, chi
         .show(ui, |ui| {
             let inner = (w - 2.0 * pad).max(40.0);
             ui.set_width(inner);
+            let name_w = name_width(inner);
             flex_row(ui, ui.id().with("bond_row").with(idx), inner, |tui| {
-                // Name (flexes, truncates).
-                tui.style(name_grow()).add(|tui| {
+                // Name (fixed-width column, truncates to fit).
+                tui.style(name_col(name_w)).add(|tui| {
                     tui.ui(|ui| {
+                        ui.set_max_width(name_w);
                         ui.add(
                             egui::Label::new(RichText::new(&row.name).strong().color(theme::FG).size(font)).truncate(),
                         );
@@ -248,15 +254,23 @@ fn fixed_col(width: f32) -> taffy::Style {
     }
 }
 
-/// The flexible name item: grows into the remaining width, can shrink to 0.
-fn name_grow() -> taffy::Style {
+/// Remaining width for the name column = total minus the three fixed right
+/// columns and the inter-column gaps. Computed explicitly so the name cell has a
+/// concrete width: a `flex_grow` item measures a `.truncate()` label as ~0 during
+/// taffy's layout pass, collapsing the name to just the ellipsis.
+fn name_width(total: f32) -> f32 {
+    let gap = dimens::z(dimens::GAP_MD);
+    (total - col_type() - col_bond() - col_on() - 3.0 * gap).max(40.0)
+}
+
+/// The name item: a fixed-width, left-justified column.
+fn name_col(width: f32) -> taffy::Style {
     taffy::Style {
         display: taffy::Display::Flex,
-        flex_grow: 1.0,
         align_items: Some(taffy::AlignItems::Center),
         justify_content: Some(taffy::JustifyContent::Start),
-        min_size: taffy::Size {
-            width: length(0.0),
+        size: taffy::Size {
+            width: length(width),
             height: taffy::prelude::auto(),
         },
         ..Default::default()
