@@ -5,7 +5,6 @@ mod live_vocals_swap;
 mod persistent_message;
 mod simple_ok;
 mod simple_yes_no;
-mod theme_editor;
 
 use std::sync::Arc;
 
@@ -22,7 +21,6 @@ pub(crate) use live_vocals_swap::LiveVocalsSwapWindow;
 pub use persistent_message::PersistentMessageWindow;
 pub use simple_ok::SimpleOkDialog;
 pub use simple_yes_no::SimpleYesNoDialog;
-pub(crate) use theme_editor::ThemeEditorWindow;
 
 pub(crate) type BoxedWindow = Box<dyn Window + Send + Sync>;
 

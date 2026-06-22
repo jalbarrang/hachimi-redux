@@ -160,15 +160,6 @@ config_editor:
   homescreen_bgseason: "Mùa nền Màn hình chính"
   shadow_resolution: "Độ phân giải bóng đổ"
 
-theme_editor:
-  title: "Trình chỉnh sửa Giao diện"
-  ui_accent_color: "Màu nhấn"
-  ui_window_fill: "Màu nền cửa sổ"
-  ui_panel_fill: "Màu nền bảng điều khiển"
-  ui_extreme_bg_color: "Nền ô nhập liệu"
-  ui_text_color: "Màu văn bản"
-  ui_window_rounding: "Bo góc"
-
 tl_update_dialog:
   title: "Bản cập nhật mới"
   content: "Đã có bản cập nhật bản dịch mới (%{size}). Bạn có muốn tải về không?"

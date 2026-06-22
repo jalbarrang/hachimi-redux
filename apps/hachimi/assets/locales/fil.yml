@@ -153,15 +153,6 @@ config_editor:
   homescreen_bgseason: "Panahon ng Homescreen Background"
   shadow_resolution: "Resolution ng Shadows"
 
-theme_editor:
-  title: "Editor ng GUI Theme"
-  ui_accent_color: "Kulay ng Accent"
-  ui_window_fill: "Kulay ng Window Background"
-  ui_panel_fill: "Kulay ng Panel Background"
-  ui_extreme_bg_color: "Background Input"
-  ui_text_color: "Kulay ng Text"
-  ui_window_rounding: "Mga Rounded Corner"
-
 tl_update_dialog:
   title: "May bagong update"
   content: "May bagong update sa translations (%{size}). Gusto mo ba ito i-download?"

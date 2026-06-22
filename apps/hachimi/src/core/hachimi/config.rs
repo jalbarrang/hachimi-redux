@@ -115,20 +115,6 @@ pub struct Config {
     #[serde(default)]
     pub disabled_hooks: FnvHashSet<String>,
 
-    // theme settings
-    #[serde(default = "Config::default_ui_accent")]
-    pub ui_accent_color: egui::Color32,
-    #[serde(default = "Config::default_window_fill")]
-    pub ui_window_fill: egui::Color32,
-    #[serde(default = "Config::default_panel_fill")]
-    pub ui_panel_fill: egui::Color32,
-    #[serde(default = "Config::default_extreme_bg")]
-    pub ui_extreme_bg_color: egui::Color32,
-    #[serde(default = "Config::default_text_color")]
-    pub ui_text_color: egui::Color32,
-    #[serde(default = "Config::default_window_rounding")]
-    pub ui_window_rounding: f32,
-
     #[cfg(target_os = "windows")]
     #[serde(flatten)]
     pub windows: hachimi_impl::Config,
@@ -171,25 +157,6 @@ impl Config {
     fn default_live_vocals_swap() -> [i32; 6] {
         [0; 6]
     }
-    pub fn default_ui_accent() -> egui::Color32 {
-        egui::Color32::from_rgb(100, 150, 240)
-    }
-    pub fn default_window_fill() -> egui::Color32 {
-        egui::Color32::from_rgba_premultiplied(27, 27, 27, 220)
-    }
-    pub fn default_panel_fill() -> egui::Color32 {
-        egui::Color32::from_rgba_premultiplied(27, 27, 27, 220)
-    }
-    pub fn default_extreme_bg() -> egui::Color32 {
-        egui::Color32::from_rgb(15, 15, 15)
-    }
-    pub fn default_text_color() -> egui::Color32 {
-        egui::Color32::from_gray(170)
-    }
-    pub fn default_window_rounding() -> f32 {
-        10.0
-    }
-
     /// Seed the `hotkeys` map for the built-in host actions from the legacy
     /// single-key config fields, when those entries are not already present. This
     /// preserves binds for configs written before the central Hotkeys tab existed.

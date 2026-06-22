@@ -175,15 +175,6 @@ config_editor:
   homescreen_bgseason: "Latar Musim Beranda"
   shadow_resolution: "Resolusi Bayangan"
 
-theme_editor:
-  title: "Editor Tema GUI"
-  ui_accent_color: "Warna Aksen"
-  ui_window_fill: "Warna Latar Jendela"
-  ui_panel_fill: "Warna Latar Panel"
-  ui_extreme_bg_color: "Latar Input"
-  ui_text_color: "Warna Teks"
-  ui_window_rounding: "Sudut Membulat"
-
 tl_update_dialog:
   title: "Pembaruan Translasi Tersedia"
   content: "Pembaruan translasi tersedia (%{size}). Apa kamu ingin mengunduhnya?"

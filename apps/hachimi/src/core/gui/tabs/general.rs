@@ -2,9 +2,7 @@
 
 use rust_i18n::t;
 
-use crate::core::gui::components::{
-    ghost_button, secondary_button, settings_grid, settings_label, settings_section, slider_f32, toggle,
-};
+use crate::core::gui::components::{ghost_button, settings_grid, settings_label, settings_section, slider_f32, toggle};
 use crate::core::gui::BoxedWindow;
 use crate::core::hachimi::{self, Language};
 use crate::core::plugin::overlay;
@@ -73,13 +71,6 @@ pub(crate) fn draw(ui: &mut egui::Ui, config: &mut hachimi::Config, windows: &mu
             toggle(ui, "", &mut config.windows.discord_rpc);
             ui.end_row();
         }
-
-        // Theme editor
-        settings_label(ui, &t!("theme_editor.title"));
-        if secondary_button(ui, t!("open").to_string()).clicked() {
-            windows.push(Box::new(super::super::window::ThemeEditorWindow::new()));
-        }
-        ui.end_row();
 
         // Debug mode
         settings_label(ui, &t!("config_editor.debug_mode"));

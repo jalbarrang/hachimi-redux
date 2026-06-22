@@ -1,5 +1,3 @@
-use crate::core::{hachimi, Hachimi};
-
 use super::scale::get_scale;
 use super::tween::{Easing, TweenInOutWithDelay};
 use super::window::random_id;
@@ -20,7 +18,6 @@ impl Drop for NotificationGuard {
 pub(crate) struct Notification {
     id: u32,
     content: String,
-    config: hachimi::Config,
     tween: TweenInOutWithDelay,
     egui_id: egui::Id,
 }
@@ -30,7 +27,6 @@ impl Notification {
         Notification {
             id,
             content,
-            config: (**Hachimi::instance().config.load()).clone(),
             tween: TweenInOutWithDelay::new(0.2, if persistent { f32::MAX } else { 3.0 }, Easing::OutQuad),
             egui_id: random_id(),
         }
@@ -52,7 +48,7 @@ impl Notification {
             )
             .show(ctx, |ui| {
                 egui::Frame::NONE
-                    .fill(self.config.ui_panel_fill)
+                    .fill(ui.visuals().panel_fill)
                     .inner_margin(egui::Margin::symmetric(10, 8))
                     .show(ui, |ui| {
                         ui.set_width(Self::WIDTH * scale);

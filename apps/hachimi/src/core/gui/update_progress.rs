@@ -23,7 +23,7 @@ impl Gui {
             })
             .show(ctx, |ui| {
                 egui::Frame::NONE
-                    .fill(self.config.ui_panel_fill)
+                    .fill(ui.visuals().panel_fill)
                     .inner_margin(egui::Margin::same((4.0 * scale) as i8))
                     .corner_radius(4.0 * scale)
                     .show(ui, |ui| {

@@ -6,7 +6,6 @@ use rust_i18n::t;
 use crate::core::plugin::overlay;
 use crate::core::Hachimi;
 
-use super::theme_preview::take_pending_theme;
 use super::window::BoxedWindow;
 use super::{Gui, IS_CONSUMING_INPUT, PIXELS_PER_POINT_RATIO};
 
@@ -70,15 +69,6 @@ impl Gui {
     }
 
     pub fn run(&mut self) -> egui::FullOutput {
-        if let Some(config) = take_pending_theme() {
-            self.config = config.clone();
-            Self::apply_theme(&self.context, &mut self.default_style, &config);
-
-            let mut style = self.default_style.clone();
-            style.scale(self.gui_scale);
-            self.context.set_global_style(style)
-        }
-
         self.update_fps();
         let input = self.take_input();
 

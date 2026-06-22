@@ -241,15 +241,6 @@ config_editor:
   homescreen_bgseason: "Homescreen Background Season"
   shadow_resolution: "Shadow Resolution"
 
-theme_editor:
-  title: "GUI Theme Editor"
-  ui_accent_color: "Accent Color"
-  ui_window_fill: "Window Background Color"
-  ui_panel_fill: "Panel Background Color"
-  ui_extreme_bg_color: "Input Background"
-  ui_text_color: "Text Color"
-  ui_window_rounding: "Rounded Corners"
-
 tl_update_dialog:
   title: "New update available"
   content: "A new translation update is available (%{size}). Do you want to download it?"

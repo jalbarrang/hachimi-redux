@@ -179,15 +179,6 @@ config_editor:
   homescreen_bgseason: "主界面背景季节"
   shadow_resolution: "阴影分辨率"
 
-theme_editor:
-  title: "覆盖层主题编辑器"
-  ui_accent_color: "强调色"
-  ui_window_fill: "窗口背景色"
-  ui_panel_fill: "面板背景色"
-  ui_extreme_bg_color: "输入框背景"
-  ui_text_color: "文本颜色"
-  ui_window_rounding: "圆角半径"
-
 tl_update_dialog:
   title: "新翻译更新可用"
   content: "新的翻译更新可用 (%{size})，是否下载？"

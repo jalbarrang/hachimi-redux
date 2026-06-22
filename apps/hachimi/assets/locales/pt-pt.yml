@@ -209,15 +209,6 @@ config_editor:
   homescreen_bgseason: "Estação do fundo do ecrã inicial"
   shadow_resolution: "Resolução das sombras"
 
-theme_editor:
-  title: "Editor de tema da interface"
-  ui_accent_color: "Cor de destaque"
-  ui_window_fill: "Cor de fundo da janela"
-  ui_panel_fill: "Cor de fundo do painel"
-  ui_extreme_bg_color: "Fundo dos campos de entrada"
-  ui_text_color: "Cor do texto"
-  ui_window_rounding: "Cantos arredondados"
-
 tl_update_dialog:
   title: "Nova atualização disponível"
   content: "Está disponível uma nova atualização de tradução (%{size}). Pretende transferi-la?"

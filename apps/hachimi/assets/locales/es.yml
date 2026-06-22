@@ -184,15 +184,6 @@ config_editor:
   homescreen_bgseason: "Estación en el menú principal"
   shadow_resolution: "Resolución de las sombras"
 
-theme_editor:
-  title: "Editor de temas (GUI)"
-  ui_accent_color: "Color de acento"
-  ui_window_fill: "Fondo de las ventanas"
-  ui_panel_fill: "Fondo de los paneles"
-  ui_extreme_bg_color: "Fondo de los campos de texto"
-  ui_text_color: "Color del texto"
-  ui_window_rounding: "Radio de los bordes"
-
 tl_update_dialog:
   title: "Nueva actualización disponible"
   content: "Existen nuevos datos de traducción (%{size}).\n¿Deseas descargarlos ahora?"

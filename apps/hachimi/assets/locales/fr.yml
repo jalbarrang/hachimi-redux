@@ -209,15 +209,6 @@ config_editor:
   homescreen_bgseason: "Saison de l'arrière-plan de l'écran d'accueil"
   shadow_resolution: "Résolution des ombres"
 
-theme_editor:
-  title: "Éditeur de thème de l'interface"
-  ui_accent_color: "Couleur d'accentuation"
-  ui_window_fill: "Couleur d'arrière-plan de la fenêtre"
-  ui_panel_fill: "Couleur d'arrière-plan du panneau"
-  ui_extreme_bg_color: "Arrière-plan des champs de saisie"
-  ui_text_color: "Couleur du texte"
-  ui_window_rounding: "Coins arrondis"
-
 tl_update_dialog:
   title: "Nouvelle mise à jour disponible"
   content: "Une nouvelle mise à jour de traduction est disponible (%{size}). Voulez-vous la télécharger ?"

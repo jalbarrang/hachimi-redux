@@ -39,7 +39,7 @@ impl Gui {
             })
             .show(ctx, |ui| {
                 egui::Frame::NONE
-                    .fill(self.config.ui_panel_fill)
+                    .fill(ui.visuals().panel_fill)
                     .inner_margin(egui::Margin::same((10.0 * scale) as i8))
                     .show(ui, |ui| {
                         ui.horizontal(|ui| {

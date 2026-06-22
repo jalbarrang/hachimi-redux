@@ -16,7 +16,6 @@ mod splash;
 mod stub;
 mod tabs;
 mod theme;
-mod theme_preview;
 mod tween;
 mod update_progress;
 mod window;
@@ -30,7 +29,6 @@ use std::time::Instant;
 use fnv::FnvHashSet;
 use once_cell::sync::Lazy;
 
-use crate::core::hachimi;
 use crate::core::utils::SendPtr;
 
 pub(crate) use notification::Notification;
@@ -38,12 +36,10 @@ pub(crate) use tween::TweenInOutWithDelay;
 pub(crate) use window::{BoxedWindow, ConfigEditor};
 
 pub use notification::NotificationGuard;
-pub use theme_preview::enqueue_theme_preview;
 pub use window::{PersistentMessageWindow, SimpleOkDialog, SimpleYesNoDialog, Window};
 
 pub struct Gui {
     pub context: egui::Context,
-    pub(crate) config: hachimi::Config,
     pub input: egui::RawInput,
     pub(crate) default_style: egui::Style,
     pub gui_scale: f32,

@@ -65,7 +65,6 @@ impl Gui {
         let initial_landscape_ratio = config.windows.gui_landscape_ratio;
         let instance = Gui {
             context,
-            config,
             input: egui::RawInput::default(),
             gui_scale: 1.0,
             finalized_scale: 1.0,
