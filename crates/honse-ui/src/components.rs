@@ -265,3 +265,34 @@ pub fn slider_f32(ui: &mut Ui, value: &mut f32, range: RangeInclusive<f32>, step
     ui.add(egui::Slider::new(value, range).step_by(step).trailing_fill(true))
         .changed()
 }
+
+/// A multiplier slider centered on 1.0x: leftmost `0.5x`, exact center `1.0x`,
+/// rightmost `3.0x`. A piecewise-linear position mapping (the two halves cover
+/// `0.5..1.0` and `1.0..3.0`) keeps `1.0` dead-center even though the endpoints
+/// are not multiplicatively symmetric. Values snap to the nearest `0.05`.
+pub fn slider_scale(ui: &mut Ui, value: &mut f32) -> bool {
+    fn pos_to_scale(p: f32) -> f32 {
+        let s = if p <= 0.5 { 0.5 + p } else { 1.0 + (p - 0.5) * 4.0 };
+        (s * 20.0).round() / 20.0
+    }
+    fn scale_to_pos(v: f32) -> f32 {
+        if v <= 1.0 {
+            (v - 0.5).max(0.0)
+        } else {
+            0.5 + (v - 1.0) / 4.0
+        }
+    }
+    let mut pos = scale_to_pos(*value).clamp(0.0, 1.0);
+    let response = ui.add(
+        egui::Slider::new(&mut pos, 0.0..=1.0)
+            .trailing_fill(true)
+            .custom_formatter(|p, _| format!("{:.2}", pos_to_scale(p as f32)))
+            .custom_parser(|s| s.parse::<f64>().ok().map(|v| f64::from(scale_to_pos(v as f32)))),
+    );
+    if response.changed() {
+        *value = pos_to_scale(pos);
+        true
+    } else {
+        false
+    }
+}

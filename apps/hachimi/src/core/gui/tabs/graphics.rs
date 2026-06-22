@@ -3,7 +3,7 @@
 use rust_i18n::t;
 
 use crate::core::gui::components::{
-    combo, primary_button, settings_grid, settings_label, settings_section, slider_f32, toggle,
+    combo, primary_button, settings_grid, settings_label, settings_section, slider_f32, slider_scale, toggle,
 };
 use crate::core::hachimi;
 use crate::il2cpp::hook::{
@@ -36,22 +36,22 @@ pub(crate) fn draw(ui: &mut egui::Ui, config: &mut hachimi::Config, apply_resolu
 
         // UI scale
         settings_label(ui, &t!("config_editor.ui_scale"));
-        slider_f32(ui, &mut config.ui_scale, 0.1..=10.0, 0.05);
+        slider_scale(ui, &mut config.ui_scale);
         ui.end_row();
 
         // UI animation scale
         settings_label(ui, &t!("config_editor.ui_animation_scale"));
-        slider_f32(ui, &mut config.ui_animation_scale, 0.1..=10.0, 0.1);
+        slider_scale(ui, &mut config.ui_animation_scale);
         ui.end_row();
 
         // Loading fade scale
         settings_label(ui, &t!("config_editor.loading_fade_scale"));
-        slider_f32(ui, &mut config.loading_fade_scale, 0.1..=10.0, 0.1);
+        slider_scale(ui, &mut config.loading_fade_scale);
         ui.end_row();
 
         // Flash animation scale
         settings_label(ui, &t!("config_editor.flash_animation_scale"));
-        slider_f32(ui, &mut config.flash_animation_scale, 0.1..=10.0, 0.1);
+        slider_scale(ui, &mut config.flash_animation_scale);
         ui.end_row();
 
         // MSAA

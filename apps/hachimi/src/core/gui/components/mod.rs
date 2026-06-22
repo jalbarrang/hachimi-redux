@@ -28,6 +28,11 @@ pub(crate) fn slider_f32(ui: &mut egui::Ui, value: &mut f32, range: std::ops::Ra
     honse_ui::components::slider_f32(ui, value, range, step)
 }
 
+/// Multiplier slider centered on 1.0x (0.5x left, 3.0x right). Returns `true` on change.
+pub(crate) fn slider_scale(ui: &mut egui::Ui, value: &mut f32) -> bool {
+    honse_ui::components::slider_scale(ui, value)
+}
+
 /// Ghost button (borderless, icon/text only).
 pub(crate) fn ghost_button(ui: &mut egui::Ui, text: impl Into<String>) -> egui::Response {
     ui.add(egui::Button::new(egui::RichText::new(text).color(Tokens::DEFAULT.fg_dim)).frame(false))
