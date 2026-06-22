@@ -1458,6 +1458,7 @@ dependencies = [
  "egui",
  "hachimi-plugin-abi",
  "hachimi-plugin-macros",
+ "honse_ui",
 ]
 
 [[package]]

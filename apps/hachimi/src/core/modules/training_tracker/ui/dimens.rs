@@ -22,10 +22,6 @@ pub(super) const GAP_ROW: f32 = 5.0;
 pub(super) const GAP_MD: f32 = 6.0;
 pub(super) const GAP_LG: f32 = 8.0;
 
-// ── Section strip ─────────────────────────────────────────────────────────
-pub(super) const STRIP_PAD_L: f32 = 12.0;
-pub(super) const STRIP_PAD_R: f32 = 14.0;
-
 // ── Chips / pills ─────────────────────────────────────────────────────────
 #[allow(dead_code)]
 pub(super) const CHIP_PAD_X: f32 = 8.0;
