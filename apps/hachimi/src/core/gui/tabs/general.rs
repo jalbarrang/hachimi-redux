@@ -126,12 +126,15 @@ fn draw_overlays_panel(ui: &mut egui::Ui) {
     let mut opacity = overlay::opacity();
     if slider_f32(ui, &mut opacity, 0.1..=1.0, 0.05) {
         overlay::set_opacity(opacity);
+        let mut style = (*ui.ctx().global_style()).clone();
+        super::super::theme::apply_style(&mut style, opacity);
+        ui.ctx().set_global_style(style);
     }
 
     let overlays = overlay::get_plugin_overlays();
     if overlays.is_empty() {
-        let tokens = crate::core::gui::theme::ThemeTokens::from_ui(ui);
-        ui.label(egui::RichText::new(t!("config_editor.overlays_none")).color(tokens.text_faint));
+        let tokens = crate::core::gui::theme::Tokens::DEFAULT;
+        ui.label(egui::RichText::new(t!("config_editor.overlays_none")).color(tokens.fg_dim));
     }
     for ov in overlays {
         ui.horizontal(|ui| {

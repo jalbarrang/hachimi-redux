@@ -1403,6 +1403,7 @@ dependencies = [
  "fnv",
  "hachimi-plugin-abi",
  "hachimi-telemetry",
+ "honse_ui",
  "http",
  "image",
  "log",

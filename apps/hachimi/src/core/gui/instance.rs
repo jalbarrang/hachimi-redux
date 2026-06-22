@@ -11,9 +11,9 @@ use super::window::{ConfigEditor, FirstTimeSetupWindow};
 use super::{Gui, INSTANCE};
 
 impl Gui {
-    pub fn apply_theme(ctx: &egui::Context, style: &mut egui::Style, config: &crate::core::hachimi::Config) {
+    pub fn apply_theme(ctx: &egui::Context, style: &mut egui::Style, _config: &crate::core::hachimi::Config) {
         style.visuals = egui::Visuals::dark();
-        theme::apply_style(style, config);
+        theme::apply_style(style, crate::core::plugin::overlay::opacity());
         ctx.set_visuals(style.visuals.clone());
     }
 

@@ -3,7 +3,7 @@
 use rust_i18n::t;
 
 use super::components;
-use super::theme::ThemeTokens;
+use super::theme::Tokens;
 #[cfg(feature = "dev-harness")]
 use super::window::ConfigEditor;
 use super::Gui;
@@ -39,6 +39,7 @@ impl ControlTab {
     }
 
     fn all_tabs() -> Vec<(ControlTab, String)> {
+        #[allow(unused_mut)]
         let mut tabs = vec![
             (Self::General, t!("config_editor.general_tab").to_string()),
             (Self::Graphics, t!("config_editor.graphics_tab").to_string()),
@@ -57,7 +58,7 @@ impl ControlTab {
 /// Render the egui-native Control Center for the live `Gui`.
 pub(crate) fn render_control_center_gui(gui: &mut Gui, ui: &mut egui::Ui, ctx: &egui::Context, scale: f32) -> bool {
     gui.config_editor.sync();
-    let tokens = ThemeTokens::from_ui(ui);
+    let tokens = Tokens::DEFAULT;
     let shell_w = SHELL_WIDTH * scale;
     let shell_h = ctx.input(|i| i.viewport_rect().height()) * 0.85;
     ui.set_width(shell_w);
@@ -75,9 +76,9 @@ pub(crate) fn render_control_center_gui(gui: &mut Gui, ui: &mut egui::Ui, ctx: &
 
     // ── Outer panel ──────────────────────────────────────────────────
     egui::Frame::NONE
-        .fill(tokens.panel)
+        .fill(tokens.surface_1)
         .stroke(egui::Stroke::new(1.0, tokens.line))
-        .corner_radius(tokens.card_radius)
+        .corner_radius(tokens.radius_card)
         .show(ui, |ui| {
             ui.set_width(shell_w);
 
@@ -91,13 +92,13 @@ pub(crate) fn render_control_center_gui(gui: &mut Gui, ui: &mut egui::Ui, ctx: &
                     egui::RichText::new(t!("hachimi"))
                         .size(18.0 * scale)
                         .strong()
-                        .color(tokens.text),
+                        .color(tokens.fg),
                 );
                 ui.add_space(4.0 * scale);
                 ui.label(
                     egui::RichText::new(env!("HACHIMI_DISPLAY_VERSION"))
                         .size(12.0 * scale)
-                        .color(tokens.text_faint),
+                        .color(tokens.fg_dim),
                 );
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     ui.add_space(14.0 * scale);
@@ -181,7 +182,7 @@ pub(crate) fn render_control_center_preview(
     scale: f32,
 ) -> bool {
     editor.sync();
-    let tokens = ThemeTokens::from_ui(ui);
+    let tokens = Tokens::DEFAULT;
     let shell_w = SHELL_WIDTH * scale;
     let shell_h = ctx.input(|i| i.viewport_rect().height()) * 0.85;
     ui.set_width(shell_w);
@@ -195,9 +196,9 @@ pub(crate) fn render_control_center_preview(
     let footer_on = tab.edits_config();
 
     egui::Frame::NONE
-        .fill(tokens.panel)
+        .fill(tokens.surface_1)
         .stroke(egui::Stroke::new(1.0, tokens.line))
-        .corner_radius(tokens.card_radius)
+        .corner_radius(tokens.radius_card)
         .show(ui, |ui| {
             ui.set_width(shell_w);
 
@@ -211,13 +212,13 @@ pub(crate) fn render_control_center_preview(
                     egui::RichText::new(t!("hachimi"))
                         .size(18.0 * scale)
                         .strong()
-                        .color(tokens.text),
+                        .color(tokens.fg),
                 );
                 ui.add_space(4.0 * scale);
                 ui.label(
                     egui::RichText::new(env!("HACHIMI_DISPLAY_VERSION"))
                         .size(12.0 * scale)
-                        .color(tokens.text_faint),
+                        .color(tokens.fg_dim),
                 );
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     ui.add_space(14.0 * scale);
@@ -275,7 +276,7 @@ pub(crate) fn render_control_center_preview(
 // ─── Shared helpers ─────────────────────────────────────────────────────────
 
 fn draw_tab_bar(ui: &mut egui::Ui, active: &mut ControlTab, scale: f32) {
-    let tokens = ThemeTokens::from_ui(ui);
+    let tokens = Tokens::DEFAULT;
     // Horizontal scrollable tab strip for narrow viewports.
     egui::ScrollArea::horizontal()
         .id_salt("cc_tab_bar")
@@ -288,7 +289,7 @@ fn draw_tab_bar(ui: &mut egui::Ui, active: &mut ControlTab, scale: f32) {
                     let text = if selected {
                         egui::RichText::new(&label).strong().color(tokens.accent)
                     } else {
-                        egui::RichText::new(&label).color(tokens.text_dim)
+                        egui::RichText::new(&label).color(tokens.fg_dim)
                     };
                     if ui
                         .add(
