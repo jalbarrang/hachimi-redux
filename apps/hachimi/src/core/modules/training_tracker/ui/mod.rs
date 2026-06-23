@@ -113,7 +113,43 @@ pub fn register_ui() {
         std::ptr::null_mut(),
     );
 
+    sdk.register_hotkey(
+        "training-tracker.toggle_tracking",
+        "Start/Stop Tracking",
+        0,
+        0,
+        toggle_tracking_hotkey,
+        std::ptr::null_mut(),
+    );
+
     hlog_info!(target: "training-tracker", "UI registered (L1 page + {registered} chromeless L2 panels)");
+}
+
+extern "C" fn toggle_tracking_hotkey(_userdata: *mut c_void) {
+    use std::sync::atomic::Ordering;
+
+    use crate::core::modules::training_tracker::memory_reader;
+
+    if panic::catch_unwind(|| {
+        let sdk = Sdk::get();
+        if memory_reader::TRACKING.load(Ordering::Relaxed) {
+            memory_reader::stop_tracking();
+            sdk.show_notification("Memory tracking stopped");
+        } else {
+            match memory_reader::start_tracking() {
+                Ok(()) => sdk.show_notification("Memory tracking started!"),
+                Err(e) => {
+                    sdk.show_notification(&format!("Failed: {e}"));
+                    hlog_error!(target: "training-tracker", "start_tracking failed: {e}");
+                    false
+                }
+            };
+        }
+    })
+    .is_err()
+    {
+        hlog_error!(target: "training-tracker", "toggle_tracking_hotkey PANICKED");
+    }
 }
 
 extern "C" fn toggle_panel_hotkey(userdata: *mut c_void) {
