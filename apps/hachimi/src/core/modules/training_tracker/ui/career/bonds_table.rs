@@ -86,7 +86,7 @@ pub(super) fn render(ui: &mut egui::Ui, rows: Vec<BondRow>) {
     let w = super::super::overlay::content_width();
     let font = dimens::z(13.0);
     let chip = dimens::z(dimens::ICON_LG);
-    let row_gap = dimens::z(dimens::GAP_SM);
+    let row_gap = dimens::z(dimens::GAP_XS);
 
     header_row(ui, w, font);
     for (idx, row) in rows.iter().enumerate() {
@@ -123,17 +123,19 @@ fn header_col(tui: &mut egui_taffy::Tui, text: &str, width: f32, font: f32) {
 }
 
 fn bond_row(ui: &mut egui::Ui, idx: usize, row: &BondRow, w: f32, font: f32, chip: f32) {
-    let pad = dimens::z(4.0);
+    // Wider side padding, tight top/bottom so each row reads as a compact band.
+    let pad_x = dimens::z(dimens::GAP_SM);
+    let pad_y = dimens::z(dimens::GAP_XS);
     let border = if row.rainbow { C_RAINBOW } else { theme::LINE };
     let border_w = if row.rainbow { 1.5 } else { 1.0 };
 
     egui::Frame::new()
-        .inner_margin(egui::Margin::same(pad as i8))
+        .inner_margin(egui::Margin::symmetric(pad_x as i8, pad_y as i8))
         .corner_radius(CornerRadius::same(8))
         .fill(theme::SURFACE_2)
         .stroke(Stroke::new(border_w, border))
         .show(ui, |ui| {
-            let inner = (w - 2.0 * pad).max(40.0);
+            let inner = (w - 2.0 * pad_x).max(40.0);
             ui.set_width(inner);
             let name_w = name_width(inner);
             flex_row(ui, ui.id().with("bond_row").with(idx), inner, |tui| {
