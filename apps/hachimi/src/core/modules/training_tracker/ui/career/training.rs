@@ -31,7 +31,14 @@ fn fixed_width(w: f32) -> taffy::Style {
 
 fn card() -> taffy::Style {
     taffy::Style {
-        padding: length(dimens::z(dimens::GAP_LG)),
+        // Tight vertical padding (keep the wider side padding) so the stat table
+        // reads as a compact block.
+        padding: taffy::Rect {
+            left: length(dimens::z(dimens::GAP_LG)),
+            right: length(dimens::z(dimens::GAP_LG)),
+            top: length(dimens::z(dimens::GAP_SM)),
+            bottom: length(dimens::z(dimens::GAP_SM)),
+        },
         ..Default::default()
     }
 }
@@ -52,7 +59,7 @@ fn grid_6col() -> taffy::Style {
         ],
         gap: taffy::Size {
             width: length(dimens::z(dimens::GAP_MD)),
-            height: length(dimens::z(dimens::GAP_ROW)),
+            height: length(dimens::z(dimens::GAP_XS)),
         },
         align_items: Some(taffy::AlignItems::Stretch),
         justify_items: Some(taffy::AlignItems::Stretch),

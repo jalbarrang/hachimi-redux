@@ -18,7 +18,6 @@ pub(super) fn z(base: f32) -> f32 {
 // ── Gaps & spacing ────────────────────────────────────────────────────────
 pub(super) const GAP_XS: f32 = 2.0;
 pub(super) const GAP_SM: f32 = 4.0;
-pub(super) const GAP_ROW: f32 = 5.0;
 pub(super) const GAP_MD: f32 = 6.0;
 pub(super) const GAP_LG: f32 = 8.0;
 
