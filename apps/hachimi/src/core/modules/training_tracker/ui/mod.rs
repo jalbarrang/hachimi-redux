@@ -187,7 +187,14 @@ fn panel_id_from_userdata(userdata: *mut c_void) -> &'static str {
 }
 
 extern "C" fn draw_energy_overlay(ui: *mut c_void, _userdata: *mut c_void) {
-    draw_overlay(ui, "energy", constants::ENERGY_BASE_WIDTH, career::draw_energy_panel);
+    draw_overlay(
+        ui,
+        "energy",
+        constants::ENERGY_BASE_WIDTH,
+        constants::ENERGY_FIXED_HEIGHT,
+        true,
+        career::draw_energy_panel,
+    );
 }
 
 extern "C" fn draw_training_overlay(ui: *mut c_void, _userdata: *mut c_void) {
@@ -195,26 +202,57 @@ extern "C" fn draw_training_overlay(ui: *mut c_void, _userdata: *mut c_void) {
         ui,
         "training",
         constants::TRAINING_BASE_WIDTH,
+        constants::TRAINING_FIXED_HEIGHT,
+        false,
         career::draw_training_panel,
     );
 }
 
 extern "C" fn draw_bonds_overlay(ui: *mut c_void, _userdata: *mut c_void) {
-    draw_overlay(ui, "bonds", constants::BONDS_BASE_WIDTH, career::draw_bonds_panel);
+    draw_overlay(
+        ui,
+        "bonds",
+        constants::BONDS_BASE_WIDTH,
+        constants::BONDS_FIXED_HEIGHT,
+        false,
+        career::draw_bonds_panel,
+    );
 }
 
 extern "C" fn draw_scenario_overlay(ui: *mut c_void, _userdata: *mut c_void) {
-    draw_overlay(ui, "scenario", constants::SCENARIO_BASE_WIDTH, scenario::draw);
+    draw_overlay(
+        ui,
+        "scenario",
+        constants::SCENARIO_BASE_WIDTH,
+        constants::SCENARIO_FIXED_HEIGHT,
+        false,
+        scenario::draw,
+    );
 }
 
 extern "C" fn draw_shop_overlay(ui: *mut c_void, _userdata: *mut c_void) {
-    draw_overlay(ui, "shop", constants::SHOP_BASE_WIDTH, |ui, _| skill_shop_tab::draw(ui));
+    draw_overlay(
+        ui,
+        "shop",
+        constants::SHOP_BASE_WIDTH,
+        constants::SHOP_FIXED_HEIGHT,
+        false,
+        |ui, _| skill_shop_tab::draw(ui),
+    );
 }
 
-fn draw_overlay(ui: *mut c_void, name: &str, base_width: f32, body: PanelBody) {
+fn draw_overlay(
+    ui: *mut c_void,
+    name: &str,
+    base_width: f32,
+    fixed_height: Option<f32>,
+    chromeless: bool,
+    body: PanelBody,
+) {
     // SAFETY: host passes its live `&mut egui::Ui` for this callback.
     let ui = unsafe { ui_from_ptr(ui) };
-    if panic::catch_unwind(AssertUnwindSafe(|| overlay::draw_panel(ui, base_width, body))).is_err() {
+    if panic::catch_unwind(AssertUnwindSafe(|| overlay::draw_panel(ui, base_width, fixed_height, chromeless, body))).is_err()
+    {
         hlog_error!("draw_{name}_overlay PANICKED");
     }
 }
@@ -223,7 +261,13 @@ fn draw_overlay(ui: *mut c_void, name: &str, base_width: f32, body: PanelBody) {
 /// desktop dev-harness to draw a representative tracker panel in eframe.
 #[cfg(feature = "dev-harness")]
 pub fn draw_overlay_for_harness(ui: &mut egui::Ui) {
-    overlay::draw_panel(ui, constants::TRAINING_BASE_WIDTH, career::draw_training_panel);
+    overlay::draw_panel(
+        ui,
+        constants::TRAINING_BASE_WIDTH,
+        constants::TRAINING_FIXED_HEIGHT,
+        false,
+        career::draw_training_panel,
+    );
 }
 
 /// Re-export so the dev-harness can point the texture loader at an on-disk icon

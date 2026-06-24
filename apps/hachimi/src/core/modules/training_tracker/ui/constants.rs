@@ -10,13 +10,18 @@ pub(super) const TRAINING_BASE_WIDTH: f32 = 500.0;
 pub(super) const BONDS_BASE_WIDTH: f32 = 500.0;
 pub(super) const SCENARIO_BASE_WIDTH: f32 = 500.0;
 pub(super) const SHOP_BASE_WIDTH: f32 = 500.0;
-/// Minimum height for scrollable lists (Skills/Shop tabs, Bonds section) when the
-/// panel is small, in points. Lists otherwise grow to fill the resizable panel.
-pub(super) const MIN_LIST_HEIGHT: f32 = 400.0;
 /// Maximum overlay height at zoom 1.0 (points). The panel caps here instead of
 /// growing unbounded with content (which made the host window scroll the whole
 /// overlay); tab bodies scroll internally within the remaining space.
-pub(super) const OVERLAY_MAX_HEIGHT: f32 = 900.0;
+pub(super) const OVERLAY_MAX_HEIGHT: f32 = 500.0;
+
+/// Per-window fixed heights at zoom 1.0 (points). `None` keeps a window
+/// auto-sizing (capped by [`OVERLAY_MAX_HEIGHT`]); `Some(h)` pins it to `h`.
+pub(super) const ENERGY_FIXED_HEIGHT: Option<f32> = None;
+pub(super) const TRAINING_FIXED_HEIGHT: Option<f32> = None;
+pub(super) const BONDS_FIXED_HEIGHT: Option<f32> = None;
+pub(super) const SCENARIO_FIXED_HEIGHT: Option<f32> = None;
+pub(super) const SHOP_FIXED_HEIGHT: Option<f32> = None;
 
 pub(super) const ENERGY_OVERLAY_ID: &str = "training_tracker_overlay_energy";
 pub(super) const TRAINING_OVERLAY_ID: &str = "training_tracker_overlay_training";

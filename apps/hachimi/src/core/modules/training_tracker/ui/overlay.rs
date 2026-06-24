@@ -7,7 +7,7 @@ use crate::core::modules::training_tracker::compat::egui;
 use crate::core::modules::training_tracker::memory_reader::CareerSnapshot;
 use crate::core::modules::training_tracker::{overlay_cache, overlay_prefs};
 
-use super::constants::{MIN_LIST_HEIGHT, OVERLAY_BASE_WIDTH, OVERLAY_FONT_SIZE, OVERLAY_MAX_HEIGHT};
+use super::constants::{OVERLAY_BASE_WIDTH, OVERLAY_FONT_SIZE, OVERLAY_MAX_HEIGHT};
 
 /// Panel-frame inner margin (must match [`panel_frame`]); content sits inside it.
 const PANEL_INNER_MARGIN: f32 = 10.0;
@@ -71,6 +71,13 @@ pub(super) fn panel_frame() -> egui::Frame {
         .stroke(egui::Stroke::new(1.0, egui::Color32::from_rgb(0x2c, 0x36, 0x48)))
 }
 
+/// Transparent variant of [`panel_frame`]: keeps the inner margin (so layout and
+/// [`content_width`] stay consistent) but paints no fill or border. Used by
+/// windows whose content already draws its own background (e.g. the energy pill).
+pub(super) fn chromeless_frame() -> egui::Frame {
+    egui::Frame::new().inner_margin(egui::Margin::same(PANEL_INNER_MARGIN as i8))
+}
+
 /// Scaled base font size for callers that set an explicit text size.
 #[allow(dead_code)]
 pub(super) fn font_size() -> f32 {
@@ -115,17 +122,36 @@ pub(super) fn draw_zoom_control(ui: &mut egui::Ui) {
     });
 }
 
-pub(super) fn draw_panel(ui: &mut egui::Ui, base_width: f32, body: impl FnOnce(&mut egui::Ui, &CareerSnapshot)) {
+/// Draw an overlay panel. `fixed_height` pins the window to that height (× zoom);
+/// `None` keeps the default behaviour of auto-sizing up to [`OVERLAY_MAX_HEIGHT`].
+/// `chromeless` drops the panel frame's fill + border (for windows whose content,
+/// e.g. the energy pill, already paints its own background).
+pub(super) fn draw_panel(
+    ui: &mut egui::Ui,
+    base_width: f32,
+    fixed_height: Option<f32>,
+    chromeless: bool,
+    body: impl FnOnce(&mut egui::Ui, &CareerSnapshot),
+) {
     with_base_width(base_width, || {
         overlay_cache::maybe_request_refresh();
         let scale = apply_scale(ui);
         let width = base_width * scale;
-        let max_height = ui.ctx().content_rect().height().min(OVERLAY_MAX_HEIGHT * scale);
+        // Cap to the host viewport so a pinned height can't exceed the screen.
+        let viewport_height = ui.ctx().content_rect().height();
+        let height = match fixed_height {
+            Some(h) => (h * scale).min(viewport_height),
+            None => viewport_height.min(OVERLAY_MAX_HEIGHT * scale),
+        };
 
         ui.allocate_ui_with_layout(egui::vec2(width, 0.0), egui::Layout::top_down(egui::Align::Min), |ui| {
             ui.set_width(width);
-            ui.set_max_height(max_height);
-            panel_frame().show(ui, |ui| match overlay_cache::snapshot() {
+            ui.set_max_height(height);
+            if fixed_height.is_some() {
+                ui.set_min_height(height);
+            }
+            let frame = if chromeless { chromeless_frame() } else { panel_frame() };
+            frame.show(ui, |ui| match overlay_cache::snapshot() {
                 Some(snap) if snap.is_playing => body(ui, &snap),
                 _ => {
                     ui.label(egui::RichText::new("Waiting for an active career\u{2026}").italics());
@@ -136,11 +162,12 @@ pub(super) fn draw_panel(ui: &mut egui::Ui, base_width: f32, body: impl FnOnce(&
 }
 
 pub(super) fn scroll_list(ui: &mut egui::Ui, body: impl FnOnce(&mut egui::Ui)) {
-    // Fill the remaining height of the (resizable) panel so vertical resizing is
-    // meaningful; fall back to a small minimum when the panel is tiny.
-    let max_height = ui.available_height().max(MIN_LIST_HEIGHT);
+    // Let the window auto-size to its content: the scroll area shrinks vertically
+    // to the body's height, capped at the overlay max (then it scrolls). It still
+    // fills the width so full-width rows lay out correctly.
+    let max_height = (OVERLAY_MAX_HEIGHT * scale()).min(ui.ctx().content_rect().height());
     egui::ScrollArea::vertical()
         .max_height(max_height)
-        .auto_shrink([false, false])
+        .auto_shrink([false, true])
         .show(ui, body);
 }
