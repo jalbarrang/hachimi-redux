@@ -40,6 +40,10 @@ jobs:
 
           popd
 
+          # Drop the git-pinned egui patches first so the path patches below
+          # replace them; appending duplicates is a Cargo.toml duplicate-key error.
+          (Get-Content "Cargo.toml") -notmatch '^(egui|egui_extras|egui-directx11)\s*=' | Set-Content "Cargo.toml"
+
           Add-Content -Path "Cargo.toml" -Value "`n"
           $patches = @(
             "egui-directx11 = { path = '../egui-directx11' }",

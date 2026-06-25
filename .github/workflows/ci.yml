@@ -111,6 +111,10 @@ jobs:
           & $fxc.FullName /nologo /O3 /T ps_4_0 /E ps_egui /Fo shaders/ps_egui.bin shaders/egui.hlsl
           popd
 
+          # Drop the git-pinned egui patches first so the path patches below
+          # replace them; appending duplicates is a Cargo.toml duplicate-key error.
+          (Get-Content "Cargo.toml") -notmatch '^(egui|egui_extras|egui-directx11)\s*=' | Set-Content "Cargo.toml"
+
           Add-Content -Path "Cargo.toml" -Value "`n"
           $patches = @(
             "egui-directx11 = { path = '../egui-directx11' }",
@@ -159,6 +163,10 @@ jobs:
           & $fxc.FullName /nologo /O3 /T ps_4_0 /E ps_egui /Fo shaders/ps_egui.bin shaders/egui.hlsl
           popd
 
+          # Drop the git-pinned egui patches first so the path patches below
+          # replace them; appending duplicates is a Cargo.toml duplicate-key error.
+          (Get-Content "Cargo.toml") -notmatch '^(egui|egui_extras|egui-directx11)\s*=' | Set-Content "Cargo.toml"
+
           Add-Content -Path "Cargo.toml" -Value "`n"
           $patches = @(
             "egui-directx11 = { path = '../egui-directx11' }",
@@ -201,6 +209,10 @@ jobs:
           & $fxc.FullName /nologo /O3 /T vs_4_0 /E vs_egui /Fo shaders/vs_egui.bin shaders/egui.hlsl
           & $fxc.FullName /nologo /O3 /T ps_4_0 /E ps_egui /Fo shaders/ps_egui.bin shaders/egui.hlsl
           popd
+
+          # Drop the git-pinned egui patches first so the path patches below
+          # replace them; appending duplicates is a Cargo.toml duplicate-key error.
+          (Get-Content "Cargo.toml") -notmatch '^(egui|egui_extras|egui-directx11)\s*=' | Set-Content "Cargo.toml"
 
           Add-Content -Path "Cargo.toml" -Value "`n"
           $patches = @(
