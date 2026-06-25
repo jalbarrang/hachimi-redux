@@ -155,6 +155,7 @@ fn placeholder_row(slot: usize) -> UmaRow {
         accel: 0.0,
         kakari: false,
         blocked: false,
+        recoveries: 0,
         live: false,
     }
 }
@@ -181,12 +182,7 @@ fn draw_uma_card(ui: &mut egui::Ui, row: &UmaRow) {
             } else {
                 0.0
             };
-            let hp_value = if row.live {
-                row.hp.to_string()
-            } else {
-                "\u{2014}".to_owned()
-            };
-            bar_row(ui, "HP", hp_ratio, hp_color(ui, hp_ratio), hp_value);
+            hp_row(ui, row, hp_color(ui, hp_ratio));
         }
 
         let show_vel = settings::is_shown(Metric::Velocity);
@@ -217,9 +213,26 @@ fn draw_uma_card(ui: &mut egui::Ui, row: &UmaRow) {
             });
         }
 
+        if settings::is_shown(Metric::Recoveries) {
+            ui.add_space(3.0);
+            recoveries_row(ui, row);
+        }
+
         if settings::is_shown(Metric::States) {
             ui.add_space(3.0);
             states_row(ui, row);
+        }
+    });
+}
+
+/// Count of recovery skills triggered so far this race (fixed-width number).
+fn recoveries_row(ui: &mut egui::Ui, row: &UmaRow) {
+    ui.horizontal(|ui| {
+        ui.label(egui::RichText::new("REC").small().strong().color(faint_text(ui)));
+        if row.live {
+            ui.monospace(egui::RichText::new(format!("{:>2}", row.recoveries)).color(text_primary()));
+        } else {
+            ui.monospace(egui::RichText::new("\u{2014}").color(faint_text(ui)));
         }
     });
 }
@@ -271,16 +284,20 @@ fn badge(ui: &mut egui::Ui, text: &str, color: egui::Color32) {
     ui.add_space(2.0);
 }
 
-fn bar_row(ui: &mut egui::Ui, label: &str, ratio: f32, color: egui::Color32, value: String) {
+/// HP as fixed-width numbers (`current / max`) instead of a bar, so the card
+/// keeps a constant width/height. Current value is color-coded by remaining
+/// ratio; max stays faint.
+fn hp_row(ui: &mut egui::Ui, row: &UmaRow, color: egui::Color32) {
     ui.horizontal(|ui| {
-        ui.label(egui::RichText::new(label).small().strong().color(faint_text(ui)));
-        draw_bar(
-            ui,
-            ratio,
-            color,
-            egui::vec2((ui.available_width() - 62.0).max(24.0), 6.0),
-        );
-        ui.monospace(value);
+        ui.label(egui::RichText::new("HP").small().strong().color(faint_text(ui)));
+        if row.live {
+            // Zero-padded to 4 digits so the text never reflows as HP drains.
+            ui.monospace(egui::RichText::new(format!("{:>4}", row.hp)).color(color));
+            ui.label(egui::RichText::new("/").small().color(faint_text(ui)));
+            ui.monospace(egui::RichText::new(format!("{:>4}", row.initial_hp)).color(faint_text(ui)));
+        } else {
+            ui.monospace(egui::RichText::new("\u{2014} / \u{2014}").color(faint_text(ui)));
+        }
     });
 }
 
@@ -312,16 +329,6 @@ fn draw_timer(ui: &mut egui::Ui, elapsed: Option<f32>) {
             egui::FontId::monospace(16.0),
             text,
         );
-    }
-}
-
-fn draw_bar(ui: &mut egui::Ui, ratio: f32, color: egui::Color32, size: egui::Vec2) {
-    let (rect, _) = ui.allocate_exact_size(size, egui::Sense::hover());
-    if ui.is_rect_visible(rect) {
-        ui.painter()
-            .rect_filled(rect, rect.height() / 2.0, ui.visuals().extreme_bg_color);
-        let fill = egui::Rect::from_min_max(rect.min, egui::pos2(rect.left() + rect.width() * ratio, rect.bottom()));
-        ui.painter().rect_filled(fill, rect.height() / 2.0, color);
     }
 }
 

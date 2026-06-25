@@ -16,15 +16,17 @@ pub enum Metric {
     Velocity = 1,
     Acceleration = 2,
     States = 3,
+    Recoveries = 4,
 }
 
 impl Metric {
     /// All metrics in display order, paired with their control-page label.
-    pub const ALL: [(Metric, &'static str); 4] = [
+    pub const ALL: [(Metric, &'static str); 5] = [
         (Metric::Hp, "HP"),
         (Metric::Velocity, "Velocity"),
         (Metric::Acceleration, "Acceleration"),
         (Metric::States, "States (kakari / blocked)"),
+        (Metric::Recoveries, "Recoveries"),
     ];
 
     fn bit(self) -> u8 {
@@ -33,7 +35,7 @@ impl Metric {
 }
 
 /// Mask with every metric shown (the default).
-const ALL_MASK: u8 = 0b1111;
+const ALL_MASK: u8 = 0b1_1111;
 
 static SHOWN: AtomicU8 = AtomicU8::new(ALL_MASK);
 

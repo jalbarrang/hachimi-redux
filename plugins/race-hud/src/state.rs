@@ -57,6 +57,9 @@ pub struct UmaRow {
     pub kakari: bool,
     /// Blocked by a horse in front (`BlockFrontHorseIndex ≥ 0`).
     pub blocked: bool,
+    /// Recovery skills triggered so far this race (count of HP rising edges up to
+    /// the current frame).
+    pub recoveries: u16,
     /// Whether the race is currently being sampled (false = pre-start / idle).
     pub live: bool,
 }
@@ -80,6 +83,9 @@ struct State {
     styles: Vec<u8>,
     /// Starting stamina by horse index (frame 0), HP-bar reference.
     initial_hp: Vec<u16>,
+    /// Frame indices where a recovery (HP rising edge) fired, per horse index.
+    /// Precomputed once per race; used to count recoveries up to the live frame.
+    recovery_frames: Vec<Vec<usize>>,
     live: Option<LiveSnapshot>,
 }
 
@@ -141,13 +147,45 @@ pub fn set_decoded(
                 .frames
                 .first()
                 .map_or_else(Vec::new, |f| f.runners.iter().map(|r| r.hp).collect());
+            state.recovery_frames = compute_recovery_frames(&d.frames);
             state.frames = d.frames;
         }
         None => {
             state.frames.clear();
             state.initial_hp.clear();
+            state.recovery_frames.clear();
         }
     }
+}
+
+/// Per horse index, the frame indices at which a recovery fired.
+///
+/// HP drains monotonically while running, so any upward step is a recovery
+/// skill. Contiguous rising frames are collapsed to one event (rising edge), so
+/// a recovery spread over several frames still counts once.
+fn compute_recovery_frames(frames: &[crate::sim::FrameData]) -> Vec<Vec<usize>> {
+    let horse_num = frames.first().map_or(0, |f| f.runners.len());
+    let mut out = vec![Vec::new(); horse_num];
+    let mut rising = vec![false; horse_num];
+    for f in 1..frames.len() {
+        for i in 0..horse_num {
+            let (Some(hp), Some(prev)) = (
+                frames[f].runners.get(i).map(|r| r.hp),
+                frames[f - 1].runners.get(i).map(|r| r.hp),
+            ) else {
+                continue;
+            };
+            if hp > prev {
+                if !rising[i] {
+                    out[i].push(f);
+                    rising[i] = true;
+                }
+            } else {
+                rising[i] = false;
+            }
+        }
+    }
+    out
 }
 
 /// State for the `slot`-th player-owned uma (0-based), or `None` if there is no
@@ -159,6 +197,15 @@ pub fn uma_row(slot: usize) -> Option<UmaRow> {
     let post = (idx + 1) as u8;
     let name = state.names.get(idx).cloned().unwrap_or_default();
     let initial_hp = state.initial_hp.get(idx).copied().unwrap_or(0);
+
+    let frame_index = state.live.as_ref().map(|snap| snap.frame_index);
+    let recoveries = match frame_index {
+        Some(fi) => state
+            .recovery_frames
+            .get(idx)
+            .map_or(0, |edges| edges.iter().filter(|&&f| f <= fi).count() as u16),
+        None => 0,
+    };
 
     let sampled = state
         .live
@@ -175,6 +222,7 @@ pub fn uma_row(slot: usize) -> Option<UmaRow> {
             accel: r.accel,
             kakari: r.temptation != 0,
             blocked: r.block_front >= 0,
+            recoveries,
             live: true,
         },
         None => UmaRow {
@@ -186,6 +234,7 @@ pub fn uma_row(slot: usize) -> Option<UmaRow> {
             accel: 0.0,
             kakari: false,
             blocked: false,
+            recoveries: 0,
             live: false,
         },
     })
