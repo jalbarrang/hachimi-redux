@@ -251,7 +251,10 @@ fn draw_overlay(
 ) {
     // SAFETY: host passes its live `&mut egui::Ui` for this callback.
     let ui = unsafe { ui_from_ptr(ui) };
-    if panic::catch_unwind(AssertUnwindSafe(|| overlay::draw_panel(ui, base_width, fixed_height, chromeless, body))).is_err()
+    if panic::catch_unwind(AssertUnwindSafe(|| {
+        overlay::draw_panel(ui, base_width, fixed_height, chromeless, body)
+    }))
+    .is_err()
     {
         hlog_error!("draw_{name}_overlay PANICKED");
     }
