@@ -1,5 +1,5 @@
 # Insert // SAFETY: comments before undocumented unsafe blocks in plugin sources.
-$PluginSrc = Join-Path $PSScriptRoot "..\plugins\training-tracker\src"
+$PluginSrc = Join-Path $PSScriptRoot "..\plugins"
 $safetyFfi = "// SAFETY: IL2CPP FFI call; host vtable and resolved symbols are valid for process lifetime."
 $safetyField = "// SAFETY: Reading field or calling method on non-null IL2CPP object pointer."
 $safetyTrans = "// SAFETY: Transmuting IL2CPP MethodInfo pointer to callable function pointer."
