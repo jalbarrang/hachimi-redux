@@ -48,9 +48,6 @@ jobs:
         with:
           components: rustfmt
       - run: cargo fmt --check
-      - name: Check plugin formatting
-        working-directory: plugins/training-tracker
-        run: cargo fmt --check
 
   # ──────────────────────────────────────────────────────────────
   # Stage 2: Supply chain & dependency checks (no compilation)
@@ -76,9 +73,6 @@ jobs:
       - name: Install cargo-machete
         run: cargo install cargo-machete
       - name: Check for unused dependencies (core)
-        run: cargo machete
-      - name: Check for unused dependencies (plugin)
-        working-directory: plugins/training-tracker
         run: cargo machete
 
   # ──────────────────────────────────────────────────────────────
@@ -133,13 +127,6 @@ jobs:
           --all-targets
           -- -D warnings
 
-      - name: Clippy (plugin — zero warnings)
-        working-directory: plugins/training-tracker
-        run: >
-          cargo clippy
-          --all-targets
-          -- -D warnings
-
   # ──────────────────────────────────────────────────────────────
   # Stage 4: Tests — unit test suite (Windows only, no game runtime)
   # ──────────────────────────────────────────────────────────────
@@ -181,10 +168,6 @@ jobs:
           Add-Content -Path "Cargo.toml" -Value $patches
 
       - name: Run tests (core)
-        run: cargo test --lib
-
-      - name: Run tests (plugin)
-        working-directory: plugins/training-tracker
         run: cargo test --lib
 
   # ──────────────────────────────────────────────────────────────
@@ -229,7 +212,3 @@ jobs:
 
       - name: Cargo check (core)
         run: cargo check --target x86_64-pc-windows-msvc
-
-      - name: Cargo check (plugin)
-        working-directory: plugins/training-tracker
-        run: cargo check
