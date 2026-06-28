@@ -19,6 +19,11 @@ use crate::core::modules::training_tracker::skill_shop::{self, SkillShopEntry};
 
 /// Auto-refresh interval while memory tracking is on (milliseconds).
 pub const AUTO_REFRESH_INTERVAL_MS: u64 = 500;
+/// Slow idle cadence for the auto-lifecycle probe when tracking is OFF but auto mode
+/// is on. Just a cheap `is_playing` check that re-arms tracking on (re)entering a
+/// career, so resuming a career works even when the host CAREER_START event does not
+/// re-fire. Kept slow to stay light in lobby/menu scenes.
+const IDLE_PROBE_INTERVAL_MS: u64 = 2000;
 
 #[derive(Default)]
 struct OverlayCache {
@@ -141,16 +146,39 @@ extern "C" fn refresh_cache_cb() {
 }
 
 fn refresh_cache_inner() {
-    if !memory_reader::TRACKING.load(AtomicOrdering::Relaxed) {
+    let auto = crate::core::modules::training_tracker::tracking_prefs::auto_track_careers();
+    let mut tracking = memory_reader::TRACKING.load(AtomicOrdering::Relaxed);
+    if !tracking && !auto {
+        return;
+    }
+
+    // Auto lifecycle: a cheap `is_playing` probe drives start/stop independently of the
+    // host CAREER_START/END events. Those fire only on `IsPlaying` view-change
+    // transitions, which the game can miss (e.g. save&exit leaves `IsPlaying` true at
+    // the Home view-change, then flips it later with no further view change). Polling
+    // here re-arms tracking on career resume and stops it once the career truly ends.
+    if auto {
+        match memory_reader::is_playing() {
+            Some(true) if !tracking => {
+                if memory_reader::start_tracking().is_ok() {
+                    tracking = true;
+                }
+            }
+            Some(false) if tracking => {
+                memory_reader::stop_tracking();
+                reset_career_state();
+                return;
+            }
+            _ => {}
+        }
+    }
+    if !tracking {
         return;
     }
 
     let Some(chara) = memory_reader::get_chara_ptr() else {
+        // Tracking on but Character not ready yet (career setup window) — wait.
         CHARACTER_READY.store(false, AtomicOrdering::Relaxed);
-        if matches!(memory_reader::is_playing(), Some(false)) {
-            memory_reader::stop_tracking();
-            reset_career_state();
-        }
         return;
     };
     CHARACTER_READY.store(true, AtomicOrdering::Relaxed);
@@ -158,8 +186,10 @@ fn refresh_cache_inner() {
     let mut snapshot = memory_reader::read_snapshot();
     let is_playing = snapshot.as_ref().is_some_and(|s| s.is_playing);
     if !is_playing {
-        memory_reader::stop_tracking();
-        reset_career_state();
+        if auto {
+            memory_reader::stop_tracking();
+            reset_career_state();
+        }
         return;
     }
 
@@ -298,10 +328,20 @@ fn log_career_diagnostic(evaluations: &[EvaluationInfo], support_ids: &[(i32, i3
 
 /// Throttled auto-refresh (call from render thread each overlay frame).
 pub fn maybe_request_refresh() {
-    if !memory_reader::TRACKING.load(AtomicOrdering::Relaxed) {
+    let tracking = memory_reader::TRACKING.load(AtomicOrdering::Relaxed);
+    let auto = crate::core::modules::training_tracker::tracking_prefs::auto_track_careers();
+    // When tracking is on, refresh fast for live data. When it is off but auto mode is
+    // on, run the slow idle probe so a resumed career re-arms tracking. When both are
+    // off (manual mode, stopped), stay completely silent.
+    if !tracking && !auto {
         return;
     }
-    if !should_auto_refresh(elapsed_since_last_refresh_ms(), AUTO_REFRESH_INTERVAL_MS) {
+    let interval = if tracking {
+        AUTO_REFRESH_INTERVAL_MS
+    } else {
+        IDLE_PROBE_INTERVAL_MS
+    };
+    if !should_auto_refresh(elapsed_since_last_refresh_ms(), interval) {
         return;
     }
     schedule_refresh();
