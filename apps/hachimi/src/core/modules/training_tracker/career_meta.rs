@@ -133,6 +133,7 @@ pub fn rank_label_sprite(label: &str) -> Option<String> {
 /// `chara/chr_icon_1014.png`. Resolves the character id via the outfit catalog,
 /// falling back to the card id's first four digits. `None` when unresolvable.
 #[must_use]
+#[allow(dead_code)]
 pub fn trainee_portrait_path(card_id: i32) -> Option<String> {
     let char_id = gametora_data::character_card(card_id as i64)
         .and_then(|c| c.char_id)

@@ -12,7 +12,7 @@
 use std::{
     collections::{HashMap, HashSet},
     ffi::c_void,
-    sync::{atomic::AtomicBool, atomic::Ordering, Mutex},
+    sync::{atomic::AtomicBool, atomic::AtomicU32, atomic::Ordering, Mutex},
 };
 
 use once_cell::sync::Lazy;
@@ -36,7 +36,23 @@ pub(crate) struct PluginOverlay {
     pub(crate) fixed: bool,
 }
 
+/// A panel's placement (position + size) for one window layout.
+#[derive(Clone, Default, Serialize, Deserialize)]
+pub(crate) struct PanelPlacement {
+    #[serde(default)]
+    pub(crate) pos: Option<[f32; 2]>,
+    /// User-chosen panel size (expanded only). `None` = use the default size.
+    #[serde(default)]
+    pub(crate) size: Option<[f32; 2]>,
+}
+
 /// Persisted per-panel state.
+///
+/// Position/size are stored **per window layout** (keyed by pixel size, e.g.
+/// `"3440x1440"`) in `layouts`, so the same panel can keep a different placement
+/// in windowed vs fullscreen vs a resized window. The legacy top-level `pos`/`size`
+/// are kept for back-compat: they seed the fallback when a layout has no entry yet
+/// (and are how pre-`layouts` `overlay_state.json` files still load).
 #[derive(Clone, Serialize, Deserialize)]
 pub(crate) struct PanelState {
     #[serde(default = "default_true")]
@@ -45,9 +61,11 @@ pub(crate) struct PanelState {
     pub(crate) collapsed: bool,
     #[serde(default)]
     pub(crate) pos: Option<[f32; 2]>,
-    /// User-chosen panel size (expanded only). `None` = use the default size.
     #[serde(default)]
     pub(crate) size: Option<[f32; 2]>,
+    /// Per-layout placement overrides, keyed by [`current_layout_key`].
+    #[serde(default)]
+    pub(crate) layouts: HashMap<String, PanelPlacement>,
 }
 
 impl Default for PanelState {
@@ -57,6 +75,7 @@ impl Default for PanelState {
             collapsed: false,
             pos: None,
             size: None,
+            layouts: HashMap::new(),
         }
     }
 }
@@ -98,6 +117,51 @@ static POS_DIRTY: AtomicBool = AtomicBool::new(false);
 
 /// Panels whose position should be force-reset to default on the next frame.
 static RESET_QUEUE: Lazy<Mutex<HashSet<String>>> = Lazy::new(|| Mutex::new(HashSet::new()));
+
+/// Current window pixel size, recorded by [`set_layout_size`] and read by
+/// [`current_layout_key`] to key per-layout panel placement.
+static LAYOUT_W: AtomicU32 = AtomicU32::new(0);
+static LAYOUT_H: AtomicU32 = AtomicU32::new(0);
+
+/// Record the current window pixel size (called from `Gui::set_screen_size`).
+pub(crate) fn set_layout_size(width: i32, height: i32) {
+    LAYOUT_W.store(width.max(0) as u32, Ordering::Relaxed);
+    LAYOUT_H.store(height.max(0) as u32, Ordering::Relaxed);
+}
+
+/// Short key identifying the current window layout, keyed by **aspect ratio**
+/// (e.g. `"1.78"`, `"2.39"`) rather than raw pixels.
+///
+/// The egui point-space is invariant under same-aspect scaling, so a saved point
+/// position is valid for every window size of that shape — one setup covers
+/// windowed and fullscreen at the same ratio. It also means free drag-resize only
+/// mints a new bucket when the *shape* changes (quantized to 2 decimals), instead
+/// of one per pixel.
+pub(crate) fn current_layout_key() -> String {
+    let w = LAYOUT_W.load(Ordering::Relaxed);
+    let h = LAYOUT_H.load(Ordering::Relaxed);
+    if w == 0 || h == 0 {
+        return "0".to_owned();
+    }
+    format!("{:.2}", w as f32 / h as f32)
+}
+
+/// Resolve a panel's placement for layout `key`. A per-layout entry wins outright
+/// (its `None` fields mean "use the default"); with no entry we fall back to the
+/// legacy single placement so old state and never-moved panels keep working.
+pub(crate) fn panel_placement(id: &str, key: &str) -> PanelPlacement {
+    let state = OVERLAY_UI.lock().expect("lock poisoned");
+    let Some(panel) = state.panels.get(id) else {
+        return PanelPlacement::default();
+    };
+    if let Some(p) = panel.layouts.get(key) {
+        return p.clone();
+    }
+    PanelPlacement {
+        pos: panel.pos,
+        size: panel.size,
+    }
+}
 
 const STATE_FILE: &str = "overlay_state.json";
 
@@ -231,9 +295,15 @@ pub(crate) fn panel_state(id: &str) -> PanelState {
 }
 
 /// Forget a panel's saved position and size so it returns to defaults next frame.
+///
+/// Clears the **current layout's** entry plus the legacy fallback, so the panel
+/// resets to its cascade default on this window size while other layouts' saved
+/// placements are left untouched.
 pub(crate) fn reset_panel(id: &str) {
+    let key = current_layout_key();
     let mut state = OVERLAY_UI.lock().expect("lock poisoned");
     let entry = state.panels.entry(id.to_owned()).or_default();
+    entry.layouts.remove(&key);
     entry.pos = None;
     entry.size = None;
     save_state(&state);
@@ -252,20 +322,34 @@ pub(crate) fn set_panel_collapsed(id: &str, collapsed: bool) {
     save_state(&state);
 }
 
-/// Update a panel's position in memory (cheap; flushed to disk on pointer release).
+/// Update a panel's position for the current layout (cheap; flushed on release).
 pub(crate) fn set_panel_pos(id: &str, pos: [f32; 2]) {
+    let key = current_layout_key();
     let mut state = OVERLAY_UI.lock().expect("lock poisoned");
-    let entry = state.panels.entry(id.to_owned()).or_default();
+    let entry = state
+        .panels
+        .entry(id.to_owned())
+        .or_default()
+        .layouts
+        .entry(key)
+        .or_default();
     if entry.pos != Some(pos) {
         entry.pos = Some(pos);
         POS_DIRTY.store(true, Ordering::Relaxed);
     }
 }
 
-/// Update a panel's size in memory (cheap; flushed to disk on pointer release).
+/// Update a panel's size for the current layout (cheap; flushed on release).
 pub(crate) fn set_panel_size(id: &str, size: [f32; 2]) {
+    let key = current_layout_key();
     let mut state = OVERLAY_UI.lock().expect("lock poisoned");
-    let entry = state.panels.entry(id.to_owned()).or_default();
+    let entry = state
+        .panels
+        .entry(id.to_owned())
+        .or_default()
+        .layouts
+        .entry(key)
+        .or_default();
     if entry.size != Some(size) {
         entry.size = Some(size);
         POS_DIRTY.store(true, Ordering::Relaxed);
@@ -344,6 +428,55 @@ mod tests {
             let mut overlays = PLUGIN_OVERLAYS.lock().expect("lock poisoned");
             overlays.clear();
         }
+    }
+
+    #[test]
+    fn per_layout_positions_are_independent() {
+        let _guard = TEST_LOCK.lock().expect("lock poisoned");
+        OVERLAY_UI.lock().expect("lock poisoned").panels.clear();
+
+        // Place the panel in a 720p layout.
+        set_layout_size(1280, 720);
+        set_panel_pos("p", [10.0, 20.0]);
+        assert_eq!(panel_placement("p", &current_layout_key()).pos, Some([10.0, 20.0]));
+
+        // A different layout has no entry and no legacy fallback -> default (None).
+        set_layout_size(3440, 1440);
+        assert_eq!(panel_placement("p", &current_layout_key()).pos, None);
+        set_panel_pos("p", [99.0, 88.0]);
+        assert_eq!(panel_placement("p", &current_layout_key()).pos, Some([99.0, 88.0]));
+
+        // Switching back restores the first layout's own position.
+        set_layout_size(1280, 720);
+        assert_eq!(panel_placement("p", &current_layout_key()).pos, Some([10.0, 20.0]));
+
+        OVERLAY_UI.lock().expect("lock poisoned").panels.clear();
+    }
+
+    #[test]
+    fn legacy_position_is_the_fallback_until_a_layout_is_set() {
+        let _guard = TEST_LOCK.lock().expect("lock poisoned");
+        {
+            let mut state = OVERLAY_UI.lock().expect("lock poisoned");
+            state.panels.clear();
+            // Simulate a pre-`layouts` state file: only the legacy top-level pos.
+            state.panels.insert(
+                "legacy".to_owned(),
+                PanelState {
+                    pos: Some([5.0, 6.0]),
+                    ..PanelState::default()
+                },
+            );
+        }
+
+        set_layout_size(1920, 1080);
+        // No per-layout entry yet -> falls back to the legacy pos.
+        assert_eq!(panel_placement("legacy", &current_layout_key()).pos, Some([5.0, 6.0]));
+        // Once moved, the per-layout entry wins for this layout.
+        set_panel_pos("legacy", [7.0, 8.0]);
+        assert_eq!(panel_placement("legacy", &current_layout_key()).pos, Some([7.0, 8.0]));
+
+        OVERLAY_UI.lock().expect("lock poisoned").panels.clear();
     }
 
     #[test]

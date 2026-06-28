@@ -51,15 +51,22 @@ pub(super) const RAIL_W: f32 = 4.0;
 pub(super) const RAIL_H: f32 = 24.0;
 
 // ── Header ────────────────────────────────────────────────────────────────
+#[allow(dead_code)]
 pub(super) const PORTRAIT: f32 = 56.0;
 pub(super) const RANK_BADGE: f32 = 30.0;
 
-// ── Explicit (non-text-style) font sizes ──────────────────────────────────
+// ── Type scale (Tailwind / shadcn-style) ───────────────────────────────────
+// One coherent ramp for the whole overlay, anchored at base = 16px. egui's
+// built-in text styles map onto this scale in `overlay::apply_scale` (Small→sm,
+// Body/Button→base, Heading→xl), and explicit `.size(..)` calls should use these
+// tokens (scaled via `z`) rather than magic numbers.
+pub(super) const FONT_XS: f32 = 12.0;
+pub(super) const FONT_SM: f32 = 14.0;
+pub(super) const FONT_BASE: f32 = 16.0;
 #[allow(dead_code)]
-pub(super) const FONT_BASE_SIZE: f32 = 16.0;
-pub(super) const FONT_NAME: f32 = 16.0;
-pub(super) const FONT_OUTFIT: f32 = 12.0;
-pub(super) const FONT_STARS: f32 = 12.0;
+pub(super) const FONT_LG: f32 = 18.0;
+#[allow(dead_code)]
+pub(super) const FONT_XL: f32 = 20.0;
 
 // ── L1 menu (settings) page ───────────────────────────────────────────────
 // The menu is a host-embedded page, NOT the overlay, so these are used raw

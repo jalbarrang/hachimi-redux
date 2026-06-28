@@ -16,6 +16,7 @@ const TOKENS: honse_ui::theme::Tokens = honse_ui::theme::Tokens::DEFAULT;
 // Thin compatibility aliases for existing tracker call sites.
 pub const SURFACE_1: Color32 = TOKENS.surface_1;
 pub const SURFACE_2: Color32 = TOKENS.surface_2;
+#[allow(dead_code)]
 pub const SURFACE_3: Color32 = TOKENS.surface_3;
 pub const LINE: Color32 = TOKENS.line;
 pub const FG: Color32 = TOKENS.fg;

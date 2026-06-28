@@ -23,13 +23,37 @@ thread_local! {
 pub(super) fn apply_scale(ui: &mut egui::Ui) -> f32 {
     let scale = overlay_prefs::zoom();
     let style = ui.style_mut();
-    // Scale every text style so `.small()` / `.strong()` / default labels follow
-    // the zoom. `override_font_id` alone is not enough: text set via a `TextStyle`
-    // or an explicit size bypasses it (egui 0.33 `FontSelection::resolve`).
-    for (_, font_id) in style.text_styles.iter_mut() {
-        font_id.size *= scale;
-    }
-    style.override_font_id = Some(egui::FontId::proportional(OVERLAY_FONT_SIZE * scale));
+    // Install the normalized Tailwind-style type scale (base 16px), then scale by
+    // the zoom. Mapping egui's built-in text styles onto the ramp means `.small()`
+    // is `sm`, plain labels are `base`, and headings are `xl` — one coherent
+    // scale. `override_font_id` alone is not enough: text set via a `TextStyle` or
+    // explicit size bypasses it (egui `FontSelection::resolve`).
+    use super::dimens;
+    use egui::{FontFamily, FontId, TextStyle};
+    style.text_styles = [
+        (
+            TextStyle::Small,
+            FontId::new(dimens::FONT_SM * scale, FontFamily::Proportional),
+        ),
+        (
+            TextStyle::Body,
+            FontId::new(dimens::FONT_BASE * scale, FontFamily::Proportional),
+        ),
+        (
+            TextStyle::Button,
+            FontId::new(dimens::FONT_BASE * scale, FontFamily::Proportional),
+        ),
+        (
+            TextStyle::Heading,
+            FontId::new(dimens::FONT_XL * scale, FontFamily::Proportional),
+        ),
+        (
+            TextStyle::Monospace,
+            FontId::new(dimens::FONT_SM * scale, FontFamily::Monospace),
+        ),
+    ]
+    .into();
+    style.override_font_id = Some(FontId::proportional(dimens::FONT_BASE * scale));
     let sp = ui.spacing_mut();
     sp.item_spacing *= scale;
     sp.button_padding *= scale;

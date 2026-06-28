@@ -11,6 +11,10 @@ use super::{Gui, IS_CONSUMING_INPUT, PIXELS_PER_POINT_RATIO};
 
 impl Gui {
     pub fn set_screen_size(&mut self, width: i32, height: i32) {
+        // Record the raw window size so L2 overlays can key their saved placement
+        // per layout (windowed vs fullscreen vs a resized window).
+        overlay::set_layout_size(width, height);
+
         let is_landscape = width > height;
         let main_axis_size = if is_landscape { height } else { width.min(height) };
 

@@ -84,7 +84,7 @@ pub(super) fn render(ui: &mut egui::Ui, rows: Vec<BondRow>) {
     log_rows_on_change(&rows);
 
     let w = super::super::overlay::content_width();
-    let font = dimens::z(13.0);
+    let font = dimens::z(dimens::FONT_SM);
     let chip = dimens::z(dimens::ICON_LG);
     let row_gap = dimens::z(dimens::GAP_XS);
 

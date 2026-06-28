@@ -5,11 +5,17 @@
 //! overlay registry.
 
 use std::panic::{self, AssertUnwindSafe};
+use std::sync::Mutex;
 
 use crate::core::plugin::overlay;
 
 use super::scale::get_scale;
 use super::Gui;
+
+/// Last window layout key seen by [`Gui::run_overlays`]. When it changes, panels
+/// are snapped to the new layout's saved position for one frame (egui caches the
+/// window position by id, so a `default_pos` change alone would not move them).
+static LAST_LAYOUT_KEY: Mutex<String> = Mutex::new(String::new());
 
 impl Gui {
     pub(crate) fn run_overlays(&mut self) {
@@ -26,17 +32,31 @@ impl Gui {
         let locked = overlay::is_locked();
         let opacity = overlay::opacity();
 
+        // Per-layout placement: resolve each panel against the current window size,
+        // and detect a layout switch so we can snap panels to the new layout's spot.
+        let layout_key = overlay::current_layout_key();
+        let layout_changed = {
+            let mut last = LAST_LAYOUT_KEY.lock().expect("lock poisoned");
+            if *last != layout_key {
+                last.clone_from(&layout_key);
+                true
+            } else {
+                false
+            }
+        };
+
         for (index, ov) in overlays.iter().enumerate() {
             let state = overlay::panel_state(&ov.id);
             if !state.visible {
                 continue;
             }
+            let placement = overlay::panel_placement(&ov.id, &layout_key);
 
             let title = overlay::display_title(&ov.id);
             let win_id = egui::Id::new("plugin_overlay").with(&ov.id);
             // Fresh panels (no saved position) cascade down the right edge by
             // registration order so multiple overlays don't stack on one spot.
-            let default_pos = state.pos.map_or_else(
+            let default_pos = placement.pos.map_or_else(
                 || {
                     let stagger = (index as f32) * 38.0 * scale;
                     egui::pos2(
@@ -48,12 +68,15 @@ impl Gui {
             );
 
             let force_reset = overlay::take_reset(&ov.id);
+            // Snap to the resolved position when the layout just changed, the same
+            // way `force_reset`/`fixed` pin a window via `current_pos`.
+            let snap = force_reset || ov.fixed || layout_changed;
 
             // Chromeless overlays drop the host header/frame entirely: the plugin's
             // own drawing is the whole visual. They auto-size to content, stay
             // draggable when unlocked, and are managed from the L1 Overlay tab.
             if ov.chromeless {
-                self.run_chromeless_overlay(ov, &title, default_pos, locked, opacity, force_reset);
+                self.run_chromeless_overlay(ov, &title, default_pos, locked, opacity, snap);
                 continue;
             }
 
@@ -77,12 +100,17 @@ impl Gui {
                     .resizable(!locked)
                     .min_size(min_panel_size(scale))
                     .max_size(egui::vec2(viewport.width() * 0.95, viewport.height() * 0.95))
-                    .default_size(state.size.map_or_else(|| default_panel_size(scale), egui::Vec2::from));
+                    .default_size(
+                        placement
+                            .size
+                            .map_or_else(|| default_panel_size(scale), egui::Vec2::from),
+                    );
             }
 
             // A fixed panel is pinned to its persisted position every frame (the
-            // user sets it via the overlay state, not by dragging).
-            window = if force_reset || ov.fixed {
+            // user sets it via the overlay state, not by dragging); a layout switch
+            // snaps it once to the new layout's saved position.
+            window = if snap {
                 window.current_pos(default_pos)
             } else {
                 window.default_pos(default_pos)
@@ -96,12 +124,17 @@ impl Gui {
                 }
             });
 
-            // Persist live geometry (flushed to disk on pointer release).
+            // Persist live geometry (flushed to disk on pointer release). Skip snap
+            // frames: the rect is one we forced (reset / fixed / layout switch), not
+            // a user move — persisting it would write junk for every transient size
+            // crossed during a drag-resize.
             if let Some(inner) = response {
-                let rect = inner.response.rect;
-                overlay::set_panel_pos(&ov.id, [rect.min.x, rect.min.y]);
-                if !state.collapsed && !force_reset {
-                    overlay::set_panel_size(&ov.id, [rect.width(), rect.height()]);
+                if !snap {
+                    let rect = inner.response.rect;
+                    overlay::set_panel_pos(&ov.id, [rect.min.x, rect.min.y]);
+                    if !state.collapsed {
+                        overlay::set_panel_size(&ov.id, [rect.width(), rect.height()]);
+                    }
                 }
             }
         }
@@ -122,7 +155,7 @@ impl Gui {
         default_pos: egui::Pos2,
         locked: bool,
         opacity: f32,
-        force_reset: bool,
+        snap: bool,
     ) {
         let ctx = &self.context;
         let win_id = egui::Id::new("plugin_overlay").with(&ov.id);
@@ -138,9 +171,9 @@ impl Gui {
             .interactable(!locked)
             .frame(egui::Frame::NONE);
 
-        // A fixed panel is pinned to its persisted position (set by the user via
-        // the overlay state, not by dragging).
-        window = if force_reset || ov.fixed {
+        // Pinned to its persisted position on a reset, when fixed, or for one frame
+        // after a layout switch (see `snap` in `run_overlays`); otherwise draggable.
+        window = if snap {
             window.current_pos(default_pos)
         } else {
             window.default_pos(default_pos)
@@ -157,9 +190,13 @@ impl Gui {
             });
         });
 
+        // Skip snap frames (forced reposition), so a transient size during a
+        // drag-resize never overwrites the saved placement.
         if let Some(inner) = response {
-            let rect = inner.response.rect;
-            overlay::set_panel_pos(&ov.id, [rect.min.x, rect.min.y]);
+            if !snap {
+                let rect = inner.response.rect;
+                overlay::set_panel_pos(&ov.id, [rect.min.x, rect.min.y]);
+            }
         }
     }
 }

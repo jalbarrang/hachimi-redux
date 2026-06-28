@@ -13,11 +13,11 @@ use super::super::dimens;
 use super::super::textures;
 use super::theme;
 use crate::core::modules::training_tracker::career_meta;
-use crate::core::modules::training_tracker::gametora_data;
 use crate::core::modules::training_tracker::memory_reader::{self, CareerSnapshot};
 use crate::core::modules::training_tracker::rank_table;
 
 /// A flex column / row style with a gap (the two layouts the header needs).
+#[allow(dead_code)]
 fn col(gap: f32) -> taffy::Style {
     taffy::Style {
         display: taffy::Display::Flex,
@@ -35,6 +35,7 @@ fn row(gap: f32) -> taffy::Style {
         ..Default::default()
     }
 }
+#[allow(dead_code)]
 fn grid_2col(gap: f32, width: f32) -> taffy::Style {
     let size = taffy::Size {
         width: length(width),
@@ -50,6 +51,7 @@ fn grid_2col(gap: f32, width: f32) -> taffy::Style {
         ..Default::default()
     }
 }
+#[allow(dead_code)]
 fn col_end(gap: f32) -> taffy::Style {
     taffy::Style {
         display: taffy::Display::Flex,
@@ -60,84 +62,36 @@ fn col_end(gap: f32) -> taffy::Style {
     }
 }
 
-/// Header laid out with egui_taffy (flexbox) instead of nested horizontal/vertical:
-/// a full-width two-column grid: identity (portrait + name/outfit/stars) on the
-/// left, condition pills stacked and right-aligned on the right.
+/// Header laid out with egui_taffy (flexbox): a single row with the rank badge
+/// (rank sprite medallion) and the evaluation value side by side. Portrait,
+/// name, outfit, stars, and the energy pill have been removed from this panel —
+/// energy is shown via the standalone HUD pill instead.
 pub(super) fn draw(ui: &mut egui::Ui, snap: &CareerSnapshot) {
-    let card = gametora_data::character_card(snap.card_id as i64);
-    let name = card
-        .and_then(|c| c.name_en.clone().or_else(|| c.name_jp.clone()))
-        .unwrap_or_else(|| format!("#{}", snap.card_id));
-    let outfit = card
-        .and_then(|c| c.title_en_gl.clone().or_else(|| c.title_jp.clone()))
-        .filter(|s| !s.is_empty());
-
     // Reserve the deterministic column width, not the (auto_sized-inflated)
     // available width — egui_taffy's reserve_*_width does set_min_width(), so a
     // huge value would force the header and the window wide.
     let width = super::super::overlay::content_width();
     tui(ui, ui.id().with("career_header"))
         .reserve_width(width)
-        .style(grid_2col(dimens::z(dimens::GAP_LG), width))
+        .style(taffy::Style {
+            align_items: Some(taffy::AlignItems::Center),
+            ..row(dimens::z(dimens::GAP_MD))
+        })
         .show(|tui| {
-            // Left column: portrait + badge + name / outfit / stars.
-            tui.style(row(dimens::z(dimens::GAP_LG))).add(|tui| {
-                tui.style(col(dimens::z(dimens::GAP_XS))).add(|tui| {
-                    tui.ui(|ui| portrait(ui, snap));
-                    if let Some(ev) = snap.evaluation_value {
-                        tui.ui(|ui| {
-                            ui.label(RichText::new(group_thousands(ev)).strong().color(theme::FG_MUTED));
-                        });
-                    }
+            // Rank badge (sprite medallion) and eval value, arranged horizontally.
+            tui.ui(|ui| rank_badge(ui, snap));
+            if let Some(ev) = snap.evaluation_value {
+                tui.ui(|ui| {
+                    ui.label(RichText::new(group_thousands(ev)).strong().color(theme::FG_MUTED));
                 });
-
-                // Rank badge as its own element beside the portrait.
-                tui.ui(|ui| rank_badge(ui, snap));
-
-                tui.style(taffy::Style {
-                    flex_grow: 1.0,
-                    flex_basis: length(0.0),
-                    ..col(dimens::z(dimens::GAP_XS))
-                })
-                .add(|tui| {
-                    // Truncating labels fill their assigned width and report it via
-                    // `.ui()`; that feeds back into layout, keeps the node dirty
-                    // every frame, and flickers the whole panel on repaint. Report
-                    // a constant size (width 0 + infinite.x) instead.
-
-                    if let Some(outfit) = &outfit {
-                        truncating_label(
-                            tui,
-                            RichText::new(outfit)
-                                .size(dimens::z(dimens::FONT_OUTFIT))
-                                .strong()
-                                .color(theme::FG_MUTED),
-                        );
-                    }
-
-                    truncating_label(
-                        tui,
-                        RichText::new(&name)
-                            .size(dimens::z(dimens::FONT_NAME))
-                            .strong()
-                            .color(theme::FG),
-                    );
-
-                    tui.ui(|ui| stars(ui, snap.star.clamp(0, 5)));
-                });
-            });
-            // Right column: condition pills, right-aligned.
-            tui.style(col_end(dimens::z(dimens::GAP_MD))).add(|tui| {
-                // tui.ui(|ui| date_pill(ui, snap));
-                tui.ui(|ui| energy_pill(ui, snap));
-                // tui.ui(|ui| mood_pill(ui, snap));
-            });
+            }
         });
 }
 
 /// A truncating label as a taffy leaf that reports a constant, width-independent
 /// size (so the truncated-to-available width is never fed back into layout, which
 /// would keep the node dirty and flicker the panel every repaint).
+#[allow(dead_code)]
 fn truncating_label(tui: &mut egui_taffy::Tui, text: RichText) {
     tui.ui_manual(|ui, _| {
         ui.add(egui::Label::new(text).truncate());
@@ -153,6 +107,7 @@ fn truncating_label(tui: &mut egui_taffy::Tui, text: RichText) {
 }
 
 /// Portrait square with a rounded border.
+#[allow(dead_code)]
 fn portrait(ui: &mut egui::Ui, snap: &CareerSnapshot) {
     let portrait = dimens::z(dimens::PORTRAIT);
     let (p_rect, _) = ui.allocate_exact_size(Vec2::splat(portrait), egui::Sense::hover());
@@ -216,12 +171,14 @@ fn rank_badge(ui: &mut egui::Ui, snap: &CareerSnapshot) {
     }
 }
 
+/// Star-rating row. Removed from the training header but kept for later reuse.
+#[allow(dead_code)]
 fn stars(ui: &mut egui::Ui, value: i32) {
     let mut s = String::new();
     for i in 0..5 {
         s.push(if i < value { '\u{2605}' } else { '\u{2606}' }); // ★ / ☆
     }
-    ui.label(RichText::new(s).size(dimens::z(dimens::FONT_STARS)).color(theme::GOLD));
+    ui.label(RichText::new(s).size(dimens::z(dimens::FONT_XS)).color(theme::GOLD));
 }
 
 #[allow(dead_code)]
@@ -241,6 +198,7 @@ fn date_pill(ui: &mut egui::Ui, snap: &CareerSnapshot) {
     });
 }
 
+#[allow(dead_code)]
 pub(super) fn energy_pill(ui: &mut egui::Ui, snap: &CareerSnapshot) {
     let pct = if snap.max_hp > 0 {
         (snap.hp as f32 / snap.max_hp as f32 * 100.0).round() as i32
