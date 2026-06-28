@@ -209,6 +209,22 @@ pub fn get_single_mode_data() -> Option<*mut c_void> {
 }
 
 /// Get the chara object pointer (WorkSingleModeCharaData) if available.
+pub fn is_playing() -> Option<bool> {
+    let chain = CHAIN.get()?;
+    let sdk = Sdk::get();
+
+    let singleton = sdk.get_singleton(chain.wdm_klass.cast())?.cast::<c_void>();
+
+    // SAFETY: Reading field or calling method on non-null IL2CPP object pointer.
+    let wsmd = unsafe { call_obj(singleton, chain.m_get_single_mode) };
+    if wsmd.is_null() {
+        return Some(false);
+    }
+
+    // SAFETY: Reading field or calling method on non-null IL2CPP object pointer.
+    Some(unsafe { call_bool(wsmd, chain.m_get_is_playing) })
+}
+
 pub fn get_chara_ptr() -> Option<*mut c_void> {
     let chain = CHAIN.get()?;
     let sdk = Sdk::get();

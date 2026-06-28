@@ -5,6 +5,9 @@ pub(super) const OVERLAY_FONT_SIZE: f32 = 16.0;
 /// Default fixed overlay content width at zoom 1.0 (points). Each panel is a
 /// fixed-width column with auto height; the zoom slider scales this.
 pub(super) const OVERLAY_BASE_WIDTH: f32 = 500.0;
+/// Standalone energy pill no longer uses a fixed base width (it sizes off the
+/// game viewport via `overlay::draw_energy_standalone`); kept for reference.
+#[allow(dead_code)]
 pub(super) const ENERGY_BASE_WIDTH: f32 = 140.0;
 pub(super) const TRAINING_BASE_WIDTH: f32 = 500.0;
 pub(super) const BONDS_BASE_WIDTH: f32 = 500.0;
@@ -17,6 +20,7 @@ pub(super) const OVERLAY_MAX_HEIGHT: f32 = 500.0;
 
 /// Per-window fixed heights at zoom 1.0 (points). `None` keeps a window
 /// auto-sizing (capped by [`OVERLAY_MAX_HEIGHT`]); `Some(h)` pins it to `h`.
+#[allow(dead_code)]
 pub(super) const ENERGY_FIXED_HEIGHT: Option<f32> = None;
 pub(super) const TRAINING_FIXED_HEIGHT: Option<f32> = None;
 pub(super) const BONDS_FIXED_HEIGHT: Option<f32> = None;

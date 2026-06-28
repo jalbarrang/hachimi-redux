@@ -21,7 +21,7 @@ use super::overlay;
 use crate::core::modules::training_tracker::memory_reader::CareerSnapshot;
 
 pub(super) fn draw_energy_panel(ui: &mut egui::Ui, snap: &CareerSnapshot) {
-    header::energy_pill(ui, snap);
+    header::energy_standalone(ui, snap);
 }
 
 pub(super) fn draw_training_panel(ui: &mut egui::Ui, snap: &CareerSnapshot) {

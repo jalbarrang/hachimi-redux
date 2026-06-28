@@ -15,7 +15,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::core::modules::training_tracker::{build_profile, overlay_prefs, planner, recommend};
+use crate::core::modules::training_tracker::{build_profile, overlay_prefs, planner, recommend, tracking_prefs};
 use build_profile::BuildProfile;
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -33,6 +33,8 @@ struct PersistedConfig {
     planner: planner::PlannerParams,
     #[serde(default = "overlay_prefs::default_zoom")]
     overlay_zoom: f32,
+    #[serde(default = "tracking_prefs::default_auto_track_careers")]
+    auto_track_careers: bool,
     /// The active build profile (objective + targets + weights + course/strategy).
     #[serde(default)]
     build_profile: Option<BuildProfile>,
@@ -50,6 +52,7 @@ impl Default for PersistedConfig {
             recommend: recommend::RecommendParams::default(),
             planner: planner::PlannerParams::default(),
             overlay_zoom: overlay_prefs::default_zoom(),
+            auto_track_careers: tracking_prefs::default_auto_track_careers(),
             build_profile: None,
             saved_profiles: Vec::new(),
         }
@@ -90,6 +93,7 @@ pub fn load() {
     recommend::set_params(cfg.recommend);
     planner::set_params(cfg.planner);
     overlay_prefs::set_zoom(cfg.overlay_zoom);
+    tracking_prefs::set_auto_track_careers(cfg.auto_track_careers);
     let p = build_profile::active();
     hlog_info!(
         target: "training-tracker",
@@ -111,6 +115,7 @@ pub fn persist() {
         recommend: recommend::params(),
         planner: planner::params(),
         overlay_zoom: overlay_prefs::zoom(),
+        auto_track_careers: tracking_prefs::auto_track_careers(),
         build_profile: Some(active),
         saved_profiles: Vec::new(),
     };

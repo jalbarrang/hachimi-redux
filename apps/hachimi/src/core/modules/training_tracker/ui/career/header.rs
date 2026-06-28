@@ -261,6 +261,99 @@ pub(super) fn energy_pill(ui: &mut egui::Ui, snap: &CareerSnapshot) {
     });
 }
 
+/// Standalone energy HUD pill: no "Energy" caption, no background, and the value
+/// is drawn as bright outlined text. It sizes off the game viewport (not the
+/// overlay zoom) so it behaves like a native HUD element.
+pub(super) fn energy_standalone(ui: &mut egui::Ui, snap: &CareerSnapshot) {
+    let pct = if snap.max_hp > 0 {
+        (snap.hp as f32 / snap.max_hp as f32 * 100.0).round() as i32
+    } else {
+        0
+    };
+    let hp_color = if pct <= 25 {
+        theme::GRADE_A
+    } else if pct <= 50 {
+        theme::STAT_POWER
+    } else {
+        theme::UMA_300
+    };
+    // Brighten the inner fill so it pops against the dark outline.
+    let value_color = brighten(hp_color, 0.45);
+    let max_color = brighten(theme::FG_MUTED, 0.25);
+
+    // Game-viewport-driven size (independent of the overlay zoom slider).
+    let vp = super::super::overlay::viewport_scale(ui);
+    let font_size = (28.0 * vp).round();
+
+    outlined_text(
+        ui,
+        &[
+            (snap.hp.to_string(), value_color),
+            (format!("/{}", snap.max_hp), max_color),
+        ],
+        font_size,
+    );
+}
+
+/// Lighten `c` toward white by `t` (0.0 = unchanged, 1.0 = white).
+fn brighten(c: Color32, t: f32) -> Color32 {
+    let lerp = |x: u8| (x as f32 + (255.0 - x as f32) * t).round() as u8;
+    Color32::from_rgb(lerp(c.r()), lerp(c.g()), lerp(c.b()))
+}
+
+/// Paint `segments` as a single line with a dark outline behind the colored fill.
+/// The outline is drawn by stamping a darkened copy of the galley at 8 offsets.
+fn outlined_text(ui: &mut egui::Ui, segments: &[(String, Color32)], font_size: f32) {
+    use egui::text::{LayoutJob, TextFormat};
+
+    let font = egui::FontId::proportional(font_size);
+    let mut fill_job = LayoutJob::default();
+    let mut outline_job = LayoutJob::default();
+    let outline_color = Color32::from_rgb(0x08, 0x0a, 0x0e);
+    for (text, color) in segments {
+        fill_job.append(
+            text,
+            0.0,
+            TextFormat {
+                font_id: font.clone(),
+                color: *color,
+                ..Default::default()
+            },
+        );
+        outline_job.append(
+            text,
+            0.0,
+            TextFormat {
+                font_id: font.clone(),
+                color: outline_color,
+                ..Default::default()
+            },
+        );
+    }
+
+    let fill = ui.painter().layout_job(fill_job);
+    let outline = ui.painter().layout_job(outline_job);
+
+    let thickness = (font_size / 14.0).clamp(1.0, 4.0);
+    let size = fill.size();
+    let (rect, _) = ui.allocate_exact_size(
+        Vec2::new(size.x + thickness * 2.0, size.y + thickness * 2.0),
+        egui::Sense::hover(),
+    );
+    let origin = rect.min + Vec2::new(thickness, thickness);
+
+    let painter = ui.painter();
+    for dx in [-thickness, 0.0, thickness] {
+        for dy in [-thickness, 0.0, thickness] {
+            if dx == 0.0 && dy == 0.0 {
+                continue;
+            }
+            painter.galley(origin + Vec2::new(dx, dy), outline.clone(), outline_color);
+        }
+    }
+    painter.galley(origin, fill, Color32::WHITE);
+}
+
 #[allow(dead_code)]
 fn mood_pill(ui: &mut egui::Ui, snap: &CareerSnapshot) {
     let label = memory_reader::mood_label(snap.motivation);

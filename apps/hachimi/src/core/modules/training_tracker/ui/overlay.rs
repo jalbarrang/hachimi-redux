@@ -43,6 +43,31 @@ pub(super) fn scale() -> f32 {
     overlay_prefs::zoom()
 }
 
+/// Reference game-viewport height (points) the standalone energy pill is sized
+/// against. At this height the pill renders at its base size.
+const ENERGY_REFERENCE_HEIGHT: f32 = 1080.0;
+
+/// Scale factor derived from the *game* viewport size (not the overlay zoom).
+/// The standalone energy HUD pill uses this so it tracks the game resolution like
+/// a native HUD element instead of following the hachimi overlay zoom slider.
+pub(super) fn viewport_scale(ui: &egui::Ui) -> f32 {
+    (ui.ctx().content_rect().height() / ENERGY_REFERENCE_HEIGHT).clamp(0.5, 3.0)
+}
+
+/// Draw the standalone energy HUD pill. Unlike [`draw_panel`], this applies no
+/// overlay zoom and paints no panel chrome: the body sizes itself from the game
+/// viewport (see [`viewport_scale`]) and paints its own outlined text.
+pub(super) fn draw_energy_standalone(ui: &mut egui::Ui, body: impl FnOnce(&mut egui::Ui, &CareerSnapshot)) {
+    overlay_cache::maybe_request_refresh();
+    if let Some(snap) = overlay_cache::snapshot() {
+        if snap.is_playing {
+            ui.allocate_ui_with_layout(egui::vec2(0.0, 0.0), egui::Layout::top_down(egui::Align::Min), |ui| {
+                body(ui, &snap);
+            });
+        }
+    }
+}
+
 /// Deterministic content column width (inside the panel-frame margins), driven by
 /// the fixed base width × zoom. Use this instead of `ui.available_width()` for
 /// full-width elements: under the host's `auto_sized` window `available_width` is

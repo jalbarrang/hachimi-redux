@@ -128,12 +128,13 @@ pub fn register_ui() {
 extern "C" fn toggle_tracking_hotkey(_userdata: *mut c_void) {
     use std::sync::atomic::Ordering;
 
-    use crate::core::modules::training_tracker::memory_reader;
+    use crate::core::modules::training_tracker::{memory_reader, overlay_cache};
 
     if panic::catch_unwind(|| {
         let sdk = Sdk::get();
         if memory_reader::TRACKING.load(Ordering::Relaxed) {
             memory_reader::stop_tracking();
+            overlay_cache::reset_career_state();
             sdk.show_notification("Memory tracking stopped");
         } else {
             match memory_reader::start_tracking() {
@@ -187,14 +188,15 @@ fn panel_id_from_userdata(userdata: *mut c_void) -> &'static str {
 }
 
 extern "C" fn draw_energy_overlay(ui: *mut c_void, _userdata: *mut c_void) {
-    draw_overlay(
-        ui,
-        "energy",
-        constants::ENERGY_BASE_WIDTH,
-        constants::ENERGY_FIXED_HEIGHT,
-        true,
-        career::draw_energy_panel,
-    );
+    // SAFETY: host passes its live `&mut egui::Ui` for this callback.
+    let ui = unsafe { ui_from_ptr(ui) };
+    if panic::catch_unwind(AssertUnwindSafe(|| {
+        overlay::draw_energy_standalone(ui, career::draw_energy_panel)
+    }))
+    .is_err()
+    {
+        hlog_error!("draw_energy_overlay PANICKED");
+    }
 }
 
 extern "C" fn draw_training_overlay(ui: *mut c_void, _userdata: *mut c_void) {

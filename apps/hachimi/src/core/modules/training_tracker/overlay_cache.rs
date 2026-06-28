@@ -46,10 +46,25 @@ static PENDING: AtomicBool = AtomicBool::new(false);
 static PENDING_SINCE_MS: AtomicU64 = AtomicU64::new(0);
 static LAST_REFRESH_MS: AtomicU64 = AtomicU64::new(0);
 static SHUTTING_DOWN: AtomicBool = AtomicBool::new(false);
+static CHARACTER_READY: AtomicBool = AtomicBool::new(false);
 
 /// If a scheduled refresh hasn't completed within this window, treat it as lost
 /// and allow a fresh one to be scheduled.
 const PENDING_STALE_MS: u64 = 5000;
+
+pub(crate) fn character_ready() -> bool {
+    CHARACTER_READY.load(AtomicOrdering::Relaxed)
+}
+
+pub(crate) fn reset_career_state() {
+    CHARACTER_READY.store(false, AtomicOrdering::Relaxed);
+    EVAL_DIAG_LOGGED.store(false, AtomicOrdering::Relaxed);
+    crate::core::modules::training_tracker::bond_progress::clear();
+    deck_bonuses::clear();
+    if let Ok(mut guard) = CACHE.lock() {
+        *guard = OverlayCache::default();
+    }
+}
 
 fn now_ms() -> u64 {
     SystemTime::now()
@@ -126,13 +141,33 @@ extern "C" fn refresh_cache_cb() {
 }
 
 fn refresh_cache_inner() {
+    if !memory_reader::TRACKING.load(AtomicOrdering::Relaxed) {
+        return;
+    }
+
+    let Some(chara) = memory_reader::get_chara_ptr() else {
+        CHARACTER_READY.store(false, AtomicOrdering::Relaxed);
+        if matches!(memory_reader::is_playing(), Some(false)) {
+            memory_reader::stop_tracking();
+            reset_career_state();
+        }
+        return;
+    };
+    CHARACTER_READY.store(true, AtomicOrdering::Relaxed);
+
     let mut snapshot = memory_reader::read_snapshot();
+    let is_playing = snapshot.as_ref().is_some_and(|s| s.is_playing);
+    if !is_playing {
+        memory_reader::stop_tracking();
+        reset_career_state();
+        return;
+    }
+
     let skills = memory_reader::read_acquired_skills();
     let evaluations = memory_reader::read_evaluations();
     let skill_points = skill_shop::read_skill_points();
     let skill_shop = skill_shop::read_skill_shop();
 
-    let is_playing = snapshot.as_ref().is_some_and(|s| s.is_playing);
     // Equipped support-card ids: re-read every refresh (pure ObscuredInt field reads,
     // no Convert). Cheap, and avoids stale deck mapping when the game keeps SingleMode
     // "playing" across a career -> new-career transition.
@@ -165,9 +200,7 @@ fn refresh_cache_inner() {
         crate::core::modules::training_tracker::bond_progress::clear();
     }
     if is_playing {
-        if let Some(chara) = memory_reader::get_chara_ptr() {
-            deck_bonuses::try_capture(chara);
-        }
+        deck_bonuses::try_capture(chara);
         // Self-computed evaluation estimate from stats + skills + aptitudes.
         if let Some(s) = snapshot.as_mut() {
             let stats = [s.speed, s.stamina, s.power, s.guts, s.wiz];
@@ -315,6 +348,7 @@ pub fn shutdown() {
     PENDING.store(false, AtomicOrdering::Release);
     PENDING_SINCE_MS.store(0, AtomicOrdering::Release);
     LAST_REFRESH_MS.store(0, AtomicOrdering::Release);
+    reset_career_state();
 }
 
 /// Inject fully-formed overlay data for the desktop dev-harness, bypassing all

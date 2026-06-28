@@ -20,6 +20,7 @@ use crate::core::modules::training_tracker::memory_reader;
 use crate::core::modules::training_tracker::overlay_cache;
 use crate::core::modules::training_tracker::planner;
 use crate::core::modules::training_tracker::recommend;
+use crate::core::modules::training_tracker::tracking_prefs;
 
 /// Page title — h2 (theme heading size).
 fn heading_h2(ui: &mut egui::Ui, text: impl Into<egui::RichText>) {
@@ -159,6 +160,18 @@ fn draw_tracking_controls(ui: &mut egui::Ui) {
     overlay::draw_zoom_control(ui);
     ui.add_space(4.0);
 
+    let mut auto_track = tracking_prefs::auto_track_careers();
+    if ui.checkbox(&mut auto_track, "Auto-start/stop with careers").changed() {
+        tracking_prefs::set_auto_track_careers(auto_track);
+        config::persist();
+    }
+    ui.small(if auto_track {
+        "Auto mode: starts at career entry and stops outside career."
+    } else {
+        "Manual mode: use the button below to control memory tracking."
+    });
+    ui.add_space(4.0);
+
     if !tracking {
         if ui.button("\u{25b6} Start Memory Tracking").clicked() {
             match memory_reader::start_tracking() {
@@ -176,6 +189,7 @@ fn draw_tracking_controls(ui: &mut egui::Ui) {
 
     if ui.button("\u{23f9} Stop Memory Tracking").clicked() {
         memory_reader::stop_tracking();
+        overlay_cache::reset_career_state();
         sdk.show_notification("Memory tracking stopped");
         return;
     }
@@ -187,6 +201,7 @@ fn draw_tracking_controls(ui: &mut egui::Ui) {
             snap.current_turn, snap.total_stats
         ),
         Some(_) => "\u{23f8} No active career".to_owned(),
+        None if !overlay_cache::character_ready() => "\u{23f3} Waiting for career data…".to_owned(),
         None => "\u{26a0} Waiting for data…".to_owned(),
     };
     ui.small(status);

@@ -82,6 +82,7 @@ mod skill_shop_prefs;
 #[allow(dead_code)]
 mod stat_targets;
 mod telemetry;
+mod tracking_prefs;
 mod ui;
 
 use compat::Sdk;

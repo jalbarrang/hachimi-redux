@@ -1,9 +1,8 @@
 //! Host lifecycle subscription.
 //!
-//! The plugin reads career state directly from game memory (see `memory_reader`),
-//! so it no longer tracks training commands or career start/end. The only event we
-//! still need is [`event::SHUTDOWN`], to remove the IL2CPP hooks we installed so the
-//! host can safely unload this DLL (UNLOADABLE).
+//! The plugin reads career state directly from game memory (see `memory_reader`).
+//! Career start/end events drive the automatic tracking lifecycle so the reader is
+//! silent in lobby/home scenes, while shutdown removes hooks and tears down state.
 
 use std::ffi::c_void;
 
@@ -21,6 +20,25 @@ extern "C" fn on_frame(_event_id: u32, _data: *const c_void, _userdata: *mut c_v
 
 /// Fired before the host unloads this plugin (or on process detach). Remove every
 /// IL2CPP hook we installed so the host can safely free the DLL (UNLOADABLE).
+extern "C" fn on_career_start(_event_id: u32, _data: *const c_void, _userdata: *mut c_void) {
+    if !crate::core::modules::training_tracker::tracking_prefs::auto_track_careers() {
+        return;
+    }
+    match crate::core::modules::training_tracker::memory_reader::start_tracking() {
+        Ok(()) => hlog_info!(target: "training-tracker", "Auto tracking started on career start"),
+        Err(e) => hlog_error!(target: "training-tracker", "auto start_tracking failed: {e}"),
+    }
+}
+
+extern "C" fn on_career_end(_event_id: u32, _data: *const c_void, _userdata: *mut c_void) {
+    if !crate::core::modules::training_tracker::tracking_prefs::auto_track_careers() {
+        return;
+    }
+    crate::core::modules::training_tracker::memory_reader::stop_tracking();
+    crate::core::modules::training_tracker::overlay_cache::reset_career_state();
+    hlog_info!(target: "training-tracker", "Auto tracking stopped on career end");
+}
+
 extern "C" fn on_shutdown(_event_id: u32, _data: *const c_void, _userdata: *mut c_void) {
     crate::core::modules::training_tracker::memory_reader::stop_tracking();
     crate::core::modules::training_tracker::overlay_cache::shutdown();
@@ -39,5 +57,7 @@ pub fn subscribe_events() -> bool {
     }
     sdk.on(event::SHUTDOWN, on_shutdown, std::ptr::null_mut());
     sdk.on(event::FRAME, on_frame, std::ptr::null_mut());
+    sdk.on(event::CAREER_START, on_career_start, std::ptr::null_mut());
+    sdk.on(event::CAREER_END, on_career_end, std::ptr::null_mut());
     true
 }
