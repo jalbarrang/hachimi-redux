@@ -178,6 +178,25 @@ fn on_http_request(request: &mut Request) -> Result<CommandResponse, Error> {
                 warn!("IPC UnloadPlugin: '{}' was not loaded", name);
             }
         }
+
+        Command::BuySkill { skill_id, level } => {
+            #[cfg(feature = "training-tracker")]
+            {
+                match crate::core::modules::training_tracker::buy_skill(skill_id, level.unwrap_or(1)) {
+                    Ok(cost) => {
+                        info!("IPC BuySkill: scheduled skill {} ({}pt)", skill_id, cost);
+                    }
+                    Err(e) => return Ok(CommandResponse::error(e)),
+                }
+            }
+            #[cfg(not(feature = "training-tracker"))]
+            {
+                let _ = (skill_id, level);
+                return Ok(CommandResponse::error(
+                    "BuySkill requires the training-tracker feature".to_owned(),
+                ));
+            }
+        }
     }
 
     Ok(CommandResponse::Ok)
@@ -213,6 +232,11 @@ enum Command {
     },
     UnloadPlugin {
         name: String,
+    },
+    BuySkill {
+        skill_id: i32,
+        #[serde(default)]
+        level: Option<i32>,
     },
 }
 

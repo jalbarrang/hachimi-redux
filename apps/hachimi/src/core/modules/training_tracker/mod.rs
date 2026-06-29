@@ -89,6 +89,13 @@ use compat::Sdk;
 
 use crate::core::plugin::CoreModule;
 
+/// Buy a career skill by id (affordability-gated, server-validated). Entry point
+/// for out-of-module callers (e.g. the IPC server). `level` is the target skill
+/// level (1 for normal skills). Returns the SP cost on success.
+pub(crate) fn buy_skill(skill_id: i32, level: i32) -> Result<i32, String> {
+    skill_shop::buy_skill(skill_id, level)
+}
+
 /// The in-core Training Tracker module.
 pub struct TrainingTracker;
 

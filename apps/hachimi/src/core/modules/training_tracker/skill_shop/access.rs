@@ -66,6 +66,27 @@ struct Resolved {
 
     // WorkSingleModeCharaData skill point
     f_skill_point: *mut c_void,
+
+    // Innate (trainee) available-skill set — best-effort; null when unresolved.
+    m_get_avail_skill_set: *const c_void, // MasterDataManager.get_masterAvailableSkillSet
+    m_ass_get_list: *const c_void,        // GetListWithAvailableSkillSetIdOrderByIdAsc(int)
+    f_ass_skill_id: *mut c_void,          // AvailableSkillSet.SkillId
+    f_ass_need_rank: *mut c_void,         // AvailableSkillSet.NeedRank
+    m_chara_get_card_data: *const c_void, // WorkSingleModeCharaData.get_CardData
+    f_card_avail_set_id: *mut c_void,     // MasterCardData.CardData.AvailableSkillSetId
+    f_talent_level: *mut c_void,          // chara <TalentLevel>k__BackingField (ObscuredInt)
+}
+
+impl Resolved {
+    /// True when the full innate-skill chain resolved.
+    fn has_innate(&self) -> bool {
+        !self.m_get_avail_skill_set.is_null()
+            && !self.m_ass_get_list.is_null()
+            && !self.f_ass_skill_id.is_null()
+            && !self.f_ass_need_rank.is_null()
+            && !self.m_chara_get_card_data.is_null()
+            && !self.f_card_avail_set_id.is_null()
+    }
 }
 
 // SAFETY: IL2CPP pointers are stable for process lifetime.
@@ -177,6 +198,40 @@ fn try_resolve() -> Result<Resolved, &'static str> {
     // SkillPoint
     let f_sp = resolve!(field_opt wsmcd, "<SkillPoint>k__BackingField");
 
+    // Innate available-skill set (best-effort — additive, never fatal).
+    let m_get_avail = sdk
+        .get_method(mdm.cast(), "get_masterAvailableSkillSet", 0)
+        .map(|m| m.cast::<c_void>())
+        .unwrap_or(std::ptr::null());
+    let (m_ass_get_list, f_ass_skill_id, f_ass_need_rank) =
+        match sdk.get_class(img, "Gallop", "MasterAvailableSkillSet") {
+            Some(ass) => (
+                sdk.get_method(ass, "GetListWithAvailableSkillSetIdOrderByIdAsc", 1)
+                    .map(|m| m.cast::<c_void>())
+                    .unwrap_or(std::ptr::null()),
+                sdk.find_nested_class(ass, "AvailableSkillSet")
+                    .and_then(|row| sdk.get_field_from_name(row, "SkillId"))
+                    .map(|f| f.cast::<c_void>())
+                    .unwrap_or(std::ptr::null_mut()),
+                sdk.find_nested_class(ass, "AvailableSkillSet")
+                    .and_then(|row| sdk.get_field_from_name(row, "NeedRank"))
+                    .map(|f| f.cast::<c_void>())
+                    .unwrap_or(std::ptr::null_mut()),
+            ),
+            None => (std::ptr::null(), std::ptr::null_mut(), std::ptr::null_mut()),
+        };
+    let m_chara_get_card_data = sdk
+        .get_method(wsmcd.cast(), "get_CardData", 0)
+        .map(|m| m.cast::<c_void>())
+        .unwrap_or(std::ptr::null());
+    let f_card_avail_set_id = sdk
+        .get_class(img, "Gallop", "MasterCardData")
+        .and_then(|cd| sdk.find_nested_class(cd, "CardData"))
+        .and_then(|row| sdk.get_field_from_name(row, "AvailableSkillSetId"))
+        .map(|f| f.cast::<c_void>())
+        .unwrap_or(std::ptr::null_mut());
+    let f_talent_level = resolve!(field_opt wsmcd, "<TalentLevel>k__BackingField");
+
     hlog_info!("Skill shop: full IL2CPP chain resolved (MasterDataManager → SkillData + NeedPoint)");
     Ok(Resolved {
         mdm_klass: mdm as _,
@@ -197,6 +252,13 @@ fn try_resolve() -> Result<Resolved, &'static str> {
         f_tips_rarity: f_rar,
         f_tips_level: f_lvl,
         f_skill_point: f_sp,
+        m_get_avail_skill_set: m_get_avail,
+        m_ass_get_list,
+        f_ass_skill_id,
+        f_ass_need_rank,
+        m_chara_get_card_data,
+        f_card_avail_set_id,
+        f_talent_level,
     })
 }
 
@@ -292,96 +354,49 @@ fn read_skill_shop_inner() -> Vec<SkillShopEntry> {
         // SAFETY: Reading field or calling method on non-null IL2CPP object pointer.
         let level = unsafe { decrypt_obscured_int(item, r.f_tips_level) };
 
-        // Expand group → concrete skills via MasterSkillData
-        // SAFETY: Reading field or calling method on non-null IL2CPP object pointer.
-        let skill_list = unsafe { call_obj_i32(msd, r.m_msd_get_list_by_group, group_id) };
-        if skill_list.is_null() {
-            continue;
-        }
-
-        // SAFETY: IL2CPP list object layout — klass pointer at object head.
-        let list_klass = unsafe { *(skill_list as *const *mut c_void) };
-        let sdk = Sdk::get();
-        let Some(m_cnt) = sdk.get_method(list_klass.cast(), "get_Count", 0) else {
+        // Pick the next-buyable variant in this group: the lowest (rarity,
+        // group_rate) not yet learned. This walks the purchase sequence
+        // ○→◎→🌟 (or ○→🌟), so a hinted upper skill whose prerequisites are
+        // unlearned resolves to the next prerequisite that must be bought.
+        // SAFETY: msd is a valid MasterSkillData; group_id comes from the tip.
+        let Some((sd, skill_id, picked_rarity, is_learned)) =
+            (unsafe { pick_group_variant(msd, group_id, &learned_ids, r) })
+        else {
             continue;
         };
-        let Some(m_itm) = sdk.get_method(list_klass.cast(), "get_Item", 1) else {
-            continue;
-        };
-        if m_cnt.is_null() || m_itm.is_null() {
-            continue;
-        }
 
-        // SAFETY: Reading field or calling method on non-null IL2CPP object pointer.
-        let sk_count = unsafe { call_i32(skill_list, m_cnt) };
-
-        // Find the lowest group_rate skill matching this tip's rarity
-        // that hasn't been learned yet. The game requires buying skills
-        // in order (○ before ◎), so show the next one to buy.
-        let mut candidates: Vec<(*mut c_void, SkillCandidate)> = Vec::new();
-        for j in 0..sk_count.min(20) {
-            // SAFETY: Reading field or calling method on non-null IL2CPP object pointer.
-            let sd = unsafe { call_obj_i32(skill_list, m_itm, j) };
-            if sd.is_null() {
-                continue;
-            }
-
-            // SAFETY: Reading field or calling method on non-null IL2CPP object pointer.
-            let rarity = unsafe { read_field_i32(sd, r.f_sd_rarity) };
-            if rarity != tip_rarity {
-                continue;
-            }
-
-            // SAFETY: Reading field or calling method on non-null IL2CPP object pointer.
-            let group_rate = unsafe { read_field_i32(sd, r.f_sd_group_rate) };
-            if group_rate <= 0 {
-                continue;
-            } // skip × debuff variants
-
-            // SAFETY: Reading field or calling method on non-null IL2CPP object pointer.
-            let skill_id = unsafe { read_field_i32(sd, r.f_sd_id) };
-            candidates.push((sd, SkillCandidate { skill_id, group_rate }));
-        }
-
-        let pure: Vec<SkillCandidate> = candidates.iter().map(|(_, c)| c.clone()).collect();
-        let Some((skill_id, is_learned)) = pick_best_variant(&pure, &learned_ids) else {
-            continue;
-        };
-        let Some(&(sd, _)) = candidates.iter().find(|(_, c)| c.skill_id == skill_id) else {
-            continue;
-        };
-        // SAFETY: Reading field or calling method on non-null IL2CPP object pointer.
-        let name = unsafe { read_string(call_obj(sd, r.m_sd_get_name)) }.unwrap_or_default();
-
-        let base_cost = if !snp.is_null() {
-            // SAFETY: Reading field or calling method on non-null IL2CPP object pointer.
-            let row = unsafe { call_obj_i32(snp, r.m_snp_get, skill_id) };
-            if !row.is_null() {
-                // SAFETY: Reading field or calling method on non-null IL2CPP object pointer.
-                unsafe { read_field_i32(row, r.f_snp_need_skill_point) }
-            } else {
-                0
-            }
+        // The hint discount applies only to the variant the tip targets; a lower
+        // prerequisite in the sequence is shown at full price.
+        let (has_hint, hint_level) = if picked_rarity == tip_rarity {
+            (true, level)
         } else {
-            0
+            (false, 0)
         };
 
+        // SAFETY: sd is a valid SkillData from the group's list.
+        let name = unsafe { read_string(call_obj(sd, r.m_sd_get_name)) }.unwrap_or_default();
+        // SAFETY: snp table + skill row are valid master-data pointers.
+        let base_cost = unsafe { skill_need_point(skill_id, snp, r) };
         // SAFETY: sd is a valid SkillData from the group's list.
         let (tags, filter_switch) = unsafe { read_skill_tags(sd, r) };
 
         entries.push(SkillShopEntry {
             skill_id,
             group_id,
-            rarity: tip_rarity,
-            hint_level: level,
+            rarity: picked_rarity,
+            hint_level,
             name,
             base_cost,
             is_learned,
-            has_hint: true,
+            has_hint,
             tags,
             filter_switch,
         });
     }
+
+    // Always merge the trainee's innate available skills (no in-game shop visit
+    // needed), so the panel shows both hinted and innate-buyable skills.
+    merge_innate_entries(&mut entries, msd, snp, r, &learned_ids, chara);
 
     let prefs = crate::core::modules::training_tracker::skill_shop_prefs::prefs();
     if prefs.show_hintless {
@@ -472,6 +487,194 @@ unsafe fn build_entry_from_skill_data(
         tags,
         filter_switch,
     })
+}
+
+/// Collect a group's buyable variants (`group_rate > 0`) as `(sd, candidate)`.
+unsafe fn group_candidates(msd: *mut c_void, group_id: i32, r: &Resolved) -> Vec<(*mut c_void, SkillCandidate)> {
+    // SAFETY: GetListWithGroupIdOrderByIdAsc(group_id) → List<SkillData>.
+    let skill_list = unsafe { call_obj_i32(msd, r.m_msd_get_list_by_group, group_id) };
+    if skill_list.is_null() {
+        return Vec::new();
+    }
+    // SAFETY: IL2CPP list object layout — klass pointer at object head.
+    let list_klass = unsafe { *(skill_list as *const *mut c_void) };
+    let sdk = Sdk::get();
+    let (Some(m_cnt), Some(m_itm)) = (
+        sdk.get_method(list_klass.cast(), "get_Count", 0),
+        sdk.get_method(list_klass.cast(), "get_Item", 1),
+    ) else {
+        return Vec::new();
+    };
+    if m_cnt.is_null() || m_itm.is_null() {
+        return Vec::new();
+    }
+    // SAFETY: get_Count on the resolved list.
+    let count = unsafe { call_i32(skill_list, m_cnt) };
+
+    let mut candidates: Vec<(*mut c_void, SkillCandidate)> = Vec::new();
+    for j in 0..count.min(20) {
+        // SAFETY: get_Item(j) for j in [0, count) returns a SkillData row.
+        let sd = unsafe { call_obj_i32(skill_list, m_itm, j) };
+        if sd.is_null() {
+            continue;
+        }
+        // SAFETY: group_rate is a plain Int32 field on SkillData.
+        let group_rate = unsafe { read_field_i32(sd, r.f_sd_group_rate) };
+        if group_rate <= 0 {
+            continue; // skip × debuff variants
+        }
+        // SAFETY: rarity is a plain Int32 field on SkillData.
+        let rarity = unsafe { read_field_i32(sd, r.f_sd_rarity) };
+        // SAFETY: id is a plain Int32 field on SkillData.
+        let skill_id = unsafe { read_field_i32(sd, r.f_sd_id) };
+        candidates.push((
+            sd,
+            SkillCandidate {
+                skill_id,
+                rarity,
+                group_rate,
+            },
+        ));
+    }
+    candidates
+}
+
+/// Pick the next-buyable variant in a group: the lowest `(rarity, group_rate)`
+/// not yet learned (else the top, marked learned). This walks the purchase
+/// sequence ○→◎→🌟 (3-variant) or ○→🌟 (2-variant) — each tier is the
+/// prerequisite for the next, derived from the group itself (the middle ◎ is
+/// part of the chain even when it is absent from `available_skill_set`).
+/// Returns `(sd, skill_id, rarity, is_learned)`.
+unsafe fn pick_group_variant(
+    msd: *mut c_void,
+    group_id: i32,
+    learned_ids: &[i32],
+    r: &Resolved,
+) -> Option<(*mut c_void, i32, i32, bool)> {
+    // SAFETY: group expansion on a valid MasterSkillData.
+    let candidates = unsafe { group_candidates(msd, group_id, r) };
+    let pure: Vec<SkillCandidate> = candidates.iter().map(|(_, c)| c.clone()).collect();
+    let (skill_id, is_learned) = pick_best_variant(&pure, learned_ids)?;
+    let &(sd, ref c) = candidates.iter().find(|(_, c)| c.skill_id == skill_id)?;
+    Some((sd, skill_id, c.rarity, is_learned))
+}
+
+/// Merge the trainee's innate available skills (from `MasterAvailableSkillSet`,
+/// gated by the trainee's talent level via each row's `NeedRank`). Sourced from
+/// master data, so it does not require opening the in-game skill shop. Dedups by
+/// skill id and group id so hinted entries (which carry the discount) win.
+fn merge_innate_entries(
+    entries: &mut Vec<SkillShopEntry>,
+    msd: *mut c_void,
+    snp: *mut c_void,
+    r: &Resolved,
+    learned_ids: &[i32],
+    chara: *mut c_void,
+) {
+    if !r.has_innate() {
+        return;
+    }
+
+    // Trainee card → available-skill-set id.
+    // SAFETY: get_CardData on the live chara returns the cached MasterCardData.CardData.
+    let card_data = unsafe { call_obj(chara, r.m_chara_get_card_data) };
+    if card_data.is_null() {
+        return;
+    }
+    // SAFETY: AvailableSkillSetId is a plain Int32 field on CardData.
+    let avail_set_id = unsafe { read_field_i32(card_data, r.f_card_avail_set_id) };
+    if avail_set_id <= 0 {
+        return;
+    }
+    // Talent level gates which innate skills are unlocked (NeedRank <= talent).
+    let talent_level = if r.f_talent_level.is_null() {
+        i32::MAX
+    } else {
+        // SAFETY: <TalentLevel>k__BackingField is an ObscuredInt on the chara.
+        unsafe { decrypt_obscured_int(chara, r.f_talent_level) }
+    };
+
+    // MasterDataManager singleton → MasterAvailableSkillSet table.
+    let mdm = Sdk::get()
+        .get_singleton(r.mdm_klass.cast())
+        .map(|p| p.cast::<c_void>())
+        .unwrap_or(std::ptr::null_mut());
+    if mdm.is_null() {
+        return;
+    }
+    // SAFETY: get_masterAvailableSkillSet on the MasterDataManager singleton.
+    let ass = unsafe { call_obj(mdm, r.m_get_avail_skill_set) };
+    if ass.is_null() {
+        return;
+    }
+    // SAFETY: GetListWithAvailableSkillSetIdOrderByIdAsc(int) → List<AvailableSkillSet>.
+    let list = unsafe { call_obj_i32(ass, r.m_ass_get_list, avail_set_id) };
+    if list.is_null() {
+        return;
+    }
+
+    // SAFETY: IL2CPP list object layout — klass pointer at object head.
+    let list_klass = unsafe { *(list as *const *mut c_void) };
+    let sdk = Sdk::get();
+    let (Some(m_cnt), Some(m_itm)) = (
+        sdk.get_method(list_klass.cast(), "get_Count", 0),
+        sdk.get_method(list_klass.cast(), "get_Item", 1),
+    ) else {
+        return;
+    };
+    let (m_cnt, m_itm) = (m_cnt.cast::<c_void>(), m_itm.cast::<c_void>());
+    if m_cnt.is_null() || m_itm.is_null() {
+        return;
+    }
+    // SAFETY: get_Count on the resolved list.
+    let count = unsafe { call_i32(list, m_cnt) };
+    if count <= 0 || count > 512 {
+        return;
+    }
+
+    let mut seen_ids: HashSet<i32> = entries.iter().map(|e| e.skill_id).collect();
+    let mut seen_groups: HashSet<i32> = entries.iter().map(|e| e.group_id).collect();
+
+    for i in 0..count {
+        // SAFETY: get_Item(i) for i in [0, count) returns an AvailableSkillSet row.
+        let row = unsafe { call_obj_i32(list, m_itm, i) };
+        if row.is_null() {
+            continue;
+        }
+        // SAFETY: NeedRank / SkillId are plain Int32 fields on AvailableSkillSet.
+        let need_rank = unsafe { read_field_i32(row, r.f_ass_need_rank) };
+        if need_rank > talent_level {
+            continue;
+        }
+        // SAFETY: SkillId field on the same row.
+        let skill_id = unsafe { read_field_i32(row, r.f_ass_skill_id) };
+        if skill_id <= 0 || seen_ids.contains(&skill_id) {
+            continue;
+        }
+        // SAFETY: MasterSkillData.Get(skill_id) → SkillData row (for its group).
+        let sd0 = unsafe { call_obj_i32(msd, r.m_msd_get, skill_id) };
+        if sd0.is_null() {
+            continue;
+        }
+        // SAFETY: GroupId on SkillData.
+        let group_id = unsafe { read_field_i32(sd0, r.f_sd_group_id) };
+        if seen_groups.contains(&group_id) {
+            continue;
+        }
+        // Walk the group's purchase sequence (○→◎→🌟): show the next-buyable
+        // tier, so an innate gold whose prerequisites are unlearned shows the
+        // prerequisite first (and the gold resurfaces once they are bought).
+        // SAFETY: msd valid; group_id from the resolved SkillData.
+        let Some((sd, _pid, _rarity, _learned)) = (unsafe { pick_group_variant(msd, group_id, learned_ids, r) }) else {
+            continue;
+        };
+        // SAFETY: build full (no-hint) entry from the picked variant.
+        if let Some(entry) = unsafe { build_entry_from_skill_data(sd, snp, r, learned_ids, false, 0) } {
+            seen_ids.insert(entry.skill_id);
+            seen_groups.insert(entry.group_id);
+            entries.push(entry);
+        }
+    }
 }
 
 fn merge_hintless_entries(

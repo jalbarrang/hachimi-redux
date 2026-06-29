@@ -10,8 +10,13 @@ use crate::core::modules::training_tracker::skill_shop_prefs::{
     cycle_sort_mode, prefs, set_prefs, sort_mode_label, DistanceFilter, StyleFilter,
 };
 
+use std::sync::Mutex;
+
 use super::dimens;
 use super::overlay;
+
+/// Skill id awaiting a second-click confirm before the purchase fires.
+static CONFIRM: Mutex<Option<i32>> = Mutex::new(None);
 
 pub(super) fn draw(ui: &mut egui::Ui) {
     overlay_cache::maybe_request_refresh();
@@ -84,45 +89,72 @@ fn draw_list(ui: &mut egui::Ui) {
         return;
     }
 
+    let sp = overlay_cache::skill_points().unwrap_or(0);
     let w = overlay::content_width();
     ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend);
     for (idx, entry) in entries.iter().enumerate() {
-        let icon = skill_shop::rarity_label(entry.rarity);
-        let discount = skill_shop::discount_pct(entry.hint_level, false);
-        let color = if entry.rarity >= 2 {
-            Color32::from_rgb(255, 200, 50)
-        } else {
-            Color32::from_rgb(220, 220, 220)
-        };
-
-        let name = if entry.name.is_empty() {
-            format!("#{}", entry.group_id)
-        } else {
-            entry.name.clone()
-        };
-        let prefix = if !entry.has_hint { "[full] " } else { "" };
-        let left = format!("{prefix}{icon} {name}");
-
-        let cost = (entry.base_cost > 0).then(|| skill_shop::discounted_cost(entry.base_cost, entry.hint_level, false));
-        let right = match (discount > 0, cost) {
-            (true, Some(c)) => format!("-{discount}%  {c}pt"),
-            (true, None) => format!("-{discount}%"),
-            (false, Some(c)) => format!("{c}pt"),
-            (false, None) => String::new(),
-        };
-        let right_color = if discount > 0 {
-            Color32::from_rgb(120, 200, 120)
-        } else {
-            Color32::from_rgb(160, 160, 160)
-        };
-
-        shop_row(ui, idx, w, &left, color, &right, right_color);
+        shop_row(ui, idx, w, entry, sp);
     }
 }
 
-/// `[icon+name (fills, truncates) | discount/cost (right)]` as a taffy flex row.
-#[allow(clippy::too_many_arguments)]
-fn shop_row(ui: &mut egui::Ui, idx: usize, w: f32, left: &str, left_color: Color32, right: &str, right_color: Color32) {
+/// One skill as a single aligned row: `[ Name | Hint | Cost | Action ]`.
+/// Owned skills render struck-through; unaffordable skills render dimmed.
+fn shop_row(ui: &mut egui::Ui, idx: usize, w: f32, entry: &skill_shop::SkillShopEntry, sp: i32) {
+    let icon = skill_shop::rarity_label(entry.rarity);
+    let name = if entry.name.is_empty() {
+        format!("#{}", entry.group_id)
+    } else {
+        entry.name.clone()
+    };
+    let name_text = format!("{icon} {name}");
+
+    let discount = skill_shop::discount_pct(entry.hint_level, false);
+    let hint_text = if discount > 0 {
+        format!("-{discount}%")
+    } else {
+        String::new()
+    };
+    let cost = (entry.base_cost > 0).then(|| skill_shop::discounted_cost(entry.base_cost, entry.hint_level, false));
+    let cost_text = cost.map(|c| format!("{c}pt")).unwrap_or_default();
+
+    let learned = entry.is_learned;
+    let affordable = cost.is_some_and(|c| sp >= c);
+
+    // Triage colors: owned → grey struck-through; can't-afford → dimmed; else bright.
+    let base_color = if entry.rarity >= 2 {
+        Color32::from_rgb(255, 200, 50)
+    } else {
+        Color32::from_rgb(220, 220, 220)
+    };
+    let (name_color, cost_color) = if learned {
+        (Color32::from_rgb(105, 105, 105), Color32::from_rgb(95, 95, 95))
+    } else if !affordable {
+        (Color32::from_rgb(120, 120, 120), Color32::from_rgb(135, 105, 105))
+    } else {
+        let cc = if discount > 0 {
+            Color32::from_rgb(120, 200, 120)
+        } else {
+            Color32::from_rgb(175, 175, 175)
+        };
+        (base_color, cc)
+    };
+    let hint_color = if learned {
+        Color32::from_rgb(95, 95, 95)
+    } else {
+        Color32::from_rgb(120, 200, 120)
+    };
+
+    let col = |width: f32| taffy::Style {
+        display: taffy::Display::Flex,
+        align_items: Some(taffy::AlignItems::Center),
+        justify_content: Some(taffy::JustifyContent::End),
+        size: taffy::Size {
+            width: length(width),
+            height: auto(),
+        },
+        ..Default::default()
+    };
+
     tui(ui, ui.id().with("shop_row").with(idx))
         .reserve_width(w)
         .style(taffy::Style {
@@ -130,7 +162,7 @@ fn shop_row(ui: &mut egui::Ui, idx: usize, w: f32, left: &str, left_color: Color
             flex_direction: taffy::FlexDirection::Row,
             align_items: Some(taffy::AlignItems::Center),
             gap: taffy::Size {
-                width: length(dimens::z(dimens::GAP_MD)),
+                width: length(dimens::z(dimens::GAP_SM)),
                 height: length(0.0),
             },
             size: taffy::Size {
@@ -155,7 +187,11 @@ fn shop_row(ui: &mut egui::Ui, idx: usize, w: f32, left: &str, left_color: Color
             })
             .add(|tui| {
                 tui.ui_manual(|ui, _| {
-                    ui.add(egui::Label::new(RichText::new(left).small().color(left_color)).truncate());
+                    let mut rt = RichText::new(&name_text).small().color(name_color);
+                    if learned {
+                        rt = rt.strikethrough();
+                    }
+                    ui.add(egui::Label::new(rt).truncate());
                     let h = ui.min_size().y;
                     TuiContainerResponse {
                         inner: (),
@@ -166,17 +202,78 @@ fn shop_row(ui: &mut egui::Ui, idx: usize, w: f32, left: &str, left_color: Color
                     }
                 });
             });
-            if !right.is_empty() {
-                tui.style(taffy::Style {
-                    display: taffy::Display::Flex,
-                    align_items: Some(taffy::AlignItems::Center),
-                    ..Default::default()
-                })
-                .add(|tui| {
-                    tui.ui(|ui| {
-                        ui.label(RichText::new(right).small().strong().color(right_color));
-                    });
+            // Hint column.
+            tui.style(col(dimens::z(40.0))).add(|tui| {
+                tui.ui(|ui| {
+                    if !hint_text.is_empty() {
+                        ui.label(RichText::new(&hint_text).small().color(hint_color));
+                    }
                 });
-            }
+            });
+            // Cost column.
+            tui.style(col(dimens::z(52.0))).add(|tui| {
+                tui.ui(|ui| {
+                    if !cost_text.is_empty() {
+                        let mut rt = RichText::new(&cost_text).small().strong().color(cost_color);
+                        if learned {
+                            rt = rt.strikethrough();
+                        }
+                        ui.label(rt);
+                    }
+                });
+            });
+            // Action column.
+            tui.style(col(dimens::z(74.0))).add(|tui| {
+                tui.ui(|ui| {
+                    draw_action(ui, entry.skill_id, &name, cost, learned, affordable);
+                });
+            });
         });
+}
+
+/// Action cell: owned → “✓ own”; affordable → `➕ Buy` then a `✓/✕` confirm;
+/// unaffordable → a disabled `Buy`.
+fn draw_action(ui: &mut egui::Ui, skill_id: i32, name: &str, cost: Option<i32>, learned: bool, affordable: bool) {
+    if learned {
+        ui.label(
+            RichText::new("\u{2713} own")
+                .small()
+                .color(Color32::from_rgb(105, 105, 105)),
+        );
+        return;
+    }
+    if cost.is_none() {
+        return; // unknown cost → not buyable here
+    }
+    if !affordable {
+        ui.add_enabled(false, egui::Button::new(RichText::new("\u{2795} Buy").small()));
+        return;
+    }
+    let confirming = *CONFIRM.lock().expect("lock poisoned") == Some(skill_id);
+    ui.horizontal(|ui| {
+        if confirming {
+            if ui
+                .small_button(
+                    RichText::new("\u{2713}")
+                        .strong()
+                        .color(Color32::from_rgb(120, 200, 120)),
+                )
+                .clicked()
+            {
+                *CONFIRM.lock().expect("lock poisoned") = None;
+                match skill_shop::buy_skill(skill_id, 1) {
+                    Ok(spent) => hlog_info!("Skill shop: buying '{}' for {}pt", name, spent),
+                    Err(e) => hlog_warn!("Skill shop: buy refused: {}", e),
+                }
+            }
+            if ui
+                .small_button(RichText::new("\u{2715}").color(Color32::from_rgb(200, 120, 120)))
+                .clicked()
+            {
+                *CONFIRM.lock().expect("lock poisoned") = None;
+            }
+        } else if ui.small_button(RichText::new("\u{2795} Buy").small()).clicked() {
+            *CONFIRM.lock().expect("lock poisoned") = Some(skill_id);
+        }
+    });
 }

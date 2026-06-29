@@ -43,6 +43,9 @@ struct DumpContext {
     class_get_declaring_type: unsafe extern "C" fn(*mut c_void) -> *mut c_void,
     class_get_fields: unsafe extern "C" fn(*mut c_void, *mut *mut c_void) -> *mut c_void,
     type_get_name: unsafe extern "C" fn(*const c_void) -> *mut c_char,
+    method_get_param_count: unsafe extern "C" fn(*const c_void) -> u32,
+    method_get_param: unsafe extern "C" fn(*const c_void, u32) -> *const c_void,
+    method_get_param_name: unsafe extern "C" fn(*const c_void, u32) -> *const c_char,
     il2cpp_free: unsafe extern "C" fn(*mut c_void),
 }
 
@@ -63,6 +66,9 @@ impl DumpContext {
                 class_get_declaring_type: std::mem::transmute(sdk.resolve_symbol("il2cpp_class_get_declaring_type")?),
                 class_get_fields: std::mem::transmute(sdk.resolve_symbol("il2cpp_class_get_fields")?),
                 type_get_name: std::mem::transmute(sdk.resolve_symbol("il2cpp_type_get_name")?),
+                method_get_param_count: std::mem::transmute(sdk.resolve_symbol("il2cpp_method_get_param_count")?),
+                method_get_param: std::mem::transmute(sdk.resolve_symbol("il2cpp_method_get_param")?),
+                method_get_param_name: std::mem::transmute(sdk.resolve_symbol("il2cpp_method_get_param_name")?),
                 il2cpp_free: std::mem::transmute(sdk.resolve_symbol("il2cpp_free")?),
             }
         })
@@ -74,6 +80,24 @@ impl DumpContext {
         }
         // SAFETY: Pointer is a null-terminated static string from IL2CPP metadata.
         unsafe { CStr::from_ptr(ptr).to_str().unwrap_or("?").to_string() }
+    }
+
+    /// Build a typed parameter list like `System.Int32 skillId, Gallop.SkillTips tips`.
+    /// Falls back gracefully on null names/types so a single bad entry never aborts the dump.
+    fn method_signature(&self, method: *const c_void) -> String {
+        // SAFETY: `method` is a valid IL2CPP MethodInfo* from class method enumeration.
+        let count = unsafe { (self.method_get_param_count)(method) };
+        let mut parts = Vec::with_capacity(count as usize);
+        for i in 0..count {
+            // SAFETY: `i` is in range [0, count) for this method's parameters.
+            let type_ptr = unsafe { (self.method_get_param)(method, i) };
+            let type_name = self.type_name(type_ptr);
+            // SAFETY: `i` is in range; returned pointer is a static metadata string or null.
+            let name_ptr = unsafe { (self.method_get_param_name)(method, i) };
+            let param_name = self.static_str(name_ptr);
+            parts.push(format!("{} {}", type_name, param_name));
+        }
+        parts.join(", ")
     }
 
     fn type_name(&self, type_ptr: *const c_void) -> String {
@@ -237,11 +261,8 @@ fn dump_methods(ctx: &DumpContext, writer: &mut impl Write, klass: *mut c_void) 
             let mi = &*(method as *const MethodInfoCompat);
             let method_name = ctx.static_str(mi.name);
             let return_type = ctx.type_name(mi.return_type);
-            writeln!(
-                writer,
-                "  method: {} {}({} args)",
-                return_type, method_name, mi.parameters_count
-            )?;
+            let params = ctx.method_signature(method.cast());
+            writeln!(writer, "  method: {} {}({})", return_type, method_name, params)?;
         }
 
         count += 1;

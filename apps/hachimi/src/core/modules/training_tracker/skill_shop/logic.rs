@@ -34,19 +34,23 @@ pub fn rarity_label(rarity: i32) -> &'static str {
     }
 }
 
-/// A skill candidate from MasterSkillData expansion (group_rate > 0, matching rarity).
+/// A skill candidate from MasterSkillData group expansion (group_rate > 0).
 /// This is the pure-data subset of what `read_skill_shop` collects per-group.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SkillCandidate {
     pub skill_id: i32,
+    /// 1 = ⚪ white (base), 2 = 🌟 gold (upgrade). Lower must be learned first.
+    pub rarity: i32,
     pub group_rate: i32,
 }
 
-/// Pick the best skill variant from a list of candidates for a single tip.
+/// Pick the next skill to buy within a group, enforcing the ⚪→🌟 prerequisite.
 ///
-/// Logic: sort by `group_rate` ascending, pick the first one whose `skill_id`
-/// is NOT in `learned_ids`. If all are learned, return the last (highest rate)
-/// and mark it learned.
+/// A gold (rarity 2) upgrade requires its white (rarity 1) base to be learned
+/// first, so candidates are ordered by `(rarity, group_rate)` ascending and the
+/// first **unlearned** one is the next purchase. This means a hinted gold whose
+/// white base is not yet owned correctly resolves to the white base. If all are
+/// learned, returns the top variant marked learned.
 ///
 /// Returns `(skill_id, is_learned)` or `None` if candidates is empty.
 pub fn pick_best_variant(candidates: &[SkillCandidate], learned_ids: &[i32]) -> Option<(i32, bool)> {
@@ -55,9 +59,10 @@ pub fn pick_best_variant(candidates: &[SkillCandidate], learned_ids: &[i32]) -> 
     }
 
     let mut sorted: Vec<&SkillCandidate> = candidates.iter().collect();
-    sorted.sort_by_key(|c| c.group_rate);
+    sorted.sort_by_key(|c| (c.rarity, c.group_rate));
 
-    // Pick lowest group_rate not yet learned
+    // Pick the lowest (rarity, group_rate) not yet learned: the prerequisite
+    // white before the gold upgrade.
     if let Some(pick) = sorted.iter().find(|c| !learned_ids.contains(&c.skill_id)) {
         return Some((pick.skill_id, false));
     }
@@ -93,9 +98,10 @@ pub fn entry_matches_filters(entry: &SkillShopEntry, style: StyleFilter, distanc
     style_ok && dist_ok
 }
 
-/// Apply overlay filters and sort (for UI rendering).
+/// Apply overlay filters and sort (for UI rendering). Learned skills are kept
+/// (rendered struck-through for triage); only the style/distance filters prune.
 pub fn prepare_entries_for_display(mut entries: Vec<SkillShopEntry>, prefs: &SkillShopPrefs) -> Vec<SkillShopEntry> {
-    entries.retain(|e| !e.is_learned && entry_matches_filters(e, prefs.style_filter, prefs.distance_filter));
+    entries.retain(|e| entry_matches_filters(e, prefs.style_filter, prefs.distance_filter));
     sort_shop_entries(&mut entries, prefs.sort_mode);
     entries
 }
@@ -157,63 +163,50 @@ mod tests {
         assert_eq!(pick_best_variant(&[], &[]), None);
     }
 
+    fn cand(skill_id: i32, rarity: i32, group_rate: i32) -> SkillCandidate {
+        SkillCandidate {
+            skill_id,
+            rarity,
+            group_rate,
+        }
+    }
+
     #[test]
     fn pick_single_unlearned() {
-        let cs = [SkillCandidate {
-            skill_id: 100,
-            group_rate: 1,
-        }];
+        let cs = [cand(100, 1, 1)];
         assert_eq!(pick_best_variant(&cs, &[]), Some((100, false)));
     }
 
     #[test]
     fn pick_lowest_group_rate_first() {
-        let cs = [
-            SkillCandidate {
-                skill_id: 200,
-                group_rate: 2,
-            },
-            SkillCandidate {
-                skill_id: 100,
-                group_rate: 1,
-            },
-            SkillCandidate {
-                skill_id: 300,
-                group_rate: 3,
-            },
-        ];
+        let cs = [cand(200, 1, 2), cand(100, 1, 1), cand(300, 1, 3)];
         // Should pick skill_id=100 (lowest group_rate)
         assert_eq!(pick_best_variant(&cs, &[]), Some((100, false)));
     }
 
     #[test]
+    fn pick_white_before_gold_even_if_gold_hinted() {
+        // Group with white (rarity 1) + gold (rarity 2). Gold has lower id but
+        // must not be offered until the white base is learned.
+        let gold = cand(200601, 2, 1);
+        let white = cand(200602, 1, 1);
+        let cs = [gold, white];
+        // Nothing learned → must pick the white base first.
+        assert_eq!(pick_best_variant(&cs, &[]), Some((200602, false)));
+        // White learned → gold is now the next purchase.
+        assert_eq!(pick_best_variant(&cs, &[200602]), Some((200601, false)));
+    }
+
+    #[test]
     fn pick_skips_learned() {
-        let cs = [
-            SkillCandidate {
-                skill_id: 100,
-                group_rate: 1,
-            },
-            SkillCandidate {
-                skill_id: 200,
-                group_rate: 2,
-            },
-        ];
+        let cs = [cand(100, 1, 1), cand(200, 2, 2)];
         // 100 is learned, should pick 200
         assert_eq!(pick_best_variant(&cs, &[100]), Some((200, false)));
     }
 
     #[test]
     fn pick_all_learned_returns_highest() {
-        let cs = [
-            SkillCandidate {
-                skill_id: 100,
-                group_rate: 1,
-            },
-            SkillCandidate {
-                skill_id: 200,
-                group_rate: 2,
-            },
-        ];
+        let cs = [cand(100, 1, 1), cand(200, 2, 2)];
         assert_eq!(pick_best_variant(&cs, &[100, 200]), Some((200, true)));
     }
 
