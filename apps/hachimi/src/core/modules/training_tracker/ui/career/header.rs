@@ -253,6 +253,58 @@ pub(super) fn energy_standalone(ui: &mut egui::Ui, snap: &CareerSnapshot) {
     );
 }
 
+/// Standalone career HUD element: the rank sprite medallion beside the
+/// evaluation value, drawn with no frame/background and outlined bright text so
+/// it reads on the game canvas. Sizes off the game viewport (not the overlay
+/// zoom), like [`energy_standalone`], so it behaves like a native HUD element.
+pub(super) fn rank_standalone(ui: &mut egui::Ui, snap: &CareerSnapshot) {
+    let Some(ev) = snap.evaluation_value else { return };
+
+    // Game-viewport-driven sizing (independent of the overlay zoom slider).
+    let vp = super::super::overlay::viewport_scale(ui);
+    let badge = (40.0 * vp).round();
+    let font_size = (28.0 * vp).round();
+
+    ui.horizontal(|ui| {
+        ui.spacing_mut().item_spacing.x = (8.0 * vp).round();
+
+        // Rank sprite medallion (gold-ringed dark disc + rank sprite), matching
+        // the in-panel `rank_badge` but viewport-scaled.
+        let (rect, _) = ui.allocate_exact_size(Vec2::splat(badge), egui::Sense::hover());
+        let label = rank_table::rank_label(ev);
+        let center = rect.center();
+        let r = badge * 0.5;
+        ui.painter().circle_filled(center, r, theme::SURFACE_1);
+        ui.painter().circle_stroke(center, r, Stroke::new(2.0, theme::GOLD));
+        let drew = career_meta::rank_label_sprite(label)
+            .and_then(|path| textures::texture(ui.ctx(), &path))
+            .map(|tex| {
+                let s = badge * 0.74;
+                let ir = Rect::from_center_size(center, Vec2::splat(s));
+                ui.painter().image(
+                    tex.id(),
+                    ir,
+                    Rect::from_min_max(Pos2::ZERO, Pos2::new(1.0, 1.0)),
+                    Color32::WHITE,
+                );
+            })
+            .is_some();
+        if !drew {
+            ui.painter().text(
+                center,
+                egui::Align2::CENTER_CENTER,
+                label,
+                egui::FontId::proportional(badge * 0.5),
+                theme::GOLD,
+            );
+        }
+
+        // Evaluation value as outlined bright text.
+        let value_color = brighten(theme::FG, 0.25);
+        outlined_text(ui, &[(group_thousands(ev), value_color)], font_size);
+    });
+}
+
 /// Lighten `c` toward white by `t` (0.0 = unchanged, 1.0 = white).
 fn brighten(c: Color32, t: f32) -> Color32 {
     let lerp = |x: u8| (x as f32 + (255.0 - x as f32) * t).round() as u8;

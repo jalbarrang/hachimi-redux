@@ -32,11 +32,13 @@ pub(super) const TRAINING_OVERLAY_ID: &str = "training_tracker_overlay_training"
 pub(super) const BONDS_OVERLAY_ID: &str = "training_tracker_overlay_bonds";
 pub(super) const SCENARIO_OVERLAY_ID: &str = "training_tracker_overlay_scenario";
 pub(super) const SHOP_OVERLAY_ID: &str = "training_tracker_overlay_shop";
+pub(super) const RANK_OVERLAY_ID: &str = "training_tracker_overlay_rank";
 
-pub(super) const PANEL_IDS: [&str; 5] = [
+pub(super) const PANEL_IDS: [&str; 6] = [
     ENERGY_OVERLAY_ID,
     TRAINING_OVERLAY_ID,
     BONDS_OVERLAY_ID,
     SCENARIO_OVERLAY_ID,
     SHOP_OVERLAY_ID,
+    RANK_OVERLAY_ID,
 ];

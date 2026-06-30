@@ -24,6 +24,10 @@ pub(super) fn draw_energy_panel(ui: &mut egui::Ui, snap: &CareerSnapshot) {
     header::energy_standalone(ui, snap);
 }
 
+pub(super) fn draw_rank_panel(ui: &mut egui::Ui, snap: &CareerSnapshot) {
+    header::rank_standalone(ui, snap);
+}
+
 pub(super) fn draw_training_panel(ui: &mut egui::Ui, snap: &CareerSnapshot) {
     overlay::scroll_list(ui, |ui| {
         training::draw(ui, snap);

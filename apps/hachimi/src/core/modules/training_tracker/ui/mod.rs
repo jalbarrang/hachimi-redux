@@ -38,7 +38,7 @@ struct TrackerPanel {
     callback: crate::core::plugin::types::GuiMenuSectionCallback,
 }
 
-const PANELS: [TrackerPanel; 5] = [
+const PANELS: [TrackerPanel; 6] = [
     TrackerPanel {
         id: constants::ENERGY_OVERLAY_ID,
         hotkey_id: "training-tracker.toggle_energy",
@@ -68,6 +68,12 @@ const PANELS: [TrackerPanel; 5] = [
         hotkey_id: "training-tracker.toggle_shop",
         label: "Shop",
         callback: draw_shop_overlay,
+    },
+    TrackerPanel {
+        id: constants::RANK_OVERLAY_ID,
+        hotkey_id: "training-tracker.toggle_rank",
+        label: "Rank",
+        callback: draw_rank_overlay,
     },
 ];
 
@@ -196,6 +202,18 @@ extern "C" fn draw_energy_overlay(ui: *mut c_void, _userdata: *mut c_void) {
     .is_err()
     {
         hlog_error!("draw_energy_overlay PANICKED");
+    }
+}
+
+extern "C" fn draw_rank_overlay(ui: *mut c_void, _userdata: *mut c_void) {
+    // SAFETY: host passes its live `&mut egui::Ui` for this callback.
+    let ui = unsafe { ui_from_ptr(ui) };
+    if panic::catch_unwind(AssertUnwindSafe(|| {
+        overlay::draw_energy_standalone(ui, career::draw_rank_panel)
+    }))
+    .is_err()
+    {
+        hlog_error!("draw_rank_overlay PANICKED");
     }
 }
 
