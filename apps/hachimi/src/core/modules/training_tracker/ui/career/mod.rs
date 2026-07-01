@@ -31,8 +31,6 @@ pub(super) fn draw_rank_panel(ui: &mut egui::Ui, snap: &CareerSnapshot) {
 pub(super) fn draw_training_panel(ui: &mut egui::Ui, snap: &CareerSnapshot) {
     overlay::scroll_list(ui, |ui| {
         training::draw(ui, snap);
-        ui.add_space(8.0);
-        header::draw(ui, snap);
     });
 }
 

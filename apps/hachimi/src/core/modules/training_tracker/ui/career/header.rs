@@ -65,7 +65,10 @@ fn col_end(gap: f32) -> taffy::Style {
 /// Header laid out with egui_taffy (flexbox): a single row with the rank badge
 /// (rank sprite medallion) and the evaluation value side by side. Portrait,
 /// name, outfit, stars, and the energy pill have been removed from this panel —
-/// energy is shown via the standalone HUD pill instead.
+/// energy is shown via the standalone HUD pill instead. No longer drawn in the
+/// Training panel — the rank badge + eval live in the standalone Rank HUD pill
+/// ([`rank_standalone`]); kept for potential reuse.
+#[allow(dead_code)]
 pub(super) fn draw(ui: &mut egui::Ui, snap: &CareerSnapshot) {
     // Reserve the deterministic column width, not the (auto_sized-inflated)
     // available width — egui_taffy's reserve_*_width does set_min_width(), so a
