@@ -15,7 +15,9 @@ tent="$here/manual-tracking.tent"
 
 facts="$(mktemp)"
 trap 'rm -f "$facts"' EXIT
-"$here/extract-facts.sh" >"$facts"
+# Invoke via `bash` (not a direct exec) so it works regardless of the file's
+# executable bit — Windows checkouts don't preserve it.
+bash "$here/extract-facts.sh" >"$facts"
 
 hiker check "$tent"
 hiker verify "$tent" --facts "$facts"
