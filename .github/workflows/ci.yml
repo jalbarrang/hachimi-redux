@@ -83,12 +83,21 @@ jobs:
   intent:
     name: "2 · Intent (hiker)"
     runs-on: ubuntu-latest
+    # Pin the hiker release. Bump when adopting a newer CLI. We download the
+    # static musl asset directly (not the `curl | sh` installer) so CI never hits
+    # the unauthenticated GitHub API rate limit that resolves `latest`.
+    env:
+      HIKER_VERSION: v0.1.1
     steps:
       - uses: actions/checkout@v6
       - name: Install hiker
         run: |
-          curl -fsSL https://raw.githubusercontent.com/jalbarrang/hiker/stable/install | sh
-          echo "$HOME/.hiker/bin" >> "$GITHUB_PATH"
+          set -euo pipefail
+          url="https://github.com/jalbarrang/hiker/releases/download/${HIKER_VERSION}/hiker-x86_64-unknown-linux-musl.tar.gz"
+          curl -fsSL "$url" -o /tmp/hiker.tar.gz
+          tar -xzf /tmp/hiker.tar.gz -C /tmp
+          sudo install -m 0755 /tmp/hiker /usr/local/bin/hiker
+          hiker --version
       - name: Verify architectural intent
         run: bash .hiker/tents/manual-tracking/run.sh
 
