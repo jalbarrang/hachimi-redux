@@ -61,6 +61,8 @@ pub struct Hachimi {
     pub gametora_updater: Arc<hosted_data::Updater>,
     /// Training-tracker generated resources (skill_grades / course_params) sync.
     pub tracker_updater: Arc<hosted_data::Updater>,
+    /// Career-panel icon sprites (binary PNGs) sync.
+    pub icons_updater: Arc<hosted_data::Updater>,
 
     // Character data
     pub chara_data: ArcSwap<CharacterData>,
@@ -154,6 +156,7 @@ impl Hachimi {
             tl_updater: Arc::default(),
             gametora_updater: Arc::new(hosted_data::Updater::new(&hosted_data::GAMETORA)),
             tracker_updater: Arc::new(hosted_data::Updater::new(&hosted_data::TRACKER)),
+            icons_updater: Arc::new(hosted_data::Updater::new(&hosted_data::ICONS)),
 
             // Same with these
             chara_data: ArcSwap::default(),
@@ -376,6 +379,7 @@ impl Hachimi {
         if !self.config.load().disable_auto_update_check {
             self.gametora_updater.clone().sync(false);
             self.tracker_updater.clone().sync(false);
+            self.icons_updater.clone().sync(false);
         }
     }
 }

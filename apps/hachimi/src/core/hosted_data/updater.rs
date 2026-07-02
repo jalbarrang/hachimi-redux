@@ -10,7 +10,7 @@ use std::{
 use crate::core::{gui::NotificationGuard, utils, Error, Gui, Hachimi};
 
 use super::{
-    cache::{is_safe_filename, CacheManifest},
+    cache::{is_safe_filename, is_safe_relpath, CacheManifest},
     client, DataSet,
 };
 
@@ -97,7 +97,12 @@ impl Updater {
         // Decide which files need a (re)download from the hosted manifest.
         let mut pending = Vec::new();
         for (file, remote_hash) in manifest.files.iter() {
-            if !is_safe_filename(file) {
+            let safe = if set.allow_subdirs {
+                is_safe_relpath(file)
+            } else {
+                is_safe_filename(file)
+            };
+            if !safe {
                 warn!(target: log_target, "Skipping unsafe filename '{}' from manifest", file);
                 continue;
             }
@@ -125,9 +130,24 @@ impl Updater {
             // Loading indicator visible only while snapshots are downloading.
             let _loading = self.show_loading();
             for (file, remote_hash) in pending {
-                match client::fetch_snapshot(base, &file) {
-                    Ok(text) => {
-                        fs::write(data_dir.join(&file), text)?;
+                let out_path = data_dir.join(&file);
+                // Nested sets need each file's parent dir before the write.
+                if set.allow_subdirs {
+                    if let Some(parent) = out_path.parent() {
+                        if let Err(e) = fs::create_dir_all(parent) {
+                            warn!(target: log_target, "Failed to create dir for '{}': {}", file, e);
+                            continue;
+                        }
+                    }
+                }
+                let fetched = if set.binary {
+                    client::fetch_snapshot_bytes(base, &file)
+                } else {
+                    client::fetch_snapshot(base, &file).map(String::into_bytes)
+                };
+                match fetched {
+                    Ok(bytes) => {
+                        fs::write(&out_path, bytes)?;
                         cache.files.insert(file.clone(), remote_hash);
                         updated += 1;
                         debug!(target: log_target, "Wrote {}", file);
@@ -144,6 +164,9 @@ impl Updater {
             cache.synced_at = chrono::Utc::now().to_rfc3339();
             utils::write_json_file(&cache, &cache_path)?;
             info!(target: log_target, "hosted data sync complete ({} updated)", updated);
+            if let Some(hook) = set.on_synced {
+                hook(updated);
+            }
         }
         if notify {
             Self::notify(&(set.msg_complete)(updated));

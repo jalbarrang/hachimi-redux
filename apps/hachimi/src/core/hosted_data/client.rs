@@ -31,6 +31,16 @@ fn fetch_string(url: &str) -> Result<String, Error> {
     Ok(res.into_body().read_to_string()?)
 }
 
+/// Max bytes we accept for a single hosted binary snapshot (icon PNG). Guards
+/// against a runaway/HTML-error body being written to disk. Icons are a few KB
+/// each; 16 MiB is a generous ceiling.
+const MAX_BINARY_BYTES: u64 = 16 * 1024 * 1024;
+
+fn fetch_bytes(url: &str) -> Result<Vec<u8>, Error> {
+    let res = agent().get(url).header("User-Agent", USER_AGENT).call()?;
+    Ok(res.into_body().with_config().limit(MAX_BINARY_BYTES).read_to_vec()?)
+}
+
 /// Download the hosted `manifest.json` from `base`.
 pub(super) fn load_manifest(base: &str) -> Result<HostedManifest, Error> {
     let url = format!("{}/manifest.json", base.trim_end_matches('/'));
@@ -44,4 +54,12 @@ pub(super) fn fetch_snapshot(base: &str, file: &str) -> Result<String, Error> {
     // Validate JSON before persisting so a truncated/HTML error never lands in cache.
     serde_json::from_str::<serde::de::IgnoredAny>(&text)?;
     Ok(text)
+}
+
+/// Download a single binary snapshot file (e.g. an icon PNG), stored verbatim.
+/// Unlike [`fetch_snapshot`] this performs no JSON validation; the updater
+/// verifies integrity via the manifest's content hash instead.
+pub(super) fn fetch_snapshot_bytes(base: &str, file: &str) -> Result<Vec<u8>, Error> {
+    let url = format!("{}/{}", base.trim_end_matches('/'), file);
+    fetch_bytes(&url)
 }

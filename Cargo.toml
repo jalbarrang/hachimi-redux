@@ -15,6 +15,7 @@ members = [
     "tools/skill-grades",
     "tools/course-data",
     "tools/tracker-data-manifest",
+    "tools/icons-manifest",
 ]
 # The installer is built explicitly (`-p hachimi_installer`) after its embedded
 # artifacts are staged. Keep it out of the default set so bare cargo
@@ -33,6 +34,7 @@ default-members = [
     "tools/skill-grades",
     "tools/course-data",
     "tools/tracker-data-manifest",
+    "tools/icons-manifest",
 ]
 
 # Shared metadata inherited by members via `<field>.workspace = true`.

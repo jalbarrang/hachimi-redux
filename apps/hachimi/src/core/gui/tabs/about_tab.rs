@@ -104,6 +104,7 @@ impl Gui {
                     let hachimi = Hachimi::instance();
                     hachimi.gametora_updater.clone().sync(true);
                     hachimi.tracker_updater.clone().sync(true);
+                    hachimi.icons_updater.clone().sync(true);
                 }
             });
         });

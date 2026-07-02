@@ -26,6 +26,16 @@ fn cache() -> &'static Mutex<HashMap<String, Option<TextureHandle>>> {
     C.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
+/// Drop negative-cache entries (paths that resolved to `None` because the file
+/// was missing at first lookup). Called after the Career icon set finishes
+/// downloading so freshly-fetched icons load on the next frame without a restart.
+/// Successfully-decoded handles are kept.
+pub fn clear_missing() {
+    if let Ok(mut c) = cache().lock() {
+        c.retain(|_, v| v.is_some());
+    }
+}
+
 /// Get (loading + caching on first use) the texture for an icon under the staged
 /// `icons/` dir, e.g. `"status_00.png"` or `"statusrank/ui_statusrank_08.png"`.
 /// Returns `None` when telemetry/data paths are unavailable, the file is missing,

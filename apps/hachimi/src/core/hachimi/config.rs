@@ -50,6 +50,13 @@ pub struct Config {
     /// Override the base URL the training-tracker resources are downloaded from.
     /// `None` uses the repo's hosted copy. Dev/testing escape hatch.
     pub tracker_data_url: Option<String>,
+    /// Disable the Career-panel icon sprite sync (~16 MB of PNGs under `icons/`)
+    /// downloaded alongside the auto update check.
+    #[serde(default)]
+    pub disable_icons_data: bool,
+    /// Override the base URL the Career icon sprites are downloaded from. `None`
+    /// uses the repo's hosted copy. Dev/testing escape hatch.
+    pub icons_data_url: Option<String>,
     #[serde(default)]
     pub disable_translations: bool,
     #[serde(default = "Config::default_gui_scale")]

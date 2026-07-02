@@ -76,6 +76,7 @@ notification:
   gametora_sync_complete: "GameTora data synced (%{count} updated)."
   gametora_sync_failed: "GameTora data sync failed: %{reason}"
   tracker_data_name: "Training data"
+  icons_data_name: "Career icons"
   data_syncing: "Syncing %{name}..."
   data_up_to_date: "%{name} is up to date."
   data_sync_complete: "%{name} synced (%{count} updated)."

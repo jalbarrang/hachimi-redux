@@ -19,7 +19,7 @@ mod menu;
 mod overlay;
 mod scenario;
 mod skill_shop_tab;
-mod textures;
+pub(crate) mod textures;
 // Shared formatting/color helpers; several were consumed only by the removed
 // Training/Skills tabs but are kept for reuse.
 #[allow(dead_code)]

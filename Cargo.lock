@@ -1733,6 +1733,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "icons-manifest"
+version = "0.1.0"
+dependencies = [
+ "blake3",
+ "chrono",
+ "serde",
+ "serde_json",
+ "walkdir",
+]
+
+[[package]]
 name = "icu_collections"
 version = "2.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"

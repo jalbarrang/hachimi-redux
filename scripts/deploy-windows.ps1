@@ -284,11 +284,16 @@ if (Test-Path -LiteralPath $CourseParamsSrc) {
 }
 
 # Career-panel icon sprites (trainee portraits, rank sprites, stat/skill icons).
-# These are the game UI sprites the honse-tracker dashboard already extracted; the
-# overlay loads them on demand from <GameDir>\hachimi\icons via host_data_path.
-# Source defaults to the sibling honse-tracker checkout; override with
-# $env:HONSE_ICONS_DIR. ~16 MB; only the active frame's handful are loaded.
-$IconsSrc = if ($env:HONSE_ICONS_DIR) { $env:HONSE_ICONS_DIR } else {
+# These are the game UI sprites the overlay loads on demand from
+# <GameDir>\hachimi\icons via host_data_path. End users download them via the
+# ICONS hosted-data sync; deploy stages the in-repo published copy (data\icons)
+# so devs don't need the sibling honse-tracker checkout. Override precedence:
+# $env:HONSE_ICONS_DIR, else the committed data\icons, else the sibling repo.
+$IconsSrc = if ($env:HONSE_ICONS_DIR) {
+  $env:HONSE_ICONS_DIR
+} elseif (Test-Path -LiteralPath (Join-Path $PSScriptRoot "..\data\icons") -PathType Container) {
+  Join-Path $PSScriptRoot "..\data\icons"
+} else {
   Join-Path $PSScriptRoot "..\..\honse-tracker\apps\web\public\icons"
 }
 if (Test-Path -LiteralPath $IconsSrc -PathType Container) {

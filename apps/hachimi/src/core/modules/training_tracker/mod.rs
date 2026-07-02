@@ -83,7 +83,7 @@ mod skill_shop_prefs;
 mod stat_targets;
 mod telemetry;
 mod tracking_prefs;
-mod ui;
+pub(crate) mod ui;
 
 use compat::Sdk;
 
@@ -94,6 +94,13 @@ use crate::core::plugin::CoreModule;
 /// level (1 for normal skills). Returns the SP cost on success.
 pub(crate) fn buy_skill(skill_id: i32, level: i32) -> Result<i32, String> {
     skill_shop::buy_skill(skill_id, level)
+}
+
+/// Drop the Career-panel texture negative-cache. Crate-visible entry point for
+/// the hosted-data icon sync (`ICONS`), called after icons finish downloading so
+/// the panel picks them up without a restart.
+pub(crate) fn clear_icon_cache() {
+    ui::textures::clear_missing();
 }
 
 /// The in-core Training Tracker module.
