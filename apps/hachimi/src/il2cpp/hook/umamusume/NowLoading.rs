@@ -3,7 +3,7 @@ use std::sync::OnceLock;
 use crate::{
     core::{utils::truncate_text_il2cpp, Hachimi},
     il2cpp::{
-        api::il2cpp_field_static_set_value,
+        api::{il2cpp_field_is_literal, il2cpp_field_static_set_value},
         hook::UnityEngine_UI::Text,
         symbols::{get_field_from_name, get_field_object_value, get_method_addr, get_static_field_value},
         types::*,
@@ -32,6 +32,27 @@ fn set_static_f32(field: *mut FieldInfo, mut value: f32) {
     il2cpp_field_static_set_value(field, &mut value as *mut f32 as *mut _);
 }
 
+fn read_static_f32(field: *mut FieldInfo) -> f32 {
+    if field.is_null() {
+        return 0.0;
+    }
+    get_static_field_value::<f32>(field)
+}
+
+/// Resolve a static field we intend to *write*. On newer game versions these
+/// fade-duration fields are `const` (literal) values with no static storage;
+/// writing one via `il2cpp_field_static_set_value` dereferences invalid memory
+/// and crashes the game at first loading screen. Literals are compile-time
+/// inlined anyway, so scaling them was never possible — return null so the
+/// read/write paths skip them.
+fn resolve_writable_static(class: *mut Il2CppClass, name: &std::ffi::CStr) -> *mut FieldInfo {
+    let field = get_field_from_name(class, name);
+    if !field.is_null() && il2cpp_field_is_literal(field) {
+        return std::ptr::null_mut();
+    }
+    field
+}
+
 /// Re-applies the configured loading fade speed to the static duration fields.
 /// Originals are captured lazily on first call (after the class cctor has run,
 /// guaranteed since this is only reached from instance methods).
@@ -41,9 +62,9 @@ fn apply_loading_fade_scale() {
 
     let originals = FADE_TIME_ORIGINALS.get_or_init(|| {
         [
-            get_static_field_value::<f32>(fields[0]),
-            get_static_field_value::<f32>(fields[1]),
-            get_static_field_value::<f32>(fields[2]),
+            read_static_f32(fields[0]),
+            read_static_f32(fields[1]),
+            read_static_f32(fields[2]),
         ]
     });
 
@@ -104,9 +125,9 @@ pub fn init(umamusume: *const Il2CppImage) {
     unsafe {
         _COMICTITLE_FIELD = get_field_from_name(NowLoading, c"_comicTitle");
         FADE_TIME_FIELDS = [
-            get_field_from_name(NowLoading, c"FADE_TIME"),
-            get_field_from_name(NowLoading, c"BLACK_FADE_TIME"),
-            get_field_from_name(NowLoading, c"WHITE_OUT_HORSE_SHOE_FADE_TIME"),
+            resolve_writable_static(NowLoading, c"FADE_TIME"),
+            resolve_writable_static(NowLoading, c"BLACK_FADE_TIME"),
+            resolve_writable_static(NowLoading, c"WHITE_OUT_HORSE_SHOE_FADE_TIME"),
         ];
     }
 }
