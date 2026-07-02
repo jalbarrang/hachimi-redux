@@ -87,7 +87,7 @@ jobs:
     # static musl asset directly (not the `curl | sh` installer) so CI never hits
     # the unauthenticated GitHub API rate limit that resolves `latest`.
     env:
-      HIKER_VERSION: v0.1.1
+      HIKER_VERSION: v0.1.2
     steps:
       - uses: actions/checkout@v6
       - name: Install hiker
