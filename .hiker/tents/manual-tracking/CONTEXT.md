@@ -51,3 +51,7 @@ Conformant tree → zero tuples → `verify` exits 0.
 ```sh
 .hiker/tents/manual-tracking/run.sh        # check + verify (needs hiker on PATH)
 ```
+
+Install the same `hiker` version CI pins (`HIKER_VERSION` in
+`.github/workflows/ci.yml`, currently **v0.1.2**) — see the commands in the
+`run.sh` header.

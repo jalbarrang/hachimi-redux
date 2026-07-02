@@ -5,9 +5,10 @@
 #
 # Exits non-zero if the intent no longer compiles OR the codebase violates it
 # (i.e. tracking gained an automatic start/stop path again). Requires `hiker` on
-# PATH (https://github.com/jalbarrang/hiker) — CI installs it; locally:
-#   irm https://raw.githubusercontent.com/jalbarrang/hiker/stable/install.ps1 | iex   # Windows
-#   curl -fsSL https://raw.githubusercontent.com/jalbarrang/hiker/stable/install | sh # *nix
+# PATH (https://github.com/jalbarrang/hiker). Pin the SAME version CI uses
+# (HIKER_VERSION in .github/workflows/ci.yml — currently v0.1.2):
+#   Windows: & ([scriptblock]::Create((irm https://raw.githubusercontent.com/jalbarrang/hiker/stable/install.ps1))) -Version 0.1.2
+#   *nix:    curl -fsSL https://raw.githubusercontent.com/jalbarrang/hiker/stable/install | sh -s -- --version 0.1.2
 set -euo pipefail
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
