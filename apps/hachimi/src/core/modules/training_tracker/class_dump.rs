@@ -148,6 +148,17 @@ pub fn dump_all_classes() {
     }
 }
 
+/// The .NET base class library assemblies. Introspecting some of their runtime
+/// types (e.g. `mscorlib` `MulticastDelegate`) segfaults the IL2CPP metadata
+/// APIs, and none of it is game code worth reverse-engineering. Skipping them
+/// lets the dump complete cleanly over every game assembly.
+fn is_bcl_image(name: &str) -> bool {
+    matches!(name, "mscorlib.dll" | "netstandard.dll")
+        || name.starts_with("System")
+        || name.starts_with("Mono.")
+        || name.starts_with("Microsoft.")
+}
+
 fn dump_all_classes_inner(ctx: &DumpContext) -> std::io::Result<(PathBuf, usize, usize)> {
     // SAFETY: IL2CPP runtime is initialized before plugin UI callbacks run.
     let domain = unsafe { (ctx.domain_get)() };
@@ -183,6 +194,11 @@ fn dump_all_classes_inner(ctx: &DumpContext) -> std::io::Result<(PathBuf, usize,
 
         // SAFETY: Image pointer is valid IL2CPP metadata.
         let image_name = ctx.static_str(unsafe { (ctx.image_get_name)(image) });
+        if is_bcl_image(&image_name) {
+            writeln!(writer, "\n=== Assembly: {} (skipped: .NET BCL) ===", image_name)?;
+            writer.flush()?;
+            continue;
+        }
         // SAFETY: Image pointer is valid IL2CPP metadata.
         let class_count = unsafe { (ctx.image_get_class_count)(image) };
         total_classes += class_count;
@@ -196,6 +212,9 @@ fn dump_all_classes_inner(ctx: &DumpContext) -> std::io::Result<(PathBuf, usize,
                 continue;
             }
             dump_class(ctx, &mut writer, klass)?;
+            // Flush per class so a crash in IL2CPP introspection never discards
+            // prior output and the trailing class header pinpoints the culprit.
+            writer.flush()?;
         }
     }
 
