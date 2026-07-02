@@ -76,6 +76,23 @@ jobs:
         run: cargo machete
 
   # ──────────────────────────────────────────────────────────────
+  # Stage 2: Architectural intent (hiker) — no compilation.
+  # Non-negotiable invariants compiled + verified against codebase facts.
+  # Currently: "Training Tracker tracking is fully manual" (no auto start/stop).
+  # ──────────────────────────────────────────────────────────────
+  intent:
+    name: "2 · Intent (hiker)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Install hiker
+        run: |
+          curl -fsSL https://raw.githubusercontent.com/jalbarrang/hiker/stable/install | sh
+          echo "$HOME/.hiker/bin" >> "$GITHUB_PATH"
+      - name: Verify architectural intent
+        run: bash .hiker/tents/manual-tracking/run.sh
+
+  # ──────────────────────────────────────────────────────────────
   # Stage 3: Clippy lint — ZERO WARNINGS policy
   # `-D warnings` promotes every warning to a hard error.
   # If clippy passes, the code meets the quality bar. Period.

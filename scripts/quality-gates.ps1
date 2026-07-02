@@ -79,6 +79,23 @@ if (-not $Quick -and -not $SkipMachete) {
     }
 }
 
+# ── Gate 3b: Architectural intent (hiker) ───────────────────────
+# Non-negotiable invariants compiled + verified against the codebase. Currently:
+# "Training Tracker tracking is fully manual" (no automatic start/stop). Needs
+# `hiker` (https://github.com/jalbarrang/hiker) + a bash to run the extractor.
+if (-not $Quick) {
+    $hikerCmd = Get-Command hiker -ErrorAction SilentlyContinue
+    $bashCmd = Get-Command bash -ErrorAction SilentlyContinue
+    if ($hikerCmd -and $bashCmd) {
+        Run-Gate "Intent (hiker verify)" {
+            bash ".hiker/tents/manual-tracking/run.sh"
+        }
+    } else {
+        Write-Host ""
+        Write-Host "  ⚠ SKIP: intent gate needs hiker + bash on PATH" -ForegroundColor Yellow
+    }
+}
+
 # ── Gate 4: Clippy (zero warnings) ──────────────────────────────
 Run-Gate "Clippy (zero warnings)" {
     cargo clippy --all-targets -- -D warnings

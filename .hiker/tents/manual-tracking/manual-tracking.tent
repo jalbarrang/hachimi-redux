@@ -1,0 +1,28 @@
+// manual-tracking.tent — "the Training Tracker's memory tracking is fully manual."
+//
+// Non-negotiable intent: the in-core Training Tracker's memory reader is started
+// ONLY by an explicit user action — the "Start Memory Tracking" button and the
+// toggle-tracking hotkey. There is NO automatic start/stop:
+//   * no career-lifecycle auto-start (CAREER_START/END no longer toggle tracking),
+//   * no refresh-loop re-arm (the is_playing auto-probe was removed),
+//   * no `auto_track_careers` config toggle / prefs mechanism.
+// A manual Stop must STICK.
+//
+// This is a STRUCTURAL invariant, so it is enforced with `hiker verify` over facts
+// extracted from the real codebase (see extract-facts.sh + CONTEXT.md), not with a
+// generated property test. Both relations below are `forbidden`: ANY matching fact
+// is a violation, so a conformant tree yields zero tuples and `verify` exits 0.
+
+sort CallSite
+sort Symbol
+
+// A call to `memory_reader::start_tracking(...)` from anywhere OTHER than the two
+// manual UI controls (the Start button in ui/menu.rs and the toggle hotkey in
+// ui/mod.rs). Any other caller re-arms tracking automatically — exactly the
+// behavior removed to make tracking manual.
+forbidden relation auto_starts_tracking(c: CallSite)
+
+// Any reference to the removed `auto_track_careers` auto-lifecycle mechanism
+// (the config field or a tracking_prefs-style module). Its reappearance is drift
+// back toward automatic tracking.
+forbidden relation auto_track_careers_resurrected(s: Symbol)

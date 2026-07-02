@@ -22,3 +22,6 @@ db/
 /.reference/
 
 .agents/skills/impeccable/scripts
+
+# hiker: generated property tests are disposable artifacts
+.hiker-cache/
