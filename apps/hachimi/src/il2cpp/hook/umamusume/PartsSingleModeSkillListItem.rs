@@ -145,11 +145,22 @@ extern "C" fn UpdateItemJp(
     });
 }
 
-type UpdateItemOtherFn =
-    extern "C" fn(this: *mut Il2CppObject, skill_info: *mut Il2CppObject, is_plate_effect_enable: bool);
-extern "C" fn UpdateItemOther(this: *mut Il2CppObject, skill_info: *mut Il2CppObject, is_plate_effect_enable: bool) {
+// Post-update Global signature gained a trailing `ResourceManager.ResourceHash`
+// (an Int32-backed enum) parameter, so this is now 3 args.
+type UpdateItemOtherFn = extern "C" fn(
+    this: *mut Il2CppObject,
+    skill_info: *mut Il2CppObject,
+    is_plate_effect_enable: bool,
+    resource_hash: i32,
+);
+extern "C" fn UpdateItemOther(
+    this: *mut Il2CppObject,
+    skill_info: *mut Il2CppObject,
+    is_plate_effect_enable: bool,
+    resource_hash: i32,
+) {
     UpdateItemCommon(this, skill_info, || {
-        get_orig_fn!(UpdateItemOther, UpdateItemOtherFn)(this, skill_info, is_plate_effect_enable);
+        get_orig_fn!(UpdateItemOther, UpdateItemOtherFn)(this, skill_info, is_plate_effect_enable, resource_hash);
     });
 }
 
@@ -231,7 +242,7 @@ pub fn init(umamusume: *const Il2CppImage) {
         let UpdateItem_addr = get_method_addr(PartsSingleModeSkillListItem, c"UpdateItem", 4);
         new_hook!(UpdateItem_addr, UpdateItemJp);
     } else {
-        let UpdateItem_addr = get_method_addr(PartsSingleModeSkillListItem, c"UpdateItem", 2);
+        let UpdateItem_addr = get_method_addr(PartsSingleModeSkillListItem, c"UpdateItem", 3);
         new_hook!(UpdateItem_addr, UpdateItemOther);
     }
 
@@ -245,7 +256,8 @@ pub fn init(umamusume: *const Il2CppImage) {
         DESCTEXT_FIELD = get_field_from_name(PartsSingleModeSkillListItem, c"_descText");
         _BGBUTTON_FIELD = get_field_from_name(PartsSingleModeSkillListItem, c"_bgButton");
         INFO_FIELD = get_field_from_name(PartsSingleModeSkillListItem, c"_info");
-        set_skill_name_text_addr = get_method_addr(PartsSingleModeSkillListItem, c"SetSkillNameText", 0);
+        // Renamed from `SetSkillNameText` in the post-update version.
+        set_skill_name_text_addr = get_method_addr(PartsSingleModeSkillListItem, c"SetupNameText", 0);
 
         // PartsSingleModeSkillListItem.Info
         get_IsDrawDesc_addr = get_method_addr(Info, c"get_IsDrawDesc", 0);

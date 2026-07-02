@@ -38,8 +38,8 @@ pub fn init(umamusume: *const Il2CppImage) {
                 CHANGELIVE_ONSUCCESS_ADDR = get_method_addr(LiveTheaterViewController, c"<ChangeLive>b__48_1", 1);
             }
             _ => {
-                // Global
-                CHANGELIVE_ONSUCCESS_ADDR = get_method_addr(LiveTheaterViewController, c"<ChangeLive>b__38_1", 1);
+                // Global (compiler-generated lambda renumbered from b__38_1 in the update).
+                CHANGELIVE_ONSUCCESS_ADDR = get_method_addr(LiveTheaterViewController, c"<ChangeLive>b__41_1", 1);
             }
         }
     }
