@@ -17,13 +17,8 @@ use crate::core::modules::training_tracker::memory_reader::{
 };
 use crate::core::modules::training_tracker::skill_shop::{self, SkillShopEntry};
 
-/// Auto-refresh interval while memory tracking is on (milliseconds).
+/// Refresh interval while memory tracking is on (milliseconds).
 pub const AUTO_REFRESH_INTERVAL_MS: u64 = 500;
-/// Slow idle cadence for the auto-lifecycle probe when tracking is OFF but auto mode
-/// is on. Just a cheap `is_playing` check that re-arms tracking on (re)entering a
-/// career, so resuming a career works even when the host CAREER_START event does not
-/// re-fire. Kept slow to stay light in lobby/menu scenes.
-const IDLE_PROBE_INTERVAL_MS: u64 = 2000;
 
 #[derive(Default)]
 struct OverlayCache {
@@ -56,6 +51,83 @@ static CHARACTER_READY: AtomicBool = AtomicBool::new(false);
 /// If a scheduled refresh hasn't completed within this window, treat it as lost
 /// and allow a fresh one to be scheduled.
 const PENDING_STALE_MS: u64 = 5000;
+
+/// Wall-clock (ms) of the most recent game view change (`event::VIEW_CHANGE`).
+/// While a view transition is in flight the game tears down and rebuilds the
+/// `WorkSingleModeData → HomeInfo → TurnInfoListDic` objects we walk, so reading
+/// them races a use-after-free and crashes the game (surfaces later in the game's
+/// own `HomeBgController.CreateBgModel`). We suspend all IL2CPP reads for a cooldown
+/// after each view change; intermediate transitions re-arm it. `0` means no change
+/// has been observed yet.
+static LAST_VIEW_CHANGE_MS: AtomicU64 = AtomicU64::new(0);
+
+/// How long after a view change to keep reads suspended. The training-click
+/// `ChangeViewSequence` (fade out → mass asset unload → BG rebuild → fade in) spans
+/// well under this window in practice; each intermediate `VIEW_CHANGE` refreshes the
+/// timestamp so a chained transition keeps reads suspended until it settles.
+const VIEW_TRANSITION_COOLDOWN_MS: u64 = 2000;
+
+/// Record that the game changed view. Called from the tracker's `VIEW_CHANGE`
+/// subscription (see `hooks.rs`). Suspends reads for [`VIEW_TRANSITION_COOLDOWN_MS`].
+pub fn note_view_change() {
+    LAST_VIEW_CHANGE_MS.store(now_ms(), AtomicOrdering::Relaxed);
+}
+
+/// Pure gate: is a view transition still within its cooldown window? `last == 0`
+/// (no view change observed) is never a transition.
+#[must_use]
+fn is_in_transition(now: u64, last: u64, cooldown_ms: u64) -> bool {
+    last != 0 && now.saturating_sub(last) < cooldown_ms
+}
+
+/// True while the most recent view change is still inside its cooldown window, i.e.
+/// the Single Mode objects may be mid-teardown and unsafe to read.
+fn in_view_transition() -> bool {
+    is_in_transition(
+        now_ms(),
+        LAST_VIEW_CHANGE_MS.load(AtomicOrdering::Relaxed),
+        VIEW_TRANSITION_COOLDOWN_MS,
+    )
+}
+
+/// Explicit read-suspend bracketing a career command (training / rest / infirmary /
+/// outing). Submitting a command kicks off a coroutine that hits the server, plays
+/// an animation, then unloads+rebuilds the Home scene (`Push/PopSceneResourceHash`)
+/// — all WITHOUT a `SceneManager.ChangeView`, so [`in_view_transition`] does not
+/// cover it. Reading `HomeInfo`/`TurnInfo` during this window races a use-after-free
+/// and crashes the game. The command-submit hooks call [`suspend_reads`]; the
+/// command-select rebuild hooks call [`resume_reads`]. `0` = not suspended.
+static SUSPEND_DEADLINE_MS: AtomicU64 = AtomicU64::new(0);
+
+/// Safety ceiling: if the command-select "resume" signal is somehow missed, reads
+/// auto-resume after this long so the overlay can't wedge on stale data forever.
+/// Generously covers a full (un-skipped) training animation + asset reload.
+const SUSPEND_MAX_MS: u64 = 30_000;
+
+/// Suspend IL2CPP reads until the command-select screen is rebuilt (or the safety
+/// deadline elapses). Called from the career command-submit IL2CPP hooks.
+pub(crate) fn suspend_reads() {
+    SUSPEND_DEADLINE_MS.store(now_ms().saturating_add(SUSPEND_MAX_MS), AtomicOrdering::Relaxed);
+}
+
+/// Resume IL2CPP reads. Called from the command-select rebuild IL2CPP hooks once
+/// the Single Mode objects are freshly built and safe to read again.
+pub(crate) fn resume_reads() {
+    SUSPEND_DEADLINE_MS.store(0, AtomicOrdering::Relaxed);
+}
+
+/// True while a command sequence is in flight (reads unsafe). Self-clears once the
+/// safety deadline passes so a missed resume can't suspend reads permanently.
+fn reads_suspended() -> bool {
+    let deadline = SUSPEND_DEADLINE_MS.load(AtomicOrdering::Relaxed);
+    deadline != 0 && now_ms() < deadline
+}
+
+/// Combined gate: skip a refresh whenever the Single Mode objects may be unstable
+/// (mid view-transition, or a career command sequence is in flight).
+fn reads_unsafe() -> bool {
+    in_view_transition() || reads_suspended()
+}
 
 pub(crate) fn character_ready() -> bool {
     CHARACTER_READY.load(AtomicOrdering::Relaxed)
@@ -110,6 +182,12 @@ fn schedule_refresh_inner() {
     if SHUTTING_DOWN.load(AtomicOrdering::Acquire) {
         return;
     }
+    // Suspend scheduling while the Single Mode objects may be mid-teardown (view
+    // transition or an in-flight career command sequence): reading them races a
+    // use-after-free (crashes the game). The throttled loop retries once safe.
+    if reads_unsafe() {
+        return;
+    }
     if PENDING.swap(true, AtomicOrdering::AcqRel) {
         // Already pending: coalesce, unless the in-flight refresh looks lost
         // (scheduled long ago, never completed) — then fall through to reschedule.
@@ -133,6 +211,14 @@ extern "C" fn refresh_cache_cb() {
     // leave PENDING stuck `true`, blocking every future refresh and freezing the
     // overlay on "Loading career data\u2026" (see the get_Character-null career-start
     // window). PENDING/LAST_REFRESH are always restored, panic or not.
+    // Defense in depth: a refresh scheduled just before a view change can still be
+    // dispatched mid-transition. Bail before any IL2CPP read touches teardown-time
+    // objects; the next throttled tick retries after the cooldown.
+    if reads_unsafe() {
+        PENDING.store(false, AtomicOrdering::Release);
+        LAST_REFRESH_MS.store(now_ms(), AtomicOrdering::Relaxed);
+        return;
+    }
     if let Err(e) = std::panic::catch_unwind(refresh_cache_inner) {
         let msg = e
             .downcast_ref::<&str>()
@@ -146,33 +232,9 @@ extern "C" fn refresh_cache_cb() {
 }
 
 fn refresh_cache_inner() {
-    let auto = crate::core::modules::training_tracker::tracking_prefs::auto_track_careers();
-    let mut tracking = memory_reader::TRACKING.load(AtomicOrdering::Relaxed);
-    if !tracking && !auto {
-        return;
-    }
-
-    // Auto lifecycle: a cheap `is_playing` probe drives start/stop independently of the
-    // host CAREER_START/END events. Those fire only on `IsPlaying` view-change
-    // transitions, which the game can miss (e.g. save&exit leaves `IsPlaying` true at
-    // the Home view-change, then flips it later with no further view change). Polling
-    // here re-arms tracking on career resume and stops it once the career truly ends.
-    if auto {
-        match memory_reader::is_playing() {
-            Some(true) if !tracking => {
-                if memory_reader::start_tracking().is_ok() {
-                    tracking = true;
-                }
-            }
-            Some(false) if tracking => {
-                memory_reader::stop_tracking();
-                reset_career_state();
-                return;
-            }
-            _ => {}
-        }
-    }
-    if !tracking {
+    // Tracking is fully manual: only the user's Start/Stop control (menu button or
+    // hotkey) toggles `TRACKING`. No automatic start/stop — a manual stop sticks.
+    if !memory_reader::TRACKING.load(AtomicOrdering::Relaxed) {
         return;
     }
 
@@ -186,10 +248,8 @@ fn refresh_cache_inner() {
     let mut snapshot = memory_reader::read_snapshot();
     let is_playing = snapshot.as_ref().is_some_and(|s| s.is_playing);
     if !is_playing {
-        if auto {
-            memory_reader::stop_tracking();
-            reset_career_state();
-        }
+        // Not in a career (e.g. left to the lobby). Leave tracking as the user set
+        // it; just skip publishing until a career is active again.
         return;
     }
 
@@ -328,20 +388,11 @@ fn log_career_diagnostic(evaluations: &[EvaluationInfo], support_ids: &[(i32, i3
 
 /// Throttled auto-refresh (call from render thread each overlay frame).
 pub fn maybe_request_refresh() {
-    let tracking = memory_reader::TRACKING.load(AtomicOrdering::Relaxed);
-    let auto = crate::core::modules::training_tracker::tracking_prefs::auto_track_careers();
-    // When tracking is on, refresh fast for live data. When it is off but auto mode is
-    // on, run the slow idle probe so a resumed career re-arms tracking. When both are
-    // off (manual mode, stopped), stay completely silent.
-    if !tracking && !auto {
+    // Manual only: refresh solely while the user has tracking on. Stopped = silent.
+    if !memory_reader::TRACKING.load(AtomicOrdering::Relaxed) {
         return;
     }
-    let interval = if tracking {
-        AUTO_REFRESH_INTERVAL_MS
-    } else {
-        IDLE_PROBE_INTERVAL_MS
-    };
-    if !should_auto_refresh(elapsed_since_last_refresh_ms(), interval) {
+    if !should_auto_refresh(elapsed_since_last_refresh_ms(), AUTO_REFRESH_INTERVAL_MS) {
         return;
     }
     schedule_refresh();
@@ -388,6 +439,8 @@ pub fn shutdown() {
     PENDING.store(false, AtomicOrdering::Release);
     PENDING_SINCE_MS.store(0, AtomicOrdering::Release);
     LAST_REFRESH_MS.store(0, AtomicOrdering::Release);
+    LAST_VIEW_CHANGE_MS.store(0, AtomicOrdering::Release);
+    SUSPEND_DEADLINE_MS.store(0, AtomicOrdering::Release);
     reset_career_state();
 }
 
@@ -426,6 +479,19 @@ mod tests {
         assert!(!should_auto_refresh(499, AUTO_REFRESH_INTERVAL_MS));
         assert!(should_auto_refresh(500, AUTO_REFRESH_INTERVAL_MS));
         assert!(should_auto_refresh(3000, AUTO_REFRESH_INTERVAL_MS));
+    }
+
+    #[test]
+    fn transition_gate_open_only_within_cooldown() {
+        // No view change observed yet → never a transition.
+        assert!(!is_in_transition(10_000, 0, VIEW_TRANSITION_COOLDOWN_MS));
+        // Just changed → suspended.
+        assert!(is_in_transition(10_000, 10_000, VIEW_TRANSITION_COOLDOWN_MS));
+        // Inside the cooldown → still suspended.
+        assert!(is_in_transition(11_999, 10_000, VIEW_TRANSITION_COOLDOWN_MS));
+        // Exactly at / past the cooldown → reads resume.
+        assert!(!is_in_transition(12_000, 10_000, VIEW_TRANSITION_COOLDOWN_MS));
+        assert!(!is_in_transition(20_000, 10_000, VIEW_TRANSITION_COOLDOWN_MS));
     }
 
     #[test]

@@ -35,7 +35,7 @@ mod snapshot;
 mod story_events;
 mod support_deck;
 
-pub use chain::{get_chara_ptr, is_playing, start_tracking, stop_tracking};
+pub use chain::{get_chara_ptr, start_tracking, stop_tracking};
 pub use eval_master::probe as probe_eval_master;
 pub use evaluations::{read_evaluations, EvaluationInfo};
 pub use il2cpp::read_list_field;

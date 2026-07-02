@@ -1,8 +1,10 @@
 //! Host lifecycle subscription.
 //!
 //! The plugin reads career state directly from game memory (see `memory_reader`).
-//! Career start/end events drive the automatic tracking lifecycle so the reader is
-//! silent in lobby/home scenes, while shutdown removes hooks and tears down state.
+//! Tracking is fully manual — only the user's Start/Stop control toggles it — so
+//! there is no career start/end auto-lifecycle here. We subscribe to per-frame
+//! (drive the throttled refresh), view-change (suspend reads during transitions),
+//! and shutdown (tear down hooks).
 
 use std::ffi::c_void;
 
@@ -18,25 +20,12 @@ extern "C" fn on_frame(_event_id: u32, _data: *const c_void, _userdata: *mut c_v
     crate::core::modules::training_tracker::overlay_cache::maybe_request_refresh();
 }
 
-/// Fired before the host unloads this plugin (or on process detach). Remove every
-/// IL2CPP hook we installed so the host can safely free the DLL (UNLOADABLE).
-extern "C" fn on_career_start(_event_id: u32, _data: *const c_void, _userdata: *mut c_void) {
-    if !crate::core::modules::training_tracker::tracking_prefs::auto_track_careers() {
-        return;
-    }
-    match crate::core::modules::training_tracker::memory_reader::start_tracking() {
-        Ok(()) => hlog_info!(target: "training-tracker", "Auto tracking started on career start"),
-        Err(e) => hlog_error!(target: "training-tracker", "auto start_tracking failed: {e}"),
-    }
-}
-
-extern "C" fn on_career_end(_event_id: u32, _data: *const c_void, _userdata: *mut c_void) {
-    if !crate::core::modules::training_tracker::tracking_prefs::auto_track_careers() {
-        return;
-    }
-    crate::core::modules::training_tracker::memory_reader::stop_tracking();
-    crate::core::modules::training_tracker::overlay_cache::reset_career_state();
-    hlog_info!(target: "training-tracker", "Auto tracking stopped on career end");
+/// Fired when the game changes view/scene. Record the transition so the overlay
+/// cache suspends its IL2CPP reads during the teardown/rebuild window: reading the
+/// Single Mode `HomeInfo`/`TurnInfo` objects mid-transition (e.g. right after the
+/// player clicks a training) races a use-after-free and crashes the game.
+extern "C" fn on_view_change(_event_id: u32, _data: *const c_void, _userdata: *mut c_void) {
+    crate::core::modules::training_tracker::overlay_cache::note_view_change();
 }
 
 extern "C" fn on_shutdown(_event_id: u32, _data: *const c_void, _userdata: *mut c_void) {
@@ -57,7 +46,6 @@ pub fn subscribe_events() -> bool {
     }
     sdk.on(event::SHUTDOWN, on_shutdown, std::ptr::null_mut());
     sdk.on(event::FRAME, on_frame, std::ptr::null_mut());
-    sdk.on(event::CAREER_START, on_career_start, std::ptr::null_mut());
-    sdk.on(event::CAREER_END, on_career_end, std::ptr::null_mut());
+    sdk.on(event::VIEW_CHANGE, on_view_change, std::ptr::null_mut());
     true
 }

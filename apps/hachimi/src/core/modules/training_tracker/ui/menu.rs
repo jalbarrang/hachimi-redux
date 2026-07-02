@@ -20,7 +20,6 @@ use crate::core::modules::training_tracker::memory_reader;
 use crate::core::modules::training_tracker::overlay_cache;
 use crate::core::modules::training_tracker::planner;
 use crate::core::modules::training_tracker::recommend;
-use crate::core::modules::training_tracker::tracking_prefs;
 
 /// Page title — h2 (theme heading size).
 fn heading_h2(ui: &mut egui::Ui, text: impl Into<egui::RichText>) {
@@ -160,16 +159,7 @@ fn draw_tracking_controls(ui: &mut egui::Ui) {
     overlay::draw_zoom_control(ui);
     ui.add_space(4.0);
 
-    let mut auto_track = tracking_prefs::auto_track_careers();
-    if ui.checkbox(&mut auto_track, "Auto-start/stop with careers").changed() {
-        tracking_prefs::set_auto_track_careers(auto_track);
-        config::persist();
-    }
-    ui.small(if auto_track {
-        "Auto mode: starts at career entry and stops outside career."
-    } else {
-        "Manual mode: use the button below to control memory tracking."
-    });
+    ui.small("Manual: use the button below to start/stop memory tracking.");
     ui.add_space(4.0);
 
     if !tracking {

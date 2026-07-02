@@ -82,7 +82,6 @@ mod skill_shop_prefs;
 #[allow(dead_code)]
 mod stat_targets;
 mod telemetry;
-mod tracking_prefs;
 pub(crate) mod ui;
 
 use compat::Sdk;
@@ -101,6 +100,20 @@ pub(crate) fn buy_skill(skill_id: i32, level: i32) -> Result<i32, String> {
 /// the panel picks them up without a restart.
 pub(crate) fn clear_icon_cache() {
     ui::textures::clear_missing();
+}
+
+/// Suspend the memory reader while a career command (training / rest / infirmary /
+/// outing) plays out. Crate-visible entry point for the `SingleModeMainViewController`
+/// command-submit IL2CPP hooks. See `overlay_cache::suspend_reads`.
+pub(crate) fn suspend_reads_for_command() {
+    overlay_cache::suspend_reads();
+}
+
+/// Resume the memory reader once the command-select screen has been rebuilt.
+/// Crate-visible entry point for the `SingleModeMainViewController` command-select
+/// IL2CPP hooks. See `overlay_cache::resume_reads`.
+pub(crate) fn resume_reads_on_command_select() {
+    overlay_cache::resume_reads();
 }
 
 /// The in-core Training Tracker module.
