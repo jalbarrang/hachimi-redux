@@ -1,8 +1,8 @@
 {
-  "generated_at": "2026-06-12T23:15:54.285228700+00:00",
+  "generated_at": "2026-07-08T22:40:07.923313+00:00",
   "source": "training-tracker assets (master.mdb)",
   "files": {
-    "course_params.json": "b592b2b485d6912ebb6e274bbf5ac21bd865cc9e1bf4718d801a481f09e6f272",
-    "skill_grades.json": "c68bb5da93a1084500275db14377ad93a16949aadb1da62c173f54e91edead68"
+    "course_params.json": "5a0f8208d609b93076cddc13cde2f6ae157eadd07a13bfc630e81cf8b19f8b1b",
+    "skill_grades.json": "25b06cf952fd4f08a763e3be6ca7a631c5e218324ab08fd133e5324340826214"
   }
 }
