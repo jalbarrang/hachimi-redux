@@ -24,7 +24,7 @@ impl Gui {
         // ghosts a stale copy through the flip-model backbuffer (the duplicate
         // menu bug). Holding the last finalized ratio until release avoids it; the
         // slider's numeric value still updates live.
-        if !self.context.egui_is_using_pointer() {
+        if !self.context.is_using_pointer() {
             self.finalized_landscape_ratio = Hachimi::instance().config.load().windows.gui_landscape_ratio;
         }
 
@@ -79,7 +79,7 @@ impl Gui {
         let live_scale = Hachimi::instance().config.load().gui_scale;
         if self.gui_scale != live_scale {
             self.gui_scale = live_scale;
-            if !self.context.egui_is_using_pointer() {
+            if !self.context.is_using_pointer() {
                 self.finalized_scale = live_scale;
             }
 
@@ -87,7 +87,7 @@ impl Gui {
             if live_scale != 1.0 {
                 style.scale(live_scale);
             }
-            self.context.set_global_style(style);
+            self.context.set_style(style);
         }
 
         self.context.data_mut(|d| {
@@ -99,24 +99,24 @@ impl Gui {
         if live_scale != 1.0 {
             style.scale(live_scale);
         }
-        self.context.set_global_style(style);
+        self.context.set_style(style);
 
-        // Drive egui multi-pass: `run_ui` re-runs the UI within this frame (up to
+        // Drive egui multi-pass: `run` re-runs the UI within this frame (up to
         // `Options::max_passes`) until the layout settles, presenting only the final
         // pass. egui_taffy depends on this — a single begin/end pass would present
         // the unsettled layout and flicker every taffy surface.
         //
-        // `run_ui` hands the closure an empty background `Ui` that we ignore: every
-        // hachimi surface (Modal/Window/Area) is built on `self.context` and lives
-        // in its own layer, so nothing is drawn on that background Ui. `ctx` is a
+        // `run` hands the closure a `&Context` that we ignore: every hachimi surface
+        // (Modal/Window/Area) is built on `self.context` and lives in its own layer,
+        // so nothing is drawn on the background. `ctx` is a
         // cloned `Context` (a separate borrow) so the closure can still take
         // `&mut self`; the UI is built via `self.context`, the same context.
         let ctx = self.context.clone();
-        ctx.run_ui(input, |_ui| self.run_ui_pass())
+        ctx.run(input, |_ctx| self.run_ui_pass())
     }
 
     /// Build one egui pass of the GUI. Called (potentially) multiple times per
-    /// frame by [`egui::Context::run_ui`] so egui_taffy layouts can settle via
+    /// frame by [`egui::Context::run`] so egui_taffy layouts can settle via
     /// `request_discard`. Keep this idempotent across passes — once-per-frame work
     /// (e.g. `update_fps`) lives in [`Self::run`], before the multi-pass loop.
     fn run_ui_pass(&mut self) {
@@ -172,7 +172,7 @@ impl Gui {
         // L2 gate: while the L1 modal is closed, the cursor is "over a panel" when it
         // hovers an egui area and overlays aren't globally locked. Used by the wnd hook
         // to swallow mouse input for panels but let clicks fall through to the game.
-        let l2_wants = !self.menu_visible && !overlay::is_locked() && self.context.is_pointer_over_egui();
+        let l2_wants = !self.menu_visible && !overlay::is_locked() && self.context.is_pointer_over_area();
         super::L2_WANTS_POINTER.store(l2_wants, Ordering::Relaxed);
     }
 

@@ -213,7 +213,7 @@ fn default_panel_size(scale: f32) -> egui::Vec2 {
 
 /// Window frame with the configured opacity applied to the background.
 fn panel_frame(ctx: &egui::Context, opacity: f32) -> egui::Frame {
-    let mut frame = egui::Frame::window(&ctx.global_style());
+    let mut frame = egui::Frame::window(&ctx.style());
     frame.fill = frame.fill.linear_multiply(opacity);
     frame
 }

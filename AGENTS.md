@@ -11,7 +11,7 @@ Fork of Hachimi: a Windows/Steam translation & enhancement mod for the Honse gam
 | Language | Rust, edition 2021, stable toolchain |
 | Build | Cargo workspace (root `Cargo.toml`) |
 | Platform | Windows + Steam only |
-| UI render | egui 0.34 + `egui_taffy` (=0.12.0) → `egui-directx11` (paint) |
+| UI render | egui 0.33 + `egui_taffy` (=0.10.0) → `egui-directx11` 0.12.1 (paint) |
 | Hooking | `minhook`, `pelite`, `windows` crate; IL2CPP interop |
 | egui source | git-pinned in `[patch.crates-io]` (egui / egui_extras / egui-directx11) |
 

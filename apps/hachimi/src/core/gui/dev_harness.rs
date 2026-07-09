@@ -41,7 +41,7 @@ pub fn init_context(ctx: &egui::Context) {
     ctx.set_fonts(Gui::get_font_definitions());
     let mut style = egui::Style::default();
     Gui::apply_theme(ctx, &mut style, &config);
-    ctx.set_global_style(style);
+    ctx.set_style(style);
     egui_extras::install_image_loaders(ctx);
     super::splash::register_icon_bytes(ctx);
 }
@@ -107,9 +107,11 @@ struct PreviewApp {
 }
 
 impl eframe::App for PreviewApp {
-    fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
-        if !draw_frame(&mut self.state, ui) {
-            ui.ctx().send_viewport_cmd(egui::ViewportCommand::Close);
-        }
+    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        egui::CentralPanel::default().frame(egui::Frame::NONE).show(ctx, |ui| {
+            if !draw_frame(&mut self.state, ui) {
+                ui.ctx().send_viewport_cmd(egui::ViewportCommand::Close);
+            }
+        });
     }
 }

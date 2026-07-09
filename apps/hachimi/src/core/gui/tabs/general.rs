@@ -119,9 +119,9 @@ fn draw_overlays_panel(ui: &mut egui::Ui) {
         settings_label(ui, &t!("config_editor.overlay_opacity"));
         if slider_f32(ui, &mut opacity, 0.1..=1.0, 0.05) {
             overlay::set_opacity(opacity);
-            let mut style = (*ui.ctx().global_style()).clone();
+            let mut style = (*ui.ctx().style()).clone();
             super::super::theme::apply_style(&mut style, opacity);
-            ui.ctx().set_global_style(style);
+            ui.ctx().set_style(style);
         }
     });
 

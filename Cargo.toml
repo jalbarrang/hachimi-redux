@@ -73,6 +73,3 @@ doc_markdown = "allow"
 # path patches to the end of this file, and they must land under this table.
 [patch.crates-io]
 embed-resource = { git = "https://github.com/nabijaczleweli/rust-embed-resource.git", rev = "e98e9aa28d66b0c2ff43516b41847cac372310dd" }
-egui-directx11 = { git = "https://github.com/jalbarran-series/egui-directx11.git", rev = "bc05ae3326a4bab419c768e9dffb0d576d942c2b" }
-egui = { git = "https://github.com/emilk/egui.git", rev = "7288e4b2e5a305b239d0b16bbbed239bf56e64b4" }
-egui_extras = { git = "https://github.com/emilk/egui.git", rev = "7288e4b2e5a305b239d0b16bbbed239bf56e64b4", package = "egui_extras" }

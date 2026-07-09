@@ -26,7 +26,7 @@ impl Window for SimpleOkDialog {
         let mut open2 = true;
 
         new_window(ctx, self.id, &self.title).open(&mut open).show(ctx, |ui| {
-            egui::Panel::bottom(self.id.with("bottom_panel")).show_inside(ui, |ui| {
+            egui::TopBottomPanel::bottom(self.id.with("bottom_panel")).show_inside(ui, |ui| {
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Min), |ui| {
                     if ui.button(t!("ok")).clicked() {
                         open2 = false;
