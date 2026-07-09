@@ -107,6 +107,7 @@ improper_ctypes = "warn"              # Catch C ABI issues in extern declaration
 improper_ctypes_definitions = "warn"  # Catch C ABI issues in type definitions
 non_ascii_idents = "deny"             # Prevent confusing non-ASCII identifiers
 unnecessary_transmutes = "allow"       # bindgen bitfield accessors use u32→u32 transmutes
+float_literal_f32_fallback = "allow"   # rust#154024: egui `impl Into<f32>` params (Stroke::new(1.0, ..))
 # rust_2024_compatibility: uncomment when ready to migrate to edition 2024
 # rust_2024_compatibility = { level = "warn", priority = -1 }
 

@@ -56,6 +56,12 @@ debug = "limited"
 [workspace.lints.rust]
 unsafe_op_in_unsafe_fn = "warn"
 non_ascii_idents = "deny"
+# Future-incompat lint (rust#154024) that newer stable rustc promotes under
+# `-D warnings`. Fires on egui's pervasive `impl Into<f32>` params (e.g.
+# `Stroke::new(1.0, ..)`), where a bare float literal would fall back to f32.
+# Allowed workspace-wide rather than suffixing hundreds of literals; revisit
+# if/when it becomes a hard error.
+float_literal_f32_fallback = "allow"
 
 [workspace.lints.clippy]
 correctness = { level = "deny", priority = -1 }

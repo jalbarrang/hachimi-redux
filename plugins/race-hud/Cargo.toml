@@ -21,6 +21,7 @@ improper_ctypes = "warn"
 improper_ctypes_definitions = "warn"
 non_ascii_idents = "deny"
 unnecessary_transmutes = "allow"
+float_literal_f32_fallback = "allow" # rust#154024: egui `impl Into<f32>` params
 
 [lints.clippy]
 correctness = { level = "deny", priority = -1 }
