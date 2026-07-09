@@ -117,7 +117,6 @@ pub fn process(input: &mut RawInput, zoom_factor: f32, umsg: u32, wparam: usize,
                 input.events.push(Event::MouseWheel {
                     unit: MouseWheelUnit::Line,
                     delta: Vec2::new(0., delta),
-                    phase: egui::TouchPhase::Move,
                     modifiers: Modifiers::default(),
                 });
                 InputResult::Scroll
@@ -133,7 +132,6 @@ pub fn process(input: &mut RawInput, zoom_factor: f32, umsg: u32, wparam: usize,
                 input.events.push(Event::MouseWheel {
                     unit: MouseWheelUnit::Line,
                     delta: Vec2::new(delta, 0.),
-                    phase: egui::TouchPhase::Move,
                     modifiers: Modifiers::default(),
                 });
                 InputResult::Scroll

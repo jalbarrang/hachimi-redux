@@ -151,7 +151,7 @@ impl Gui {
             use crate::il2cpp::{hook::UnityEngine_InputLegacyModule::Input::set_imeCompositionMode, symbols::Thread};
 
             let focused = self.context.memory(egui::Memory::focused);
-            let wants_kb = self.context.egui_wants_keyboard_input();
+            let wants_kb = self.context.wants_keyboard_input();
 
             if focused != self.last_focused {
                 if wants_kb {

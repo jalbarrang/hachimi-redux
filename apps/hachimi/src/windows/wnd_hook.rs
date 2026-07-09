@@ -151,7 +151,7 @@ extern "system" fn wnd_proc(hwnd: HWND, umsg: c_uint, wparam: WPARAM, lparam: LP
             if (wparam.0 & 0xFFFF) != WA_INACTIVE as usize {
                 std::thread::spawn(move || {
                     if let Some(gui) = Gui::instance().map(|m| m.lock().expect("lock poisoned")) {
-                        if gui.context.egui_wants_keyboard_input() {
+                        if gui.context.wants_keyboard_input() {
                             Thread::main_thread().schedule(|| {
                                 crate::il2cpp::hook::UnityEngine_InputLegacyModule::Input::set_imeCompositionMode(1);
                             });
