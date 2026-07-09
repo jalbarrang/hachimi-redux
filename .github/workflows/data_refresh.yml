@@ -1,0 +1,78 @@
+# =============================================================================
+# Data Refresh — HachimiRedux
+#
+# Daily job that regenerates the hosted game-data files clients download from
+# the repo's raw GitHub URL (see docs/updating-game-data.md):
+#
+#   1. fetch-master-db        → db/master.mdb            (gitignored, never committed)
+#   2. skill-grades           → plugins/training-tracker/assets/skill_grades.json
+#      course-data            → plugins/training-tracker/assets/course_params.json
+#   3. tracker-data-manifest  → data/ + data/manifest.json
+#   4. gametora-sync          → data/gametora/ + data/gametora/manifest.json
+#
+# Every tool fails fast (non-zero exit) on fetch/parse errors, so a partial or
+# inconsistent dataset is never committed. If nothing changed, no commit is made.
+# =============================================================================
+
+name: Data Refresh
+
+on:
+  schedule:
+    # Daily at 12:00 UTC.
+    - cron: "0 12 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+  HACHIMI_IGNORE_DIRTY: "true"
+
+# Never run two refreshes at once (they'd race on the push).
+concurrency:
+  group: data-refresh
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    name: Refresh game data
+    runs-on: ubuntu-latest
+    # Don't run the cron on forks.
+    if: github.repository == 'jalbarrang/hachimi-redux'
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          # Keep this cache separate from the CI build caches.
+          shared-key: data-refresh
+
+      - name: 1 · Fetch master.mdb (global server)
+        run: cargo run --release --locked -p fetch-master-db
+
+      - name: 2 · Regenerate master.mdb-derived assets
+        run: |
+          cargo run --release --locked -p skill-grades
+          cargo run --release --locked -p course-data
+
+      - name: 3 · Publish tracker data (data/ + manifest)
+        run: cargo run --release --locked -p tracker-data-manifest
+
+      - name: 4 · Sync GameTora catalogs
+        run: cargo run --release --locked -p gametora-sync
+
+      - name: Commit & push if changed
+        run: |
+          set -euo pipefail
+          git add plugins/training-tracker/assets data
+          if git diff --cached --quiet; then
+            echo "No data changes — nothing to commit."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "chore(data): daily game-data refresh ($(date -u +%F))"
+          git push
