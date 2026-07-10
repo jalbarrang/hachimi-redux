@@ -1,18 +1,18 @@
 {
-  "generated_at": "2026-07-08T22:40:14.059826+00:00",
+  "generated_at": "2026-07-10T14:09:18.505052931+00:00",
   "source": "gametora.com",
   "files": {
-    "character-cards.json": "73c5d38b1a1d98e2796911fa497f0a2ed602c3e1651fae66ffd15e2c6f998501",
-    "evrew.json": "1d96399372b3b07ed6ffee4a0dc0843819d7ff2bc39e5dfa41a4a91bb9fdc39b",
-    "skills.json": "fa05a71dc5848a7c3d254a188118b25e0d86e658af9c073c60f7247641068555",
-    "support-cards.json": "cd3d36b4ae82b12b348db8839a3a62e55ca79dd10ee4c63d9ce1e4e11161a183",
+    "character-cards.json": "0808df164508a901966c8f913d694f766a96776966b6fb5710ddde121d124081",
+    "evrew.json": "97d11327e5c91e529b187b8e8d191a6f23524da7a3e5000a8ef165dacaa659d5",
+    "skills.json": "199980e388711e2fce785c3ec77c3b72344821d6d4bd1254ad3f70126d2d6915",
+    "support-cards.json": "3143df8203f329441ca74fbbbaf07fec5bf1d590d11bcda2de92f01af1448fdb",
     "support-effects.json": "6915511f255234da5b560b078ea280746d3bc6feb64e9faf98c99960c875558d",
-    "te-names-en.json": "d8da49bd535281b5f062ff042757c48eaa4ea12bf015eb3317fc5cde9a56e0bf",
-    "te-names-ja.json": "6470cf322b61bd1bd962dcc3de5a3425a12768f30d04f880cf2c92414990782d",
-    "training-events-friend.json": "581d721fda756461c1bf05936bc92091117a73b931808127183fd2bfbd7ac537",
-    "training-events-group.json": "2843df47a8ef79795b8c0547cb1b644caf65d5ed21d62f71485ea161f13ec373",
+    "te-names-en.json": "fd6b168f66433bf24fe7c79624bc69df6c1a370931a66d1277de71994111e22f",
+    "te-names-ja.json": "3bf33582d30e17587da46b37c514201a80b0997e7596315a81b1f48acc8794e2",
+    "training-events-friend.json": "ba0acbf638b9153740942707252e122efd09152f4053ccc0711810b171baf8f2",
+    "training-events-group.json": "b8ca0031a2b02e243775607e9e58787917b254e77f1933a1d532e6ea4fbd40b0",
     "training-events-shared.json": "1cac8bba79cbc148f7fa77036d7e8bd6a88c8890395b56ddde1b06a02b48017b",
-    "training-events-sr.json": "5bc1a8bd8829a31c7504ed9e11eca35caecac0e59f2ea9782f7e2001a0f345af",
-    "training-events-ssr.json": "fb1c981bdff79d996f8842258550cebba67e7a15dde9023b3a9dc454d124e8eb"
+    "training-events-sr.json": "950b2fb1b54b2c6f62ef8bc4663553e586e2153f27af737b71dae3603b62824f",
+    "training-events-ssr.json": "eae1c6fca0589a42caf3a99142407ea13ac924a5733560a1bcc826ce10e609f9"
   }
 }
