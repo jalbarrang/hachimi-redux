@@ -1004,5 +1004,114 @@
     ],
     "finish_time_min": 1416000.0,
     "finish_time_max": 1490000.0
+  },
+  "11301": {
+    "distance": 1400.0,
+    "surface": "Dirt",
+    "turn": 2,
+    "thresholds": [
+      "Wit"
+    ],
+    "finish_time_min": 870000.0,
+    "finish_time_max": 940000.0
+  },
+  "11302": {
+    "distance": 1600.0,
+    "surface": "Dirt",
+    "turn": 2,
+    "thresholds": [
+      "Wit"
+    ],
+    "finish_time_min": 980000.0,
+    "finish_time_max": 1080000.0
+  },
+  "11303": {
+    "distance": 2100.0,
+    "surface": "Dirt",
+    "turn": 2,
+    "thresholds": [
+      "Stamina",
+      "Wit"
+    ],
+    "finish_time_min": 1310000.0,
+    "finish_time_max": 1400000.0
+  },
+  "11401": {
+    "distance": 1000.0,
+    "surface": "Dirt",
+    "turn": 2,
+    "thresholds": [
+      "Speed"
+    ],
+    "finish_time_min": 580000.0,
+    "finish_time_max": 630000.0
+  },
+  "11402": {
+    "distance": 1600.0,
+    "surface": "Dirt",
+    "turn": 2,
+    "thresholds": [],
+    "finish_time_min": 960000.0,
+    "finish_time_max": 1080000.0
+  },
+  "11403": {
+    "distance": 1800.0,
+    "surface": "Dirt",
+    "turn": 2,
+    "thresholds": [],
+    "finish_time_min": 1080000.0,
+    "finish_time_max": 1180000.0
+  },
+  "11404": {
+    "distance": 2400.0,
+    "surface": "Dirt",
+    "turn": 2,
+    "thresholds": [
+      "Stamina"
+    ],
+    "finish_time_min": 1500000.0,
+    "finish_time_max": 1560000.0
+  },
+  "11501": {
+    "distance": 1200.0,
+    "surface": "Dirt",
+    "turn": 2,
+    "thresholds": [
+      "Stamina"
+    ],
+    "finish_time_min": 690000.0,
+    "finish_time_max": 770000.0
+  },
+  "11502": {
+    "distance": 1600.0,
+    "surface": "Dirt",
+    "turn": 2,
+    "thresholds": [
+      "Stamina",
+      "Wit"
+    ],
+    "finish_time_min": 930000.0,
+    "finish_time_max": 1080000.0
+  },
+  "11503": {
+    "distance": 1800.0,
+    "surface": "Dirt",
+    "turn": 2,
+    "thresholds": [
+      "Stamina",
+      "Wit"
+    ],
+    "finish_time_min": 1100000.0,
+    "finish_time_max": 1180000.0
+  },
+  "11504": {
+    "distance": 2000.0,
+    "surface": "Dirt",
+    "turn": 2,
+    "thresholds": [
+      "Stamina"
+    ],
+    "finish_time_min": 1210000.0,
+    "finish_time_max": 1290000.0
   }
 }
