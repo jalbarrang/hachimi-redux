@@ -31,7 +31,7 @@ O compártelos y arruínaselo a la docena de usuarios de Hachimi. Tú decides.
 Haz lo que tengas que hacer, pero te pedimos respetuosamente que trates de etiquetar el juego como «UM:PD» o «The Honse Game» en lugar del nombre real del juego, para evitar que lo rastreen los motores de búsqueda.
 
 # ⚠️ Incompatible con los plugins de Hachimi original
-Este fork incluye su propia API nativa de plugins (host API v9). **Los plugins creados para el Hachimi original no son compatibles con HachimiRedux**, y el plugin de seguimiento de entrenamiento que se distribuye acá no se va a cargar en el Hachimi original. Usa de preferencia DLL compiladas a partir de este repositorio, y úsalas juntas. Mezclar compilaciones puede hacer que el juego no cargue o se caiga.
+Este fork incluye su propia API nativa de plugins (host API v16). **Los plugins creados para el Hachimi original no son compatibles con HachimiRedux**, y el plugin de seguimiento de entrenamiento que se distribuye acá no se va a cargar en el Hachimi original. Usa de preferencia DLL compiladas a partir de este repositorio, y úsalas juntas. Mezclar compilaciones puede hacer que el juego no cargue o se caiga.
 
 ## Compatibilidad con plugins heredados (opcional, limitada)
 Los plugins sin manifiesto y con ABI heredada (por ejemplo, los volcadores de datos del Hachimi original) se pueden cargar a través de una **vía de compatibilidad opcional**. Agrega la DLL a una lista blanca `legacy_libraries` en `config.json`, además de a `load_libraries`:
@@ -52,7 +52,7 @@ Un plugin heredado solo necesita exportar `hachimi_init`; el host se salta su co
 - Se registra una advertencia cada vez que un plugin se carga por esta vía.
 - Las entradas de `legacy_libraries` también deben aparecer en `load_libraries`.
 
-Si tienes dudas, recompila el plugin contra este repositorio (host API v9) en lugar de depender de la vía heredada.
+Si tienes dudas, recompila el plugin contra este repositorio (host API v16) en lugar de depender de la vía heredada.
 
 # Características
 - **Traducciones de alta calidad:** Hachimi incluye funciones de traducción avanzadas que ayudan a que las traducciones se sientan más naturales (formas plurales, números ordinales, etc.) y evitan meter fallas en la interfaz. Además, permite traducir la mayoría de los componentes del juego; ¡sin necesidad de parchar assets a mano!
@@ -147,6 +147,12 @@ $env:HACHIMI_GAME_DIR = "D:\path\to\UmamusumePrettyDerby"
 ```
 
 El script copia `hachimi.dll` → `cri_mana_vpx.dll` y la DLL del training tracker en la carpeta del juego, y nunca modifica `cri_mana_vpx.dll.backup`.
+
+# Datos del juego alojados
+
+El Training Tracker descarga sus instantáneas de datos del juego (catálogos de GameTora, recursos del tracker, íconos de carrera) en tiempo de ejecución desde este repositorio, mediante URLs raw de GitHub bajo `main/data/…`. Las instantáneas se regeneran con el workflow diario [Data Refresh](.github/workflows/data_refresh.yml); la secuencia manual está documentada en [docs/updating-game-data.md](docs/updating-game-data.md), con notas de mantenimiento en [MAINTENANCE.md](MAINTENANCE.md).
+
+**No renombres este repositorio, la rama `main` ni la ruta `data/`** — las builds desplegadas tienen esas URLs codificadas y dejarían de recibir actualizaciones de datos.
 
 # Solución de problemas
 

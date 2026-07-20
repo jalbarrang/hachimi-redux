@@ -31,7 +31,7 @@
 你想怎么做都行，但我们恳请你尽量将游戏标注为 “UM:PD” 或 “The Honse Game”，而不是游戏的真实名称，以避免被搜索引擎抓取。
 
 # ⚠️ 与上游 Hachimi 插件不兼容
-本分支自带其专属的原生插件 API（host API v9）。**为上游 Hachimi 构建的插件无法在 HachimiRedux 上使用**，而这里分发的养成追踪插件也无法在上游 Hachimi 上加载。请优先使用从本仓库构建的 DLL，并将它们搭配使用。混用不同的构建可能导致加载失败或游戏崩溃。
+本分支自带其专属的原生插件 API（host API v16）。**为上游 Hachimi 构建的插件无法在 HachimiRedux 上使用**，而这里分发的养成追踪插件也无法在上游 Hachimi 上加载。请优先使用从本仓库构建的 DLL，并将它们搭配使用。混用不同的构建可能导致加载失败或游戏崩溃。
 
 ## 旧版插件兼容（可选，受限）
 无清单、采用旧版 ABI 的插件（例如上游 Hachimi 的数据导出器）可以通过一条**可选的兼容路径**加载。除了 `load_libraries` 之外，还需在 `config.json` 中的 `legacy_libraries` 白名单里列出该 DLL：
@@ -52,7 +52,7 @@
 - 每当一个插件通过此路径加载时，都会记录一条警告。
 - `legacy_libraries` 中的条目也必须出现在 `load_libraries` 中。
 
-如有疑问，请针对本仓库（host API v9）重新编译插件，而不要依赖旧版路径。
+如有疑问，请针对本仓库（host API v16）重新编译插件，而不要依赖旧版路径。
 
 # 特性
 - **高质量翻译：** Hachimi 提供了先进的翻译功能，让译文更加自然（复数形式、序数词等），并避免给 UI 引入错乱。它还支持翻译游戏中的大多数组件，无需手动打补丁替换资源！
@@ -147,6 +147,12 @@ $env:HACHIMI_GAME_DIR = "D:\path\to\UmamusumePrettyDerby"
 ```
 
 该脚本会将 `hachimi.dll` → `cri_mana_vpx.dll` 以及 training tracker DLL 复制到游戏目录，且绝不会修改 `cri_mana_vpx.dll.backup`。
+
+# 托管游戏数据
+
+Training Tracker 会在运行时从本仓库下载游戏数据快照（GameTora 目录、追踪器资源、生涯图标），使用 `main/data/…` 下的 raw GitHub URL。快照由每日 [Data Refresh](.github/workflows/data_refresh.yml) workflow 自动重新生成；手动流程见 [docs/updating-game-data.md](docs/updating-game-data.md)，维护者笔记见 [MAINTENANCE.md](MAINTENANCE.md)。
+
+**请勿重命名本仓库、`main` 分支或 `data/` 路径** —— 已部署的构建硬编码了这些 URL，否则将无法继续接收数据更新。
 
 # 故障排查
 

@@ -1,50 +1,188 @@
-# HachimiRedux — data publishing shell
+<img align="left" width="80" height="80" src="apps/hachimi/assets/icon.png">
 
-**The mod has moved.** Plugin development now lives in **[honse-tracker](https://github.com/jalbarrang/honse-tracker)**, built as plugins for upstream **[Hachimi-Edge](https://github.com/kairusds/Hachimi-Edge)**.
+# HachimiRedux
 
-This repository exists **only** to publish hosted game-data snapshots consumed by those plugins (GameTora catalogs, tracker resources, career icons). Do not install a mod from this repo; use Edge + the honse-tracker release DLLs instead.
+English | [简体中文](README-zh_cn.md) | [繁體中文](README-zh_tw.md) | [Español (España)](README-es_es.md) | [Español (Latinoamérica)](README-es_419.md) | [Français](README-fr_fr.md) | [Português (Brasil)](README-pt_br.md) | [Português (Portugal)](README-pt_pt.md)
 
-Maintainer notes for the data pipeline: see [MAINTENANCE.md](MAINTENANCE.md). Full refresh sequence: [docs/updating-game-data.md](docs/updating-game-data.md).
+Game enhancement and translation mod for UM:PD. HachimiRedux is a fork of Hachimi with a built-in in-game training tracker and a reworked native plugin SDK. Windows (Steam) only.
 
-## Hosted data
+<img height="400" src="apps/hachimi/assets/screenshot-2.png">
 
-Clients (honse-tracker plugins) download blake3-manifest snapshots from raw GitHub URLs under `main/data/…`. Layout:
+## Table of contents
 
-| Path | Contents |
-| --- | --- |
-| `data/manifest.json` | Tracker resources manifest (`skill_grades.json`, `course_params.json`) |
-| `data/skill_grades.json`, `data/course_params.json` | Master.mdb-derived tracker assets |
-| `data/gametora/` | GameTora catalogs + `manifest.json` |
-| `data/icons/` | Career-panel icon sprites + manifest |
+- [Please don't link to this repo or Hachimi's website](#️-please-dont-link-to-this-repo-or-hachimis-website)
+- [Incompatible with upstream Hachimi plugins](#️-incompatible-with-upstream-hachimi-plugins)
+- [Features](#features)
+- [Installation](#installation)
+  - [Install with the installer (recommended)](#install-with-the-installer-recommended)
+  - [Build from source (advanced)](#build-from-source-advanced)
+- [Hosted game data](#hosted-game-data)
+- [Troubleshooting](#troubleshooting)
+- [Special thanks](#special-thanks)
+- [License](#license)
 
-Default base URLs hardcoded in honse-tracker:
+# ⚠️ Please don't link to this repo or Hachimi's website
+We understand that you want to help people install Hachimi and have a better experience playing the game. However, this project is inherently against the game's TOS and The Game Developer most definitely wants it gone if they were ever to learn about it.
 
+While sharing in your self-managed chat services and through private messaging is fine, we humbly ask that you refrain from sharing links to this project on public facing sites, or to any of the tools involved.
+
+Or share them and ruin it for the dozens of Hachimi users. It's up to you.
+
+### If you're going to share it anyways
+Do what you must, but we would respectfully request that you try to label the game as "UM:PD" or "The Honse Game" instead of the actual name of the game, to avoid search engine parsing.
+
+# ⚠️ Incompatible with upstream Hachimi plugins
+This fork ships its own native plugin API (host API v16). **Plugins built for upstream Hachimi are not compatible with HachimiRedux**, and HachimiRedux's own cdylib plugins will not load on upstream Hachimi. Prefer DLLs built from this repository, and use them together. Mixing builds can fail to load or crash the game.
+
+## Legacy plugin compatibility (opt-in, limited)
+Manifest-less, legacy-ABI plugins (e.g. upstream Hachimi data-dumpers) can be loaded through an **opt-in compatibility path**. List the DLL under a `legacy_libraries` allowlist in `config.json`, in addition to `load_libraries`:
+
+```json
+{
+  "windows": {
+    "load_libraries": ["some_legacy_plugin.dll"],
+    "legacy_libraries": ["some_legacy_plugin.dll"]
+  }
+}
 ```
-https://raw.githubusercontent.com/jalbarrang/hachimi-redux/main/data/gametora
-https://raw.githubusercontent.com/jalbarrang/hachimi-redux/main/data
-https://raw.githubusercontent.com/jalbarrang/hachimi-redux/main/data/icons
+
+A legacy plugin only needs to export `hachimi_init`; the host skips its usual manifest/ABI check and loads it on trust. This support is **limited and unsupported**:
+
+- The plugin must rely **only on the stable vtable prefix** of the host API. Anything beyond it is undefined behaviour and can crash the game.
+- The host **cannot validate, track, or unload** a legacy plugin or its IL2CPP hooks. The DLL stays mapped for the lifetime of the process.
+- A warning is logged whenever a plugin loads via this path.
+- Entries in `legacy_libraries` must also appear in `load_libraries`.
+
+When in doubt, rebuild the plugin against this repository (host API v16) instead of relying on the legacy path.
+
+# Features
+- **High quality translations:** Hachimi comes with advanced translation features that help translations feel more natural (plural forms, ordinal numbers, etc.) and prevent introducing jank to the UI. It also supports translating most in-game components; no manual assets patching needed!
+
+    Supported components:
+    - UI text
+    - master.mdb (skill name, skill desc, etc.)
+    - Race story
+    - Main story/Home dialog
+    - Lyrics
+    - Texture replacement
+    - Sprite atlas replacement
+
+    Additionally, Hachimi does not provide translation features for only a single language; it has been designed to be fully configurable for any language.
+
+- **Training Tracker:** Built-in training tracker with a floating overlay (stats, bonds, energy, rank HUD), a Career panel, and a prereq-aware skill shop — compiled directly into the core mod.
+- **Easy setup:** Just plug and play. All setup is done within the game itself, no external application needed.
+- **Translation auto update:** Built-in translation updater lets you play the game as normal while it updates, and reloads it in-game when it's done, no restart needed!
+- **Built-in GUI:** Comes with a config editor so you can modify settings without even exiting the game!
+- **Graphics settings:** You can adjust the game's graphics settings to make full use of your device's specs, such as FPS unlocking and resolution scaling.
+- **Windows only:** Built specifically for the Windows (Steam) version of the game. **HachimiRedux does not support Android by choice** — it focuses solely on the Windows client, and there are no plans to add or maintain an Android build.
+
+# Installation
+
+The easiest way to install HachimiRedux is the **installer** from the [Releases page](https://github.com/jalbarrang/hachimi-redux/releases): it sets up the core mod for you, with no manual file copying or JSON editing. If you would rather build it yourself, see [Build from source](#build-from-source-advanced).
+
+HachimiRedux is the core mod (loaded as `cri_mana_vpx.dll`). The **Training Tracker** is built **into** the core mod — there is no separate plugin DLL to install or enable.
+
+The game directory is the Steam install folder, e.g.
+`C:\Program Files (x86)\Steam\steamapps\common\UmamusumePrettyDerby`.
+
+## Install with the installer (recommended)
+
+1. Download the latest `hachimi_installer.exe` from the [Releases page](https://github.com/jalbarrang/hachimi-redux/releases).
+2. Run it. The installer auto-detects your Steam game directory; if it cannot, select it manually (the default path is above).
+3. Pick your language. (The Training Tracker is built in — no plugin checkbox to tick.)
+4. Click **Install**. The installer backs up the original `cri_mana_vpx.dll`, installs the mod, and creates `config.json` for you.
+5. Launch the game. Press the menu key — the default is the **Right Arrow** key — to open the in-game UI.
+
+To update or remove HachimiRedux later, just run the installer again (it offers an uninstall option).
+
+## Build from source (advanced)
+
+This repo is a Cargo workspace. From the repo root:
+
+```sh
+# Core mod (Training Tracker is compiled in via the default `training-tracker` feature)
+cargo build --release -p hachimi                    # -> target/release/hachimi.dll
 ```
 
-**Do not rename this repo, the `main` branch, or the `data/` path** without coordinating a honse-tracker release that updates those defaults — every deployed plugin breaks otherwise.
+## Install HachimiRedux (core)
 
-## Refreshing data
+The game loads the mod through the renderer DLL `cri_mana_vpx.dll`.
 
-When the Honse game ships an update, regenerate snapshots from the repo root (see [docs/updating-game-data.md](docs/updating-game-data.md) for details):
+1. In the game directory, back up the original `cri_mana_vpx.dll` to `cri_mana_vpx.dll.backup` (do this once — never overwrite the backup afterwards).
+2. Copy `target/release/hachimi.dll` into the game directory and rename it to `cri_mana_vpx.dll`.
+3. Launch the game. Press the menu key — the default is the **Right Arrow** key — to open the in-game UI. The launch splash screen shows the current key, and you can rebind it from the in-game GUI.
 
-```bash
-cargo run -p fetch-master-db
-cargo run -p skill-grades
-cargo run -p course-data
-cargo run -p tracker-data-manifest
-cargo run -p gametora-sync
+Mod settings live in `config.json` inside the game data directory, which is the **`hachimi` subfolder of the game directory** (e.g. `…\UmamusumePrettyDerby\hachimi\config.json`). It is created automatically by the installer / on first launch; everything else is configured from the in-game GUI.
+
+## Training Tracker
+
+The Training Tracker ships **inside** the core mod (`hachimi.dll`) — there is no
+separate plugin DLL to copy or list in `load_libraries`. Once the core is installed,
+the tracker appears as a page in the Plugins tab and as a floating overlay panel.
+(It is compiled in via the default `training-tracker` Cargo feature; a lean build can
+drop it with `--no-default-features`.) See [docs/plugin-sdk.md](docs/plugin-sdk.md) for
+how the separate cdylib plugin SDK works.
+
+## Automated deploy (Windows, from source)
+
+From the repo root, the helper script builds and copies both DLLs into the game directory:
+
+```powershell
+.\scripts\deploy-windows.ps1 -Build
 ```
 
-Or rely on the daily [Data Refresh](.github/workflows/data_refresh.yml) workflow (`workflow_dispatch` / cron). Commit the generated files under `data/` (and the mirrored assets under `plugins/training-tracker/assets/` while that path still exists).
+Override the game folder if it is not at the default Steam path:
 
-## Please don't link to this repo for mod installs
+```powershell
+$env:HACHIMI_GAME_DIR = "D:\path\to\UmamusumePrettyDerby"
+.\scripts\deploy-windows.ps1 -Build
+```
 
-This project (and the Edge/honse-tracker stack) is against the game's TOS. Sharing in private chats is fine; please avoid public links that name the Honse game by its real title. Prefer "the Honse game" or "UM:PD" in public text.
+The script copies `hachimi.dll` → `cri_mana_vpx.dll` (Training Tracker included) and the cdylib plugin DLLs into the game directory, and never modifies `cri_mana_vpx.dll.backup`.
 
-## License
+# Hosted game data
 
+The Training Tracker downloads its game-data snapshots (GameTora catalogs, tracker resources, career icons) at runtime from this repository, under raw GitHub URLs at `main/data/…`. The snapshots are regenerated by the daily [Data Refresh](.github/workflows/data_refresh.yml) workflow; the manual sequence is documented in [docs/updating-game-data.md](docs/updating-game-data.md), with maintainer notes in [MAINTENANCE.md](MAINTENANCE.md).
+
+**Do not rename this repo, the `main` branch, or the `data/` path** — deployed builds hardcode those URLs and would stop receiving data updates.
+
+# Troubleshooting
+
+## The game crashes on launch / behaves oddly
+
+By far the most common cause is **stacking multiple game mods or DLL injectors** in the game folder. Each one hooks the game's rendering/runtime, and they fight each other. HachimiRedux warns about this in-game (a notification + the `hachimi.log`) and the installer warns before installing, but you must remove the others yourself:
+
+- Keep **only** HachimiRedux: `cri_mana_vpx.dll` and any HachimiRedux-built cdylib plugins (e.g. `hachimi_race_hud.dll`).
+- Remove other overlays/injectors from the game folder, such as proxy-loader DLLs that shouldn't be there (`version.dll`, `winhttp.dll`, `dxgi.dll`, `d3d11.dll`, `dinput8.dll`, …) and named overlays (`horseACT.dll`, `heaven_overlay.dll`, …).
+- **Only plugins built from HachimiRedux** belong in `load_libraries`. Do not add third-party overlays there — they are not HachimiRedux plugins and will be rejected (with an in-game notice) or can crash the game.
+
+## Where things live
+
+- `cri_mana_vpx.dll` and any cdylib plugin DLLs: the game **root** directory. (The Training Tracker is built into `cri_mana_vpx.dll`, not a separate file.)
+- `config.json` and other mod data: the **`hachimi` subfolder** of the game directory (`<game_dir>\hachimi\config.json`).
+- Mod log: `hachimi.log` in the game root (enable `enable_file_logging` in `config.json`).
+- Game log: `%USERPROFILE%\AppData\LocalLow\Cygames\Umamusume\Player.log`.
+
+## Collecting diagnostics
+
+- In-game: open the menu (Right Arrow by default) → **Config** → **Save diagnostics report**. This writes `hachimi_diagnostics.txt` to the game folder.
+- Installer: run `installer collect-logs` to gather `config.json`, `hachimi.log`, and a conflict report into `%TEMP%\hachimi_diagnostics`.
+
+# Special thanks
+
+HachimiRedux is a fork built on the work of:
+
+- [Hachimi](https://github.com/Hachimi-Hachimi/Hachimi) — the original project this is based on. If you're interested in the original project, join [its Discord server](https://discord.gg/YjBgmuqqYr).
+- [Hachimi Edge](https://github.com/kairusds/Hachimi-Edge) — the Windows/Steam-focused fork HachimiRedux continues from.
+
+These projects have in turn been the basis for Hachimi's development; without them, Hachimi would never have existed in its current form:
+
+- [Trainers' Legend G](https://github.com/MinamiChiwa/Trainers-Legend-G)
+- [umamusume-localify-android](https://github.com/Kimjio/umamusume-localify-android)
+- [umamusume-localify](https://github.com/GEEKiDoS/umamusume-localify)
+- [Carotenify](https://github.com/KevinVG207/Uma-Carotenify)
+- [umamusu-translate](https://github.com/noccu/umamusu-translate)
+- [frida-il2cpp-bridge](https://github.com/vfsfitvnm/frida-il2cpp-bridge)
+
+# License
 [GNU GPLv3](LICENSE)

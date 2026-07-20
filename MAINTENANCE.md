@@ -1,6 +1,6 @@
-# Maintenance — data publishing shell
+# Maintenance — hosted data pipeline
 
-This repo is retired as a mod. It survives to publish hosted data for [honse-tracker](https://github.com/jalbarrang/honse-tracker) plugins on [Hachimi-Edge](https://github.com/kairusds/Hachimi-Edge). Mod code still exists in-tree; do not delete it without a separate, user-approved cleanup (see Deferred below).
+This repo is the active home of the HachimiRedux mod (see [README.md](README.md)). This file documents the hosted-data publishing pipeline: the in-core Training Tracker downloads its game-data snapshots from this repo's `main/data/…` raw GitHub URLs (defaults in `apps/hachimi/src/core/hosted_data/mod.rs`).
 
 ## Data refresh overview
 
@@ -18,32 +18,24 @@ Full sequence and tool notes: [docs/updating-game-data.md](docs/updating-game-da
 
 Manifest format: JSON with `generated_at`, optional `source`, and a `files` map of relative path → blake3 hex digest (see committed `data/manifest.json`).
 
-## Workflow classification
+## Workflow inventory
 
-Read-only inventory of `.github/workflows/` (this plan does **not** modify workflows):
-
-| Workflow | Classification | Notes |
-| --- | --- | --- |
-| `data_refresh.yml` | **KEEP-data** | Daily/`workflow_dispatch` refresh. Runs `cargo run -p` for data tools only (`fetch-master-db`, `skill-grades`, `course-data`, `tracker-data-manifest`, `gametora-sync`). Does **not** build mod crates (`hachimi`, race-hud, etc.). Commits `data/` (+ mirrored `plugins/training-tracker/assets`). |
-| `ci.yml` | **OBSOLETE-mod** | Fmt/deny/machete/hiker/clippy/test/check for the Rust mod workspace. |
-| `create_release.yml` | **OBSOLETE-mod** | Builds and releases the fork core/installer DLLs. |
-| `sdk_release.yml` | **OBSOLETE-mod** | Tags/releases fork plugin-SDK crates. |
-| `audit.yml` | **OBSOLETE-mod** | Daily `cargo audit` over the whole workspace (mod + tools). |
-
-### Data-pipeline independence
-
-`data_refresh.yml` does not compile the mod crates. Follow-up risk (not fixed here): the data tools still live in the same Cargo workspace / `Cargo.lock` as the mod, and the refresh job still commits into `plugins/training-tracker/assets/` — a future workspace split must keep those tools and paths green or relocate them.
+| Workflow | Role |
+| --- | --- |
+| `data_refresh.yml` | Daily/`workflow_dispatch` refresh. Runs `cargo run -p` for data tools only (`fetch-master-db`, `skill-grades`, `course-data`, `tracker-data-manifest`, `gametora-sync`). Does **not** build mod crates. Commits `data/` (+ mirrored `plugins/training-tracker/assets`). |
+| `ci.yml` | Fmt/deny/machete/hiker/clippy/test/check for the Rust mod workspace. |
+| `create_release.yml` | Builds and releases the core mod + installer binaries. |
+| `sdk_release.yml` | Tags/releases plugin-SDK crates. |
+| `audit.yml` | Daily `cargo audit` over the whole workspace (mod + tools). |
 
 ## URL-STABILITY WARNING
 
-honse-tracker's deployed downloader hardcodes:
+Deployed builds of the mod hardcode these download bases (`apps/hachimi/src/core/hosted_data/mod.rs`):
 
 ```
-https://raw.githubusercontent.com/jalbarrang/hachimi-redux/main/data...
+https://raw.githubusercontent.com/jalbarrang/hachimi-redux/main/data
+https://raw.githubusercontent.com/jalbarrang/hachimi-redux/main/data/gametora
+https://raw.githubusercontent.com/jalbarrang/hachimi-redux/main/data/icons
 ```
 
-(specifically `…/main/data`, `…/main/data/gametora`, `…/main/data/icons`). Renaming this repository, renaming or replacing the `main` branch, or moving/renaming the `data/` directory **breaks every deployed plugin** until a new honse-tracker release changes the defaults (or users override via `hosted_data` in `honseTrackerConfig.json`).
-
-## Deferred suggestion
-
-Future user-approved cleanup: remove or archive the Rust mod workspace (apps, plugins, installer, obsolete workflows) once data tools are extracted or confirmed independent, so this repo is literally only `tools/` + `data/` + docs + `data_refresh.yml`. **Do not do that cleanup in this plan** — deleting shared workspace members risks breaking data publishing.
+Renaming this repository, renaming or replacing the `main` branch, or moving/renaming the `data/` directory **breaks hosted-data updates for every deployed build** until a new release changes the defaults (or users override the URLs in their config).
