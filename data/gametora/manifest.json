@@ -1,11 +1,11 @@
 {
-  "generated_at": "2026-07-30T13:44:39.527453072+00:00",
+  "generated_at": "2026-07-31T13:49:35.329130431+00:00",
   "source": "gametora.com",
   "files": {
-    "character-cards.json": "65934bc5c440131d449b60e0e7ffb10d55b3bfd96666a5cfd1d8758d55949385",
-    "evrew.json": "e276b60355300b7dbf41e98dda6de2375ad177c51db5d036db26ed71a1e54d82",
-    "skills.json": "3f7673f79b03494ed1666e3f3c856f22a38cc51c91aa98e8fd4d1951f667d801",
-    "support-cards.json": "d1fae189f233ea58b5bc4721e4a47bcd97c6ad25950b64480f9847349116264e",
+    "character-cards.json": "36f0636c69c8c6436f6c235eba3ab23f35f2a03d7d4b8123e87d77ce59060a8b",
+    "evrew.json": "368688d5563edae7b5dbb608798b3fccd35e6d49d389f8a2e2df3423999f8097",
+    "skills.json": "b6fde9e5dccdf93219bb65ffaab961982db3250533e1d534857096c39f393d83",
+    "support-cards.json": "c8eb92dd137e01bcda4fd2bc4bc26004d136149c1640cffcf54477d00fe11d4e",
     "support-effects.json": "6915511f255234da5b560b078ea280746d3bc6feb64e9faf98c99960c875558d",
     "te-names-en.json": "b5e33941189f7dc77aabcea89bdbeb2bb9dc447d6d2dba0271f55a3b2667ab76",
     "te-names-ja.json": "66b8480141df0e688659c532cbf5f902b518e54fe472072600a206889ecd8ed3",
