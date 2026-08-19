@@ -78,6 +78,9 @@ jobs:
             build/blake3.json
             build/hachimi.dll
             build/hachimi_installer.exe
+          # The artifact is only an in-run handoff to create-release; the durable
+          # copies are the Release assets. Short retention keeps Actions storage free.
+          retention-days: 7
 
   create-release:
     needs: [build-windows]
